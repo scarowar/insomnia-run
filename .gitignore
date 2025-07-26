@@ -1,0 +1,39 @@
+# Logs
+yarn-debug.log*
+yarn-error.log*
+pip-log.txt
+
+# Environment files
+.env*
+
+# Build output (if any)
+dist/
+build/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+.history/
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+.cache/
+
+# GitHub Actions cache
+/.github/workflows/*.cache
+
+# Python virtual environments
+venv/
+.venv/
+.venv-insomnia-action/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
