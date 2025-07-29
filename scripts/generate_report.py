@@ -2,38 +2,46 @@ import os
 import re
 import sys
 import json
-from pathlib import Path
 from typing import Any, Dict, Tuple, List
+
 
 # --- Logging Helpers ---
 def log_debug(msg: str) -> None:
     if os.environ.get("DEBUG", "false").lower() == "true":
         print(f"::debug::{msg}")
 
+
 def log_info(msg: str) -> None:
     print(msg)
+
 
 def log_warning(msg: str) -> None:
     print(f"::warning::{msg}")
 
+
 def log_section(title: str) -> None:
     print(f"\n{title}\n{'-' * len(title)}")
+
 
 def error_exit(message: str) -> None:
     print(f"::error::{message}")
     sys.exit(1)
 
+
 def _parse_suite_line(line: str) -> str:
-    match = re.match(r'»\s*(.+?)\.', line)
+    match = re.match(r"»\s*(.+?)\.", line)
     return match.group(1).strip() if match else None
+
 
 def _parse_passed_line(line: str) -> str:
-    match = re.match(r'[✓✅]\s*(.+)', line)
+    match = re.match(r"[✓✅]\s*(.+)", line)
     return match.group(1).strip() if match else None
 
+
 def _parse_failed_line(line: str) -> str:
-    match = re.match(r'[✖❌]\s*(.+)', line)
+    match = re.match(r"[✖❌]\s*(.+)", line)
     return match.group(1).strip() if match else None
+
 
 def _extract_failure_details(lines: List[str], start_idx: int) -> Tuple[str, str]:
     """Extracts the failed test name and error message from lines starting at start_idx."""
@@ -41,11 +49,12 @@ def _extract_failure_details(lines: List[str], start_idx: int) -> Tuple[str, str
     error_lines = []
     for j in range(start_idx + 1, len(lines)):
         next_line = lines[j].strip()
-        if not next_line or re.match(r'✓\s*|✖\s*|»\s*', next_line):
+        if not next_line or re.match(r"✓\s*|✖\s*|»\s*", next_line):
             break
         error_lines.append(next_line)
     error_msg = "\n".join(error_lines).strip()
     return test_name, error_msg
+
 
 def parse_inso_output(output: str) -> Dict[str, Any]:
     """
@@ -55,13 +64,7 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: Parsed results including totals, per-suite, and failures.
     """
-    results = {
-        "total": 0,
-        "passed": 0,
-        "failed": 0,
-        "failures": [],
-        "suites": {}
-    }
+    results = {"total": 0, "passed": 0, "failed": 0, "failures": [], "suites": {}}
     current_suite = "General"
     lines = output.splitlines()
     i = 0
@@ -74,7 +77,11 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
         if suite_name:
             current_suite = suite_name
             if current_suite not in results["suites"]:
-                results["suites"][current_suite] = {"passed": 0, "failed": 0, "tests": []}
+                results["suites"][current_suite] = {
+                    "passed": 0,
+                    "failed": 0,
+                    "tests": [],
+                }
             i += 1
             continue
         test_name = _parse_passed_line(line)
@@ -82,9 +89,15 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
             results["total"] += 1
             results["passed"] += 1
             if current_suite not in results["suites"]:
-                results["suites"][current_suite] = {"passed": 0, "failed": 0, "tests": []}
+                results["suites"][current_suite] = {
+                    "passed": 0,
+                    "failed": 0,
+                    "tests": [],
+                }
             results["suites"][current_suite]["passed"] += 1
-            results["suites"][current_suite]["tests"].append({"name": test_name, "status": "passed"})
+            results["suites"][current_suite]["tests"].append(
+                {"name": test_name, "status": "passed"}
+            )
             i += 1
             continue
         if _parse_failed_line(line):
@@ -92,22 +105,32 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
             results["total"] += 1
             results["failed"] += 1
             if current_suite not in results["suites"]:
-                results["suites"][current_suite] = {"passed": 0, "failed": 0, "tests": []}
+                results["suites"][current_suite] = {
+                    "passed": 0,
+                    "failed": 0,
+                    "tests": [],
+                }
             results["suites"][current_suite]["failed"] += 1
-            failure_details = {"name": test_name, "status": "failed", "suite": current_suite, "error": error_msg}
+            failure_details = {
+                "name": test_name,
+                "status": "failed",
+                "suite": current_suite,
+                "error": error_msg,
+            }
             results["failures"].append(failure_details)
             results["suites"][current_suite]["tests"].append(failure_details)
             # Skip error lines
             j = i + 1
             while j < len(lines):
                 next_line = lines[j].strip()
-                if not next_line or re.match(r'✓\s*|✖\s*|»\s*', next_line):
+                if not next_line or re.match(r"✓\s*|✖\s*|»\s*", next_line):
                     break
                 j += 1
             i = j
             continue
         i += 1
     return results
+
 
 def _format_suite_details(suite: str, data: Dict[str, Any]) -> str:
     suite_status_emoji = "✅" if data["failed"] == 0 else "❌"
@@ -120,6 +143,7 @@ def _format_suite_details(suite: str, data: Dict[str, Any]) -> str:
             details += f"  Error: {test['error']}\n"
     details += "```\n"
     return details
+
 
 def format_markdown_report(
     parsed_results: Dict[str, Any],
@@ -134,7 +158,9 @@ def format_markdown_report(
     Returns the markdown and the overall status.
     """
     status_emoji = "✅" if parsed_results["failed"] == 0 and exit_code == 0 else "❌"
-    overall_status = "PASSED" if parsed_results["failed"] == 0 and exit_code == 0 else "FAILED"
+    overall_status = (
+        "PASSED" if parsed_results["failed"] == 0 and exit_code == 0 else "FAILED"
+    )
     report_content = f"## {pr_comment_title}\n\n"
     report_content += f"{status_emoji} **Insomnia {command.replace('run ', '').replace('lint ', '').title()} Status: {overall_status}** for `{identifier}`\n\n"
     report_content += "### Summary\n"
@@ -149,10 +175,14 @@ def format_markdown_report(
         report_content += "| Suite | Test Name | Error |\n"
         report_content += "|-------|-----------|-------|\n"
         for failure in parsed_results["failures"]:
-            error_msg = failure["error"].replace('\n', ' ').replace('|', '\|')
-            report_content += f"| `{failure['suite']}` | `{failure['name']}` | `{error_msg}` |\n"
+            error_msg = failure["error"].replace("\n", " ").replace("|", "\|")
+            report_content += (
+                f"| `{failure['suite']}` | `{failure['name']}` | `{error_msg}` |\n"
+            )
         report_content += "\n"
-    report_content += "<details><summary>Detailed Test Results by Suite 📚</summary>\n\n"
+    report_content += (
+        "<details><summary>Detailed Test Results by Suite 📚</summary>\n\n"
+    )
     for suite, data in parsed_results["suites"].items():
         report_content += _format_suite_details(suite, data)
     report_content += "</details>\n\n"
@@ -160,6 +190,7 @@ def format_markdown_report(
     report_content += "```\n" + raw_output + "\n```\n"
     report_content += "</details>"
     return report_content, overall_status
+
 
 def main() -> None:
     """
@@ -170,7 +201,11 @@ def main() -> None:
     # Validate required environment variables
 
     required_envs = [
-        "INSO_RAW_OUTPUT", "INSO_EXIT_CODE", "INPUT_COMMAND_RAN", "INPUT_IDENTIFIER_RAN", "GITHUB_OUTPUT"
+        "INSO_RAW_OUTPUT",
+        "INSO_EXIT_CODE",
+        "INPUT_COMMAND_RAN",
+        "INPUT_IDENTIFIER_RAN",
+        "GITHUB_OUTPUT",
     ]
     missing = [e for e in required_envs if not os.environ.get(e)]
     if missing:
@@ -186,13 +221,20 @@ def main() -> None:
     identifier_ran = os.environ["INPUT_IDENTIFIER_RAN"]
     github_output = os.environ["GITHUB_OUTPUT"]
 
-    log_debug(f"Parsing inso output for command: {command_ran}, identifier: {identifier_ran}")
+    log_debug(
+        f"Parsing inso output for command: {command_ran}, identifier: {identifier_ran}"
+    )
     parsed_results = parse_inso_output(inso_raw_output)
 
     # Use a default PR comment title
     pr_comment_title = "Insomnia Test Results"
     comment_body, overall_status = format_markdown_report(
-        parsed_results, command_ran, identifier_ran, pr_comment_title, inso_exit_code, inso_raw_output
+        parsed_results,
+        command_ran,
+        identifier_ran,
+        pr_comment_title,
+        inso_exit_code,
+        inso_raw_output,
     )
 
     # Write markdown report to file for artifact upload
@@ -214,13 +256,14 @@ def main() -> None:
         error_exit(f"Failed to write JSON report: {e}")
 
     # Set GitHub Action outputs (standardized keys)
-    with open(github_output, 'a') as out:
+    with open(github_output, "a") as out:
         out.write(f"summary={overall_status}\n")
         out.write(f"comment_body<<EOF\n{comment_body}\nEOF\n")
         out.write(f"report_path={report_path}\n")
         out.write(f"json_report_path={json_path}\n")
 
     log_section("✅ Report generation complete.")
+
 
 if __name__ == "__main__":
     main()
