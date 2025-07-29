@@ -1,0 +1,242 @@
+name: 'Insomnia Action'
+description: 'Run Insomnia Collections/Tests, generate a report, and post to PR comments.'
+author: Sourab Kanthavar <@scarowar>
+branding:
+  icon: terminal
+  color: purple
+inputs:
+  # --- Authentication & Permissions ---
+  github-token:
+    description: "GitHub token for API access (e.g., ${{ secrets.GITHUB_TOKEN }}). Requires 'pull-requests: write', 'contents: write'."
+    required: false
+
+  # --- Insomnia CLI Configuration ---
+  inso-version:
+    description: 'The version of inso CLI to use. Defaults to latest.'
+    required: false
+    default: 'latest'
+  working-directory:
+    description: |
+      The working directory or export file where your Insomnia Design Document data is located (e.g., .insomnia/ or insomnia-export.yaml).
+      Must be a directory containing a .insomnia folder (from Git Sync) or a full workspace export (not just a collection).
+      See README for details.
+    required: false
+    default: '.'
+  environment:
+    description: 'The name of the Insomnia environment to use.'
+    required: false
+  command:
+    description: |
+      The inso command to run (e.g., "run test", "run collection", "lint spec").
+      Only works with Design Documents or full workspace exports, not request collections.
+    required: true
+  identifier:
+    description: |
+      The name or ID (or truncated ID) of the test suite, collection, or spec to run. Can be omitted for some commands (see Inso CLI docs).
+    required: false
+  test-name-pattern:
+    description: 'Regex pattern to filter test names (for run test).'
+    required: false
+  request-name-pattern:
+    description: 'Regex pattern to filter request names (for run collection).'
+    required: false
+  item:
+    description: 'Request or folder UID(s) to run (for run collection). Comma-separated.'
+    required: false
+  delay-request:
+    description: 'Delay in milliseconds between requests (for run collection).'
+    required: false
+  iteration-count:
+    description: 'Number of times to run the collection (for run collection).'
+    required: false
+  iteration-data:
+    description: 'Path or URL to iteration data file (JSON or CSV) (for run collection).'
+    required: false
+  disable-cert-validation:
+    description: 'Disable certificate validation for requests with SSL.'
+    required: false
+  https-proxy:
+    description: 'URL for the proxy server for https requests.'
+    required: false
+  http-proxy:
+    description: 'URL for the proxy server for http requests.'
+    required: false
+  no-proxy:
+    description: 'Comma separated list of hostnames that do not require a proxy.'
+    required: false
+  extra-args:
+    description: 'Additional CLI arguments to pass to Inso CLI (advanced users only).'
+    required: false
+  reporter:
+    description: 'The inso CLI reporter to use. Only "spec" is supported for PR comments.'
+    required: false
+    default: 'spec'
+  verbose:
+    description: 'Enable verbose inso CLI output ("true"/"false").'
+    required: false
+    default: 'false'
+  bail:
+    description: 'Exit on first test failure ("true"/"false").'
+    required: false
+    default: 'false'
+  keep-fresh:
+    description: 'Re-download content from Git Sync every time ("true"/"false").'
+    required: false
+    default: 'false'
+  debug:
+    description: 'Enable debug logging for troubleshooting ("true"/"false").'
+    required: false
+    default: 'false'
+
+  # --- PR Commenting & Reporting ---
+  pr-comment:
+    description: 'Whether to post results as a PR comment ("true"/"false").'
+    required: false
+    default: 'true'
+  fail-on-error:
+    description: 'Fail the GitHub Action if inso CLI reports failures ("true"/"false").'
+    required: false
+    default: 'true'
+
+  # --- Advanced ---
+  secrets:
+    description: 'JSON string of secrets to be passed as environment variables to the test run.'
+    required: false
+
+outputs:
+  results:
+    description: 'The raw output from the inso CLI command.'
+    value: ${{ steps.run_inso_shell.outputs.output }}
+  summary:
+    description: 'A summarized result of the inso run.'
+    value: ${{ steps.parse_and_format.outputs.summary }}
+  comment_body:
+    description: 'The formatted Markdown body of the PR comment.'
+    value: ${{ steps.parse_and_format.outputs.comment_body }}
+  report_path:
+    description: 'Path to the generated Markdown report file.'
+    value: ${{ steps.parse_and_format.outputs.report_path }}
+  json_report_path:
+    description: 'Path to the generated JSON report file.'
+    value: ${{ steps.parse_and_format.outputs.json_report_path }}
+
+runs:
+  using: composite
+  steps:
+  - name: "\e[36m🧰 Setup inso CLI\e[0m"
+    uses: kong/setup-inso@v2
+    with:
+      inso-version: ${{ inputs.inso-version }}
+
+  - name: "\e[36m🐍 Set up Python\e[0m"
+    uses: actions/setup-python@v5
+    with:
+      python-version: '3.x'
+
+  # No Python dependencies required
+
+  - name: "\e[36m🚀 Execute Inso Command\e[0m"
+    id: run_inso_shell
+    shell: bash
+    env:
+      DEBUG: ${{ inputs.debug }}
+      SECRETS_JSON: ${{ inputs.secrets }}
+    run: |
+      chmod +x ${{ github.action_path }}/scripts/execute-insomnia.sh
+      # Export secrets as env vars if provided
+      if [ -n "$SECRETS_JSON" ]; then
+        echo "::notice::🔐 Exporting secrets as environment variables..."
+        python3 -c 'import os, json; secrets=json.loads(os.environ["SECRETS_JSON"]); [print(f"export {k}={v}") for k,v in secrets.items()]' >> $GITHUB_ENV
+      fi
+      # Build Inso CLI command dynamically
+      INSO_CMD="inso ${COMMAND}"
+      if [ -n "${{ inputs.identifier }}" ]; then INSO_CMD+=" '${{ inputs.identifier }}'"; fi
+      if [ -n "${{ inputs.environment }}" ]; then INSO_CMD+=" --env '${{ inputs.environment }}'"; fi
+      if [ -n "${{ inputs.reporter }}" ]; then INSO_CMD+=" --reporter '${{ inputs.reporter }}'"; fi
+      if [ "${{ inputs.verbose }}" = "true" ]; then INSO_CMD+=" --verbose"; fi
+      if [ "${{ inputs.bail }}" = "true" ]; then INSO_CMD+=" --bail"; fi
+      if [ "${{ inputs.keep-fresh }}" = "true" ]; then INSO_CMD+=" --keepFresh"; fi
+      if [ -n "${{ inputs.working-directory }}" ]; then INSO_CMD+=" --workingDir '${{ inputs.working-directory }}'"; fi
+      if [ -n "${{ inputs.test-name-pattern }}" ]; then INSO_CMD+=" --testNamePattern '${{ inputs.test-name-pattern }}'"; fi
+      if [ -n "${{ inputs.request-name-pattern }}" ]; then INSO_CMD+=" --requestNamePattern '${{ inputs.request-name-pattern }}'"; fi
+      if [ -n "${{ inputs.item }}" ]; then for i in $(echo ${{ inputs.item }} | tr ',' '\n'); do INSO_CMD+=" --item '$i'"; done; fi
+      if [ -n "${{ inputs.delay-request }}" ]; then INSO_CMD+=" --delay-request '${{ inputs.delay-request }}'"; fi
+      if [ -n "${{ inputs.iteration-count }}" ]; then INSO_CMD+=" --iteration-count '${{ inputs.iteration-count }}'"; fi
+      if [ -n "${{ inputs.iteration-data }}" ]; then INSO_CMD+=" --iteration-data '${{ inputs.iteration-data }}'"; fi
+      if [ "${{ inputs.disable-cert-validation }}" = "true" ]; then INSO_CMD+=" --disableCertValidation"; fi
+      if [ -n "${{ inputs.https-proxy }}" ]; then INSO_CMD+=" --httpsProxy '${{ inputs.https-proxy }}'"; fi
+      if [ -n "${{ inputs.http-proxy }}" ]; then INSO_CMD+=" --httpProxy '${{ inputs.http-proxy }}'"; fi
+      if [ -n "${{ inputs.no-proxy }}" ]; then INSO_CMD+=" --noProxy '${{ inputs.no-proxy }}'"; fi
+      if [ -n "${{ inputs.extra-args }}" ]; then INSO_CMD+=" ${{ inputs.extra-args }}"; fi
+      INSO_CMD+=" --ci"
+      echo "::notice::Running: $INSO_CMD"
+      ${{ github.action_path }}/scripts/execute-insomnia.sh $INSO_CMD
+
+  - name: "\e[36m📝 Parse Results and Format Report\e[0m"
+    id: parse_and_format
+    shell: python
+    working-directory: ${{ github.action_path }}
+    env:
+      INSO_RAW_OUTPUT: ${{ steps.run_inso_shell.outputs.output }}
+      INSO_EXIT_CODE: ${{ steps.run_inso_shell.outputs.exit_code }}
+      INPUT_PR_COMMENT_TITLE: ${{ inputs.pr-comment-title }}
+      INPUT_COMMAND_RAN: ${{ inputs.command }}
+      INPUT_IDENTIFIER_RAN: ${{ inputs.identifier }}
+      GITHUB_OUTPUT: ${{ env.GITHUB_OUTPUT }}
+      DEBUG: ${{ inputs.debug }}
+      REPORT_PATH: insomnia_report.md
+      JSON_REPORT_PATH: insomnia_report.json
+    run: python ${{ github.action_path }}/scripts/generate_report.py
+
+  - name: "\e[36m📦 Upload Markdown Report Artifact\e[0m"
+    uses: actions/upload-artifact@v4
+    with:
+      name: insomnia-markdown-report
+      path: ${{ steps.parse_and_format.outputs.report_path }}
+
+  - name: "\e[36m📦 Upload JSON Report Artifact\e[0m"
+    uses: actions/upload-artifact@v4
+    with:
+      name: insomnia-json-report
+      path: ${{ steps.parse_and_format.outputs.json_report_path }}
+
+  - name: "\e[36m🔑 Validate GitHub Token for PR Comment\e[0m"
+    if: github.event_name == 'pull_request' && inputs.pr-comment == 'true'
+    shell: bash
+    run: |
+      if [ -z "${{ inputs.github-token }}" ]; then
+        echo "::error::❌ github-token input is required to post PR comments."
+        exit 1
+      fi
+
+  - name: "\e[36m💬 Post PR Comment\e[0m"
+    if: github.event_name == 'pull_request' && inputs.pr-comment == 'true'
+    uses: suzuki-shunsuke/github-comment@v2
+    with:
+      token: ${{ inputs.github-token }}
+      message: ${{ steps.parse_and_format.outputs.comment_body }}
+      user: github-actions[bot]
+
+  - name: "\e[36m🚨 Final Status Check\e[0m"
+    if: ${{ steps.run_inso_shell.outputs.exit_code != 0 && inputs.fail-on-error == 'true' }}
+    shell: bash
+    run: |
+      echo "::error::❌ Insomnia tests/collection run failed. Marking action as failed."
+      exit 1
+
+#
+# Matrix Support:
+# This action is compatible with GitHub Actions matrix strategy. Example usage:
+#
+# jobs:
+#   test:
+#     runs-on: ubuntu-latest
+#     strategy:
+#       matrix:
+#         collection: [Collection1, Collection2]
+#     steps:
+#       - uses: scarowar/insomnia-action@v1
+#         with:
+#           command: 'run test'
+#           identifier: ${{ matrix.collection }}
+#           github-token: ${{ secrets.GITHUB_TOKEN }}
