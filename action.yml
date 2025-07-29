@@ -1,0 +1,264 @@
+name: "Insomnia Run"
+description: "Run Insomnia Collections & Tests with automated reporting and GitHub secrets integration."
+author: Sourab Kanthavar <@scarowar>
+branding:
+  icon: terminal
+  color: purple
+inputs:
+  # --- Authentication & Permissions ---
+  github-token:
+    description: "GitHub token for API access. Pass as an input from your workflow using secrets.GITHUB_TOKEN."
+    required: false
+
+  # --- Insomnia CLI Configuration ---
+  inso-version:
+    description: "The version of inso CLI to use. Defaults to latest."
+    required: false
+    default: 11.3.0
+  working-directory:
+    description: |
+      The working directory or export file where your Insomnia Design Document data is located (e.g., .insomnia/ or insomnia-export.yaml).
+      Must be a directory containing a .insomnia folder (from Git Sync) or a full workspace export (not just a collection).
+      See README for details.
+    required: false
+    default: "."
+  environment:
+    description: "The name of the Insomnia environment to use."
+    required: false
+  command:
+    description: |
+      The command to run: "test" to execute test suites, "collection" to execute collections.
+      Only these two commands are supported.
+    required: true
+  identifier:
+    description: |
+      The name or ID (or truncated ID) of the unit test suite (for 'test') or collection/workspace (for 'collection') to run.
+
+      IMPORTANT: When using collection export files (type: collection.insomnia.rest/5.0), this parameter is automatically ignored 
+      as the CLI processes the export file directly. Use this parameter only with:
+      - Workspace exports (type: workspace.insomnia.rest/4.0)
+      - .insomnia/ directories from Git Sync
+      - When you want to run a specific collection within a workspace containing multiple collections
+      If omitted, inso CLI will prompt for selection (disabled with --ci flag).
+      Refer to Inso CLI documentation for details.
+    required: false
+  test-name-pattern:
+    description: "Regex pattern to filter test names (for 'test' command)."
+    required: false
+  request-name-pattern:
+    description: "Regex pattern to filter request names (for 'collection' command)."
+    required: false
+  item:
+    description: "Request or folder UID(s) to run (for 'collection' command). Comma-separated."
+    required: false
+  delay-request:
+    description: "Delay in milliseconds between requests (for 'collection' command)."
+    required: false
+  iteration-count:
+    description: "Number of times to run the collection (for 'collection' command)."
+    required: false
+  iteration-data:
+    description: "Path or URL to iteration data file (JSON or CSV) (for 'collection' command)."
+    required: false
+  disable-cert-validation:
+    description: "Disable certificate validation for requests with SSL."
+    required: false
+    default: "false"
+  https-proxy:
+    description: "URL for the proxy server for https requests."
+    required: false
+  http-proxy:
+    description: "URL for the proxy server for http requests."
+    required: false
+  no-proxy:
+    description: "Comma separated list of hostnames that do not require a proxy."
+    required: false
+  bail:
+    description: 'Exit on first test failure ("true"/"false").'
+    required: false
+    default: "false"
+  debug:
+    description: 'Enable debug logging for troubleshooting ("true"/"false").'
+    required: false
+    default: "false"
+  env-var:
+    description: |
+      Environment variable overrides in key=value format. Multiple values can be provided separated by newlines.
+      Perfect for injecting GitHub Actions secrets into Insomnia templates.
+      Examples:
+        Single: "password=secret_value"
+        Multiple:
+          password=secret_value
+          username=secret_username
+    required: false
+
+  # --- PR Commenting & Reporting ---
+  pr-comment:
+    description: 'Whether to post results as a PR comment when in a pull_request context ("true"/"false"). Automatically disabled for non-PR workflows.'
+    required: false
+    default: "true"
+  fail-on-error:
+    description: 'Fail the GitHub Action if inso CLI reports failures ("true"/"false").'
+    required: false
+    default: "true"
+  # --- Advanced ---
+
+outputs:
+  results:
+    description: "The raw output from the inso CLI command."
+    value: ${{ steps.run_inso_shell.outputs.output }}
+  summary:
+    description: "A summarized result of the inso run."
+    value: ${{ steps.parse_and_format.outputs.summary }}
+  comment_body:
+    description: "The formatted Markdown body of the PR comment."
+    value: ${{ steps.parse_and_format.outputs.comment_body }}
+
+runs:
+  using: composite
+  steps:
+  - name: "\e[36m🧰 Setup inso CLI\e[0m"
+    uses: kong/setup-inso@v2
+    with:
+      inso-version: ${{ inputs.inso-version }}
+
+  - name: "\e[36m🐍 Set up Python\e[0m"
+    uses: actions/setup-python@v5
+    with:
+      python-version: "3.x"
+
+  # No Python dependencies required
+
+  - name: "\e[36m🚀 Execute Inso Command\e[0m"
+    id: run_inso_shell
+    shell: bash
+    env:
+      DEBUG: ${{ inputs.debug }}
+    run: |
+      chmod +x ${{ github.action_path }}/scripts/execute-insomnia.sh
+      # Validate command input
+      if [[ "${{ inputs.command }}" != "test" && "${{ inputs.command }}" != "collection" ]]; then
+        echo "::error::❌ Only 'test' and 'collection' commands are supported. You provided: '${{ inputs.command }}'"
+        exit 1
+      fi
+      # Build Inso CLI command dynamically
+      INSO_CMD="inso run ${{ inputs.command }}"
+
+      # Smart identifier handling based on file type and command
+      if [ -n "${{ inputs.identifier }}" ]; then
+        if [ "${{ inputs.command }}" == "collection" ] && [ -f "${{ inputs.working-directory }}" ]; then
+          # Check if working-directory points to a collection export file
+          if grep -q "type: collection.insomnia.rest" "${{ inputs.working-directory }}" 2>/dev/null; then
+            echo "::warning::🔍 Detected collection export file. Identifier '${{ inputs.identifier }}' will be ignored for direct collection processing."
+            echo "::notice::💡 To use identifier, export as workspace or use .insomnia/ directory instead."
+          else
+            INSO_CMD+=" '${{ inputs.identifier }}'"
+          fi
+        else
+          # For test commands or workspace directories, always use identifier
+          INSO_CMD+=" '${{ inputs.identifier }}'"
+        fi
+      fi
+      if [ -n "${{ inputs.environment }}" ]; then INSO_CMD+=" --env '${{ inputs.environment }}'"; fi
+      # Always use spec reporter for output parsing and PR comments
+      INSO_CMD+=" --reporter spec"
+      if [ "${{ inputs.bail }}" = "true" ]; then INSO_CMD+=" --bail"; fi
+      if [ -n "${{ inputs.working-directory }}" ]; then INSO_CMD+=" --workingDir '${{ inputs.working-directory }}'"; fi
+      if [ "${{ inputs.command }}" == "test" ] && [ -n "${{ inputs.test-name-pattern }}" ]; then INSO_CMD+=" --testNamePattern '${{ inputs.test-name-pattern }}'"; fi
+      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.request-name-pattern }}" ]; then INSO_CMD+=" --requestNamePattern '${{ inputs.request-name-pattern }}'"; fi
+      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.item }}" ]; then for i in $(echo ${{ inputs.item }} | tr ',' '\n'); do INSO_CMD+=" --item '$i'"; done; fi
+      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.delay-request }}" ]; then INSO_CMD+=" --delay-request '${{ inputs.delay-request }}'"; fi
+      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.iteration-count }}" ]; then INSO_CMD+=" --iteration-count '${{ inputs.iteration-count }}'"; fi
+      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.iteration-data }}" ]; then INSO_CMD+=" --iteration-data '${{ inputs.iteration-data }}'"; fi
+      if [ "${{ inputs.disable-cert-validation }}" = "true" ]; then INSO_CMD+=" --disableCertValidation"; fi
+      if [ -n "${{ inputs.https-proxy }}" ]; then INSO_CMD+=" --httpsProxy '${{ inputs.https-proxy }}'"; fi
+      if [ -n "${{ inputs.http-proxy }}" ]; then INSO_CMD+=" --httpProxy '${{ inputs.http-proxy }}'"; fi
+      if [ -n "${{ inputs.no-proxy }}" ]; then INSO_CMD+=" --noProxy '${{ inputs.no-proxy }}'"; fi
+      # Handle environment variable overrides
+      if [ -n "${{ inputs.env-var }}" ]; then
+        # Process each line of env-var input
+        IFS=$'\n'
+        for env_var_line in ${{ inputs.env-var }}; do
+          if [ -n "$env_var_line" ]; then
+            INSO_CMD+=" --env-var '$env_var_line'"
+          fi
+        done
+        unset IFS
+      fi
+      INSO_CMD+=" --ci"
+      echo "::notice::Running: $INSO_CMD"
+      ${{ github.action_path }}/scripts/execute-insomnia.sh "$INSO_CMD"
+
+  - name: "\e[36m📝 Parse Results and Format Report\e[0m"
+    id: parse_and_format
+    shell: bash
+    working-directory: ${{ github.action_path }}
+    env:
+      INSO_RAW_OUTPUT: ${{ steps.run_inso_shell.outputs.output }}
+      INSO_EXIT_CODE: ${{ steps.run_inso_shell.outputs.exit_code }}
+      INPUT_COMMAND_RAN: ${{ inputs.command }}
+      INPUT_IDENTIFIER_RAN: ${{ inputs.identifier }}
+      GITHUB_OUTPUT: ${{ env.GITHUB_OUTPUT }}
+      WORKFLOW_CONTEXT: ${{ github.event_name }}
+      DEBUG: ${{ inputs.debug }}
+    run: python ${{ github.action_path }}/scripts/generate_report.py
+
+  - name: "\e[36m🌍 Workflow Context Summary\e[0m"
+    shell: bash
+    run: |
+      echo "::notice::📊 Workflow Context Information"
+      echo "::notice::Event: ${{ github.event_name }}"
+      echo "::notice::Repository: ${{ github.repository }}"
+      echo "::notice::Branch/Ref: ${{ github.ref }}"
+      echo "::notice::Actor: ${{ github.actor }}"
+      echo "::notice::Report Status: ${{ steps.parse_and_format.outputs.summary }}"
+      if [[ "${{ github.event_name }}" == "pull_request" && "${{ inputs.pr-comment }}" == "true" ]]; then
+        echo "::notice::PR Comment: Will be posted to PR #${{ github.event.pull_request.number }}"
+      else
+        echo "::notice::PR Comment: Skipped (not a pull_request event or pr-comment disabled)"
+      fi
+
+  - name: "\e[36m🔑 Validate GitHub Token for PR Comment\e[0m"
+    if: github.event_name == 'pull_request' && inputs.pr-comment == 'true'
+    shell: bash
+    run: |
+      if [ -z "${{ inputs.github-token }}" ]; then
+        echo "::warning::⚠️ github-token input is missing. PR comment will be skipped."
+        echo "::notice::💡 To enable PR comments, add github-token to your workflow."
+        echo "SKIP_PR_COMMENT=true" >> $GITHUB_ENV
+      else
+        echo "::notice::✅ GitHub token provided. PR comment will be posted."
+        echo "SKIP_PR_COMMENT=false" >> $GITHUB_ENV
+      fi
+
+  - name: "\e[36m💬 Post PR Comment\e[0m"
+    if: github.event_name == 'pull_request' && inputs.pr-comment == 'true' && env.SKIP_PR_COMMENT != 'true'
+    uses: peter-evans/create-or-update-comment@v4
+    with:
+      token: ${{ inputs.github-token }}
+      issue-number: ${{ github.event.pull_request.number }}
+      body: ${{ steps.parse_and_format.outputs.comment_body }}
+
+  - name: "\e[36m🚨 Final Status Check\e[0m"
+    if: ${{ steps.run_inso_shell.outputs.exit_code != 0 && inputs.fail-on-error == 'true' }}
+    shell: bash
+    run: |
+      echo "::error::❌ Insomnia tests/collection run failed. Marking action as failed."
+      exit 1
+
+#
+# Matrix Support:
+# This action is compatible with GitHub Actions matrix strategy. Example usage:
+#
+# jobs:
+#   test:
+#     runs-on: ubuntu-latest
+#     strategy:
+#       matrix:
+#         collection: [Collection1, Collection2]
+#     steps:
+#       - uses: scarowar/insomnia-action@v1
+#         with:
+#           command: 'test'
+#           identifier: ${{ matrix.collection }}
+#           github-token: ${{ secrets.GITHUB_TOKEN }}
