@@ -470,10 +470,9 @@ def _update_detailed_failure_section_state(
     Returns:
         Updated state of in_detailed_failure_section
     """
-    if found_summary and not in_detailed_failure_section:
-        if re.match(r"^\s*\d+\)\s+", line):
-            log_debug("Entering detailed failure section")
-            return True
+    if found_summary and not in_detailed_failure_section and re.match(r"^\s*\d+\)\s+", line):
+        log_debug("Entering detailed failure section")
+        return True
     return in_detailed_failure_section
 
 
@@ -594,6 +593,9 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
     Raises:
         ValueError: If output format is unrecognizable
     """
+    if not output or not output.strip():
+        raise ValueError("Output cannot be empty")
+
     results = {"total": 0, "passed": 0, "failed": 0, "failures": [], "suites": {}}
     current_suite = "General"
     lines = output.splitlines()

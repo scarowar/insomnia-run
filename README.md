@@ -209,11 +209,14 @@ env-var: |
 
 Use in Insomnia: `{{api_key}}`, `{{base_url}}`
 
+**Note**: Environment variables only work with `collection` command. The `test` command will show a warning if `env-var` is provided.
+
 ## Limitations
 
 - Only supports `test` and `collection` commands
 - Uses fixed `spec` reporter for consistent PR comments
 - Requires inso CLI version 11.3.0+
+- Environment variables (`env-var`) only work with `collection` command
 
 ## Troubleshooting
 

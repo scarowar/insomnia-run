@@ -85,6 +85,10 @@ inputs:
     description: |
       Environment variable overrides in key=value format. Multiple values can be provided separated by newlines.
       Perfect for injecting GitHub Actions secrets into Insomnia templates.
+
+      ⚠️ IMPORTANT: Environment variables (--env-var) are ONLY supported for 'collection' command, NOT for 'test' command.
+      For test commands, use Insomnia environment files instead.
+
       Examples:
         Single: "password=secret_value"
         Multiple:
@@ -235,12 +239,17 @@ runs:
 
       ENV_VAR_COUNT=0
       if [ -n "$INSO_ENV_VAR" ]; then
-        while IFS= read -r env_var_line; do
-          if [ -n "$env_var_line" ]; then
-            INSO_ARGS+=("--env-var" "$env_var_line")
-            ENV_VAR_COUNT=$((ENV_VAR_COUNT + 1))
-          fi
-        done <<< "$INSO_ENV_VAR"
+        if [ "$INSO_COMMAND" == "collection" ]; then
+          while IFS= read -r env_var_line; do
+            if [ -n "$env_var_line" ]; then
+              INSO_ARGS+=("--env-var" "$env_var_line")
+              ENV_VAR_COUNT=$((ENV_VAR_COUNT + 1))
+            fi
+          done <<< "$INSO_ENV_VAR"
+        else
+          echo "::warning::🚨 Environment variables (--env-var) are only supported for 'collection' command, not for 'test' command."
+          echo "::notice::💡 For test commands, use Insomnia environment files instead of --env-var flag."
+        fi
       fi
 
       INSO_ARGS+=("--ci")
@@ -263,7 +272,7 @@ runs:
       if [ -n "$INSO_HTTPS_PROXY" ]; then DISPLAY_CMD+=" --httpsProxy [proxy]"; fi
       if [ -n "$INSO_HTTP_PROXY" ]; then DISPLAY_CMD+=" --httpProxy [proxy]"; fi
       if [ -n "$INSO_NO_PROXY" ]; then DISPLAY_CMD+=" --noProxy [hosts]"; fi
-      if [ $ENV_VAR_COUNT -gt 0 ]; then DISPLAY_CMD+=" --env-var [${ENV_VAR_COUNT} variables]"; fi
+      if [ "$INSO_COMMAND" == "collection" ] && [ $ENV_VAR_COUNT -gt 0 ]; then DISPLAY_CMD+=" --env-var [${ENV_VAR_COUNT} variables]"; fi
       DISPLAY_CMD+=" --ci"
 
       echo "::notice::Running (sanitized): $DISPLAY_CMD"
