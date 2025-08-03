@@ -470,7 +470,11 @@ def _update_detailed_failure_section_state(
     Returns:
         Updated state of in_detailed_failure_section
     """
-    if found_summary and not in_detailed_failure_section and re.match(r"^\s*\d+\)\s+", line):
+    if (
+        found_summary
+        and not in_detailed_failure_section
+        and re.match(r"^\s*\d+\)\s+", line)
+    ):
         log_debug("Entering detailed failure section")
         return True
     return in_detailed_failure_section
