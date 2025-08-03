@@ -126,59 +126,191 @@ runs:
     with:
       python-version: 3.x
 
-  - name: 🚀 Execute Inso Command
+  - name: 🚀 Execute Inso Command (Secure)
     id: run_inso_shell
     shell: bash
     env:
       DEBUG: ${{ inputs.debug }}
       INPUT_IDENTIFIER_RAN: ${{ inputs.identifier }}
+      # Pass inputs as environment variables for secure handling
+      INSO_COMMAND: ${{ inputs.command }}
+      INSO_IDENTIFIER: ${{ inputs.identifier }}
+      INSO_ENVIRONMENT: ${{ inputs.environment }}
+      INSO_BAIL: ${{ inputs.bail }}
+      INSO_WORKING_DIR: ${{ inputs.working-directory }}
+      INSO_TEST_NAME_PATTERN: ${{ inputs.test-name-pattern }}
+      INSO_REQUEST_NAME_PATTERN: ${{ inputs.request-name-pattern }}
+      INSO_ITEM: ${{ inputs.item }}
+      INSO_DELAY_REQUEST: ${{ inputs.delay-request }}
+      INSO_ITERATION_COUNT: ${{ inputs.iteration-count }}
+      INSO_ITERATION_DATA: ${{ inputs.iteration-data }}
+      INSO_DISABLE_CERT_VALIDATION: ${{ inputs.disable-cert-validation }}
+      INSO_HTTPS_PROXY: ${{ inputs.https-proxy }}
+      INSO_HTTP_PROXY: ${{ inputs.http-proxy }}
+      INSO_NO_PROXY: ${{ inputs.no-proxy }}
+      INSO_ENV_VAR: ${{ inputs.env-var }}
     run: |
-      chmod +x ${{ github.action_path }}/scripts/execute-insomnia.sh
-      if [[ "${{ inputs.command }}" != "test" && "${{ inputs.command }}" != "collection" ]]; then
-        echo "::error::❌ Only 'test' and 'collection' commands are supported. You provided: '${{ inputs.command }}'"
+      # Validate command input
+      if [[ "$INSO_COMMAND" != "test" && "$INSO_COMMAND" != "collection" ]]; then
+        echo "::error::❌ Only 'test' and 'collection' commands are supported. You provided: '$INSO_COMMAND'"
         exit 1
       fi
-      INSO_CMD="inso run ${{ inputs.command }}"
-
-      if [ -n "${{ inputs.identifier }}" ]; then
-        if [ "${{ inputs.command }}" == "collection" ] && [ -f "${{ inputs.working-directory }}" ]; then
-          if grep -q "type: collection.insomnia.rest" "${{ inputs.working-directory }}" 2>/dev/null; then
-            echo "::warning::🔍 Detected collection export file. Identifier '${{ inputs.identifier }}' will be ignored for direct collection processing."
+      
+      echo "::group::🛠️ Building Inso CLI Command Array (Secure)"
+      
+      # Function to normalize boolean inputs (handles TRUE, True, true, yes, 1)
+      normalize_bool() {
+        local val="${1,,}"  # Convert to lowercase
+        case "$val" in
+          true|yes|1|on) echo "true" ;;
+          *) echo "false" ;;
+        esac
+      }
+      
+      # Build command array to prevent injection
+      INSO_ARGS=("inso" "run" "$INSO_COMMAND")
+      
+      # Add identifier if provided (with safe handling for collections)
+      if [ -n "$INSO_IDENTIFIER" ]; then
+        if [ "$INSO_COMMAND" == "collection" ] && [ -f "$INSO_WORKING_DIR" ]; then
+          if grep -q "type: collection.insomnia.rest" "$INSO_WORKING_DIR" 2>/dev/null; then
+            echo "::warning::🔍 Detected collection export file. Identifier '$INSO_IDENTIFIER' will be ignored for direct collection processing."
             echo "::notice::💡 To use identifier, export as workspace or use .insomnia/ directory instead."
           else
-            INSO_CMD+=" '${{ inputs.identifier }}'"
+            INSO_ARGS+=("$INSO_IDENTIFIER")
           fi
         else
-          INSO_CMD+=" '${{ inputs.identifier }}'"
+          INSO_ARGS+=("$INSO_IDENTIFIER")
         fi
       fi
-      if [ -n "${{ inputs.environment }}" ]; then INSO_CMD+=" --env '${{ inputs.environment }}'"; fi
-      INSO_CMD+=" --reporter spec"
-      if [ "${{ inputs.bail }}" = "true" ]; then INSO_CMD+=" --bail"; fi
-      if [ -n "${{ inputs.working-directory }}" ]; then INSO_CMD+=" --workingDir '${{ inputs.working-directory }}'"; fi
-      if [ "${{ inputs.command }}" == "test" ] && [ -n "${{ inputs.test-name-pattern }}" ]; then INSO_CMD+=" --testNamePattern '${{ inputs.test-name-pattern }}'"; fi
-      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.request-name-pattern }}" ]; then INSO_CMD+=" --requestNamePattern '${{ inputs.request-name-pattern }}'"; fi
-      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.item }}" ]; then for i in $(echo ${{ inputs.item }} | tr ',' '\n'); do INSO_CMD+=" --item '$i'"; done; fi
-      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.delay-request }}" ]; then INSO_CMD+=" --delay-request '${{ inputs.delay-request }}'"; fi
-      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.iteration-count }}" ]; then INSO_CMD+=" --iteration-count '${{ inputs.iteration-count }}'"; fi
-      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.iteration-data }}" ]; then INSO_CMD+=" --iteration-data '${{ inputs.iteration-data }}'"; fi
-      if [ "${{ inputs.disable-cert-validation }}" = "true" ]; then INSO_CMD+=" --disableCertValidation"; fi
-      if [ -n "${{ inputs.https-proxy }}" ]; then INSO_CMD+=" --httpsProxy '${{ inputs.https-proxy }}'"; fi
-      if [ -n "${{ inputs.http-proxy }}" ]; then INSO_CMD+=" --httpProxy '${{ inputs.http-proxy }}'"; fi
-      if [ -n "${{ inputs.no-proxy }}" ]; then INSO_CMD+=" --noProxy '${{ inputs.no-proxy }}'"; fi
-      if [ -n "${{ inputs.env-var }}" ]; then
-        IFS=$'\n'
-        for env_var_line in ${{ inputs.env-var }}; do
-          if [ -n "$env_var_line" ]; then
-            escaped_env_var=$(printf %q "$env_var_line")
-            INSO_CMD+=" --env-var $escaped_env_var"
-          fi
-        done
-        unset IFS
+      
+      # Add environment
+      if [ -n "$INSO_ENVIRONMENT" ]; then
+        INSO_ARGS+=("--env" "$INSO_ENVIRONMENT")
       fi
-      INSO_CMD+=" --ci"
-      echo "::notice::Running: $INSO_CMD"
-      ${{ github.action_path }}/scripts/execute-insomnia.sh "$INSO_CMD"
+      
+      # Always add spec reporter
+      INSO_ARGS+=("--reporter" "spec")
+      
+      # Add boolean flags with normalized handling
+      if [ "$(normalize_bool "$INSO_BAIL")" = "true" ]; then
+        INSO_ARGS+=("--bail")
+      fi
+      
+      # Add working directory
+      if [ -n "$INSO_WORKING_DIR" ]; then
+        INSO_ARGS+=("--workingDir" "$INSO_WORKING_DIR")
+      fi
+      
+      # Add test-specific options
+      if [ "$INSO_COMMAND" == "test" ] && [ -n "$INSO_TEST_NAME_PATTERN" ]; then
+        INSO_ARGS+=("--testNamePattern" "$INSO_TEST_NAME_PATTERN")
+      fi
+      
+      # Add collection-specific options
+      if [ "$INSO_COMMAND" == "collection" ]; then
+        if [ -n "$INSO_REQUEST_NAME_PATTERN" ]; then
+          INSO_ARGS+=("--requestNamePattern" "$INSO_REQUEST_NAME_PATTERN")
+        fi
+        if [ -n "$INSO_ITEM" ]; then
+          IFS=',' read -ra ITEMS <<< "$INSO_ITEM"
+          for item in "${ITEMS[@]}"; do
+            if [ -n "$item" ]; then
+              INSO_ARGS+=("--item" "$item")
+            fi
+          done
+        fi
+        if [ -n "$INSO_DELAY_REQUEST" ]; then
+          INSO_ARGS+=("--delay-request" "$INSO_DELAY_REQUEST")
+        fi
+        if [ -n "$INSO_ITERATION_COUNT" ]; then
+          INSO_ARGS+=("--iteration-count" "$INSO_ITERATION_COUNT")
+        fi
+        if [ -n "$INSO_ITERATION_DATA" ]; then
+          INSO_ARGS+=("--iteration-data" "$INSO_ITERATION_DATA")
+        fi
+      fi
+      
+      # Add SSL/proxy options
+      if [ "$(normalize_bool "$INSO_DISABLE_CERT_VALIDATION")" = "true" ]; then
+        INSO_ARGS+=("--disableCertValidation")
+      fi
+      if [ -n "$INSO_HTTPS_PROXY" ]; then
+        INSO_ARGS+=("--httpsProxy" "$INSO_HTTPS_PROXY")
+      fi
+      if [ -n "$INSO_HTTP_PROXY" ]; then
+        INSO_ARGS+=("--httpProxy" "$INSO_HTTP_PROXY")
+      fi
+      if [ -n "$INSO_NO_PROXY" ]; then
+        INSO_ARGS+=("--noProxy" "$INSO_NO_PROXY")
+      fi
+      
+      # Handle environment variables (securely - don't log values)
+      ENV_VAR_COUNT=0
+      if [ -n "$INSO_ENV_VAR" ]; then
+        while IFS= read -r env_var_line; do
+          if [ -n "$env_var_line" ]; then
+            INSO_ARGS+=("--env-var" "$env_var_line")
+            ENV_VAR_COUNT=$((ENV_VAR_COUNT + 1))
+          fi
+        done <<< "$INSO_ENV_VAR"
+      fi
+      
+      # Always add CI flag
+      INSO_ARGS+=("--ci")
+      
+      # Create display command (without sensitive env-var values)
+      DISPLAY_CMD="inso run $INSO_COMMAND"
+      if [ -n "$INSO_IDENTIFIER" ] && [[ ! ("$INSO_COMMAND" == "collection" && -f "$INSO_WORKING_DIR" && $(grep -q "type: collection.insomnia.rest" "$INSO_WORKING_DIR" 2>/dev/null)) ]]; then
+        DISPLAY_CMD+=" [identifier]"
+      fi
+      if [ -n "$INSO_ENVIRONMENT" ]; then DISPLAY_CMD+=" --env [environment]"; fi
+      DISPLAY_CMD+=" --reporter spec"
+      if [ "$(normalize_bool "$INSO_BAIL")" = "true" ]; then DISPLAY_CMD+=" --bail"; fi
+      if [ -n "$INSO_WORKING_DIR" ]; then DISPLAY_CMD+=" --workingDir [working-dir]"; fi
+      if [ "$INSO_COMMAND" == "test" ] && [ -n "$INSO_TEST_NAME_PATTERN" ]; then DISPLAY_CMD+=" --testNamePattern [pattern]"; fi
+      if [ "$INSO_COMMAND" == "collection" ] && [ -n "$INSO_REQUEST_NAME_PATTERN" ]; then DISPLAY_CMD+=" --requestNamePattern [pattern]"; fi
+      if [ "$INSO_COMMAND" == "collection" ] && [ -n "$INSO_ITEM" ]; then DISPLAY_CMD+=" --item [items]"; fi
+      if [ "$INSO_COMMAND" == "collection" ] && [ -n "$INSO_DELAY_REQUEST" ]; then DISPLAY_CMD+=" --delay-request [delay]"; fi
+      if [ "$INSO_COMMAND" == "collection" ] && [ -n "$INSO_ITERATION_COUNT" ]; then DISPLAY_CMD+=" --iteration-count [count]"; fi
+      if [ "$INSO_COMMAND" == "collection" ] && [ -n "$INSO_ITERATION_DATA" ]; then DISPLAY_CMD+=" --iteration-data [data]"; fi
+      if [ "$(normalize_bool "$INSO_DISABLE_CERT_VALIDATION")" = "true" ]; then DISPLAY_CMD+=" --disableCertValidation"; fi
+      if [ -n "$INSO_HTTPS_PROXY" ]; then DISPLAY_CMD+=" --httpsProxy [proxy]"; fi
+      if [ -n "$INSO_HTTP_PROXY" ]; then DISPLAY_CMD+=" --httpProxy [proxy]"; fi
+      if [ -n "$INSO_NO_PROXY" ]; then DISPLAY_CMD+=" --noProxy [hosts]"; fi
+      if [ $ENV_VAR_COUNT -gt 0 ]; then DISPLAY_CMD+=" --env-var [${ENV_VAR_COUNT} variables]"; fi
+      DISPLAY_CMD+=" --ci"
+      
+      echo "::notice::Running (sanitized): $DISPLAY_CMD"
+      echo "::endgroup::"
+      
+      # Execute with array to prevent injection and capture exit code properly
+      set +e
+      if [ -n "$INSO_WORKING_DIR" ]; then
+        cd "$INSO_WORKING_DIR"
+      fi
+      "${INSO_ARGS[@]}" > /tmp/inso_output.txt 2>&1
+      EXIT_CODE=$?
+      OUTPUT=$(cat /tmp/inso_output.txt)
+      rm -f /tmp/inso_output.txt
+      set -e
+      
+      # Export results
+      HEREDOC_DELIMITER="INSOMNIA_OUTPUT_END_$(date +%s)_$$"
+      {
+        echo "output<<${HEREDOC_DELIMITER}"
+        echo "${OUTPUT}"
+        echo "${HEREDOC_DELIMITER}"
+        echo "exit_code=${EXIT_CODE}"
+        echo "command_ran=${DISPLAY_CMD}"
+        echo "identifier_ran=${INSO_IDENTIFIER}"
+      } >> "$GITHUB_OUTPUT"
+      
+      if [ $EXIT_CODE -ne 0 ]; then
+        echo "::warning::Inso CLI exited with code $EXIT_CODE"
+      else
+        echo "::notice::✅ Inso CLI executed successfully"
+      fi
 
   - name: 📝 Parse Results and Format Report
     id: parse_and_format

@@ -21,7 +21,15 @@ PASSED_TEST_PATTERN = re.compile(
 )
 FAILED_TEST_PATTERN = re.compile(r"^\s*[✗✖❌]\s*([^\r\n]{1,200}?)\s*$")
 
-TEST_STATUS_SYMBOLS_PATTERN = re.compile(r"^\s*[✓✔✅✗✖❌]")
+# Additional patterns for numbered test results (e.g., "1) Test Name")
+# Allow colons in test names since REST endpoint tests often contain them
+NUMBERED_FAILED_TEST_PATTERN = re.compile(r"^\s*\d+\)\s+([^\r\n]{1,200}?)\s*$")
+
+# Patterns for summary lines (e.g., "0 passing (131ms)", "1 failing")
+PASSING_SUMMARY_PATTERN = re.compile(r"^\s*(\d+)\s+passing(?:\s+\((\d+)ms\))?\s*$")
+FAILING_SUMMARY_PATTERN = re.compile(r"^\s*(\d+)\s+failing\s*$")
+
+TEST_STATUS_SYMBOLS_PATTERN = re.compile(r"^\s*([✓✔✅✗✖❌]|\d+\))")
 ANSI_SUMMARY_PATTERN = re.compile(
     r"^\[[0-9;]*m[^[\r\n]{0,100}\[[0-9;]*m[^[\r\n]{0,100}total"
 )
@@ -223,8 +231,42 @@ def _parse_failed_line(line: str) -> Optional[str]:
     Returns:
         Test name if line represents a failed test, None otherwise
     """
+    # Try symbol-based pattern first (✗ Test Name)
     match = FAILED_TEST_PATTERN.match(line)
-    return match.group(1).strip() if match else None
+    if match:
+        return match.group(1).strip()
+    
+    # Try numbered pattern (1) Test Name)
+    match = NUMBERED_FAILED_TEST_PATTERN.match(line)
+    if match:
+        return match.group(1).strip()
+    
+    return None
+
+
+def _parse_summary_line(line: str) -> Optional[Tuple[int, int]]:
+    """
+    Parse summary lines to extract passed and failed counts.
+
+    Args:
+        line: CLI output line potentially containing test summary
+
+    Returns:
+        Tuple of (passed_count, failed_count) if found, None otherwise
+    """
+    # Check for passing summary (e.g., "0 passing (131ms)")
+    match = PASSING_SUMMARY_PATTERN.match(line)
+    if match:
+        passed_count = int(match.group(1))
+        return (passed_count, 0)
+    
+    # Check for failing summary (e.g., "1 failing")
+    match = FAILING_SUMMARY_PATTERN.match(line)
+    if match:
+        failed_count = int(match.group(1))
+        return (0, failed_count)
+    
+    return None
 
 
 def _is_test_result_line(line: str) -> bool:
@@ -446,11 +488,35 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
     all_errors = _collect_fallback_error_lines(lines)
     error_index = 0
     i = 0
+    
+    # Track if we've found summary lines to use as fallback
+    summary_passed = 0
+    summary_failed = 0
+    found_summary = False
+    in_detailed_failure_section = False
 
     while i < len(lines):
         line = lines[i]
         stripped = line.strip()
         if not stripped:
+            i += 1
+            continue
+
+        # Detect if we're entering the detailed failure section
+        # This usually starts after the summary lines
+        if found_summary and not in_detailed_failure_section:
+            # Look for numbered failure details (after summary)
+            if re.match(r"^\s*\d+\)\s+", line):
+                in_detailed_failure_section = True
+                log_debug("Entering detailed failure section")
+
+        # Check for summary lines first
+        summary_counts = _parse_summary_line(line)
+        if summary_counts:
+            passed_count, failed_count = summary_counts
+            summary_passed += passed_count
+            summary_failed += failed_count
+            found_summary = True
             i += 1
             continue
 
@@ -467,8 +533,10 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
             i += 1
             continue
 
+        # Only parse numbered failures if we're NOT in detailed failure section
+        # OR if we haven't found summary yet (meaning it's an actual test line)
         failed_test_name = _parse_failed_line(line)
-        if failed_test_name:
+        if failed_test_name and not in_detailed_failure_section:
             if error_index < len(all_errors):
                 error_msg = all_errors[error_index]
             else:
@@ -483,6 +551,28 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
             continue
 
         i += 1
+    
+    # If we didn't find individual test results but found summary lines, use them
+    if found_summary and results["total"] == 0:
+        log_debug(f"Using summary fallback: {summary_passed} passed, {summary_failed} failed")
+        results["total"] = summary_passed + summary_failed
+        results["passed"] = summary_passed
+        results["failed"] = summary_failed
+        
+        # Create generic failure entries if we have failed tests but no specific failures
+        if summary_failed > 0 and len(results["failures"]) == 0:
+            _initialize_suite_if_needed(results, current_suite)
+            results["suites"][current_suite]["failed"] = summary_failed
+            for i in range(summary_failed):
+                failure_details = {
+                    "name": f"Failed Test {i+1}",
+                    "status": "failed",
+                    "suite": current_suite,
+                    "error": "Test failed (details in raw output)",
+                }
+                results["failures"].append(failure_details)
+                results["suites"][current_suite]["tests"].append(failure_details)
+    
     return results
 
 
