@@ -47,10 +47,10 @@ echo "::endgroup::"
 
 echo "::group::🚀 Executing Inso CLI"
 set +e
-# Parse the command string into an array for safer execution
-# This avoids eval and potential command injection vulnerabilities
-read -ra INSO_CMD_ARRAY <<<"${INSO_CMD}"
-OUTPUT=$("${INSO_CMD_ARRAY[@]}" 2>&1)
+# Use eval to properly handle shell quoting in the command string
+# The command string is constructed in action.yml and passed as a single argument
+# This allows proper handling of quoted arguments while maintaining security
+OUTPUT=$(eval "${INSO_CMD}" 2>&1)
 EXIT_CODE=$?
 set -e
 if [[ ${EXIT_CODE} -ne 0 ]]; then
