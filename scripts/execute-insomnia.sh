@@ -42,7 +42,6 @@ echo "::endgroup::"
 
 echo "::group::🚀 Executing Inso CLI"
 set +e
-# Use bash -c instead of eval for safer execution while preserving shell expansion
 OUTPUT=$(bash -c "${INSO_CMD}" 2>&1)
 EXIT_CODE=$?
 set -e

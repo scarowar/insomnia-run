@@ -132,7 +132,6 @@ runs:
     env:
       DEBUG: ${{ inputs.debug }}
       INPUT_IDENTIFIER_RAN: ${{ inputs.identifier }}
-      # Pass inputs as environment variables for secure handling
       INSO_COMMAND: ${{ inputs.command }}
       INSO_IDENTIFIER: ${{ inputs.identifier }}
       INSO_ENVIRONMENT: ${{ inputs.environment }}
@@ -150,27 +149,23 @@ runs:
       INSO_NO_PROXY: ${{ inputs.no-proxy }}
       INSO_ENV_VAR: ${{ inputs.env-var }}
     run: |
-      # Validate command input
       if [[ "$INSO_COMMAND" != "test" && "$INSO_COMMAND" != "collection" ]]; then
         echo "::error::❌ Only 'test' and 'collection' commands are supported. You provided: '$INSO_COMMAND'"
         exit 1
       fi
-      
+
       echo "::group::🛠️ Building Inso CLI Command Array (Secure)"
-      
-      # Function to normalize boolean inputs (handles TRUE, True, true, yes, 1)
+
       normalize_bool() {
-        local val="${1,,}"  # Convert to lowercase
+        local val="${1,,}"
         case "$val" in
           true|yes|1|on) echo "true" ;;
           *) echo "false" ;;
         esac
       }
-      
-      # Build command array to prevent injection
+
       INSO_ARGS=("inso" "run" "$INSO_COMMAND")
-      
-      # Add identifier if provided (with safe handling for collections)
+
       if [ -n "$INSO_IDENTIFIER" ]; then
         if [ "$INSO_COMMAND" == "collection" ] && [ -f "$INSO_WORKING_DIR" ]; then
           if grep -q "type: collection.insomnia.rest" "$INSO_WORKING_DIR" 2>/dev/null; then
@@ -183,31 +178,25 @@ runs:
           INSO_ARGS+=("$INSO_IDENTIFIER")
         fi
       fi
-      
-      # Add environment
+
       if [ -n "$INSO_ENVIRONMENT" ]; then
         INSO_ARGS+=("--env" "$INSO_ENVIRONMENT")
       fi
-      
-      # Always add spec reporter
+
       INSO_ARGS+=("--reporter" "spec")
-      
-      # Add boolean flags with normalized handling
+
       if [ "$(normalize_bool "$INSO_BAIL")" = "true" ]; then
         INSO_ARGS+=("--bail")
       fi
-      
-      # Add working directory
+
       if [ -n "$INSO_WORKING_DIR" ]; then
         INSO_ARGS+=("--workingDir" "$INSO_WORKING_DIR")
       fi
-      
-      # Add test-specific options
+
       if [ "$INSO_COMMAND" == "test" ] && [ -n "$INSO_TEST_NAME_PATTERN" ]; then
         INSO_ARGS+=("--testNamePattern" "$INSO_TEST_NAME_PATTERN")
       fi
-      
-      # Add collection-specific options
+
       if [ "$INSO_COMMAND" == "collection" ]; then
         if [ -n "$INSO_REQUEST_NAME_PATTERN" ]; then
           INSO_ARGS+=("--requestNamePattern" "$INSO_REQUEST_NAME_PATTERN")
@@ -230,8 +219,7 @@ runs:
           INSO_ARGS+=("--iteration-data" "$INSO_ITERATION_DATA")
         fi
       fi
-      
-      # Add SSL/proxy options
+
       if [ "$(normalize_bool "$INSO_DISABLE_CERT_VALIDATION")" = "true" ]; then
         INSO_ARGS+=("--disableCertValidation")
       fi
@@ -244,8 +232,7 @@ runs:
       if [ -n "$INSO_NO_PROXY" ]; then
         INSO_ARGS+=("--noProxy" "$INSO_NO_PROXY")
       fi
-      
-      # Handle environment variables (securely - don't log values)
+
       ENV_VAR_COUNT=0
       if [ -n "$INSO_ENV_VAR" ]; then
         while IFS= read -r env_var_line; do
@@ -255,11 +242,9 @@ runs:
           fi
         done <<< "$INSO_ENV_VAR"
       fi
-      
-      # Always add CI flag
+
       INSO_ARGS+=("--ci")
-      
-      # Create display command (without sensitive env-var values)
+
       DISPLAY_CMD="inso run $INSO_COMMAND"
       if [ -n "$INSO_IDENTIFIER" ] && [[ ! ("$INSO_COMMAND" == "collection" && -f "$INSO_WORKING_DIR" && $(grep -q "type: collection.insomnia.rest" "$INSO_WORKING_DIR" 2>/dev/null)) ]]; then
         DISPLAY_CMD+=" [identifier]"
@@ -280,11 +265,10 @@ runs:
       if [ -n "$INSO_NO_PROXY" ]; then DISPLAY_CMD+=" --noProxy [hosts]"; fi
       if [ $ENV_VAR_COUNT -gt 0 ]; then DISPLAY_CMD+=" --env-var [${ENV_VAR_COUNT} variables]"; fi
       DISPLAY_CMD+=" --ci"
-      
+
       echo "::notice::Running (sanitized): $DISPLAY_CMD"
       echo "::endgroup::"
-      
-      # Execute with array to prevent injection and capture exit code properly
+
       set +e
       if [ -n "$INSO_WORKING_DIR" ]; then
         cd "$INSO_WORKING_DIR"
@@ -294,8 +278,7 @@ runs:
       OUTPUT=$(cat /tmp/inso_output.txt)
       rm -f /tmp/inso_output.txt
       set -e
-      
-      # Export results
+
       HEREDOC_DELIMITER="INSOMNIA_OUTPUT_END_$(date +%s)_$$"
       {
         echo "output<<${HEREDOC_DELIMITER}"
@@ -305,7 +288,7 @@ runs:
         echo "command_ran=${DISPLAY_CMD}"
         echo "identifier_ran=${INSO_IDENTIFIER}"
       } >> "$GITHUB_OUTPUT"
-      
+
       if [ $EXIT_CODE -ne 0 ]; then
         echo "::warning::Inso CLI exited with code $EXIT_CODE"
       else

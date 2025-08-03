@@ -21,11 +21,8 @@ PASSED_TEST_PATTERN = re.compile(
 )
 FAILED_TEST_PATTERN = re.compile(r"^\s*[✗✖❌]\s*([^\r\n]{1,200}?)\s*$")
 
-# Additional patterns for numbered test results (e.g., "1) Test Name")
-# Allow colons in test names since REST endpoint tests often contain them
 NUMBERED_FAILED_TEST_PATTERN = re.compile(r"^\s*\d+\)\s+([^\r\n]{1,200}?)\s*$")
 
-# Patterns for summary lines (e.g., "0 passing (131ms)", "1 failing")
 PASSING_SUMMARY_PATTERN = re.compile(r"^\s*(\d+)\s+passing(?:\s+\((\d+)ms\))?\s*$")
 FAILING_SUMMARY_PATTERN = re.compile(r"^\s*(\d+)\s+failing\s*$")
 
@@ -231,16 +228,14 @@ def _parse_failed_line(line: str) -> Optional[str]:
     Returns:
         Test name if line represents a failed test, None otherwise
     """
-    # Try symbol-based pattern first (✗ Test Name)
     match = FAILED_TEST_PATTERN.match(line)
     if match:
         return match.group(1).strip()
-    
-    # Try numbered pattern (1) Test Name)
+
     match = NUMBERED_FAILED_TEST_PATTERN.match(line)
     if match:
         return match.group(1).strip()
-    
+
     return None
 
 
@@ -254,18 +249,16 @@ def _parse_summary_line(line: str) -> Optional[Tuple[int, int]]:
     Returns:
         Tuple of (passed_count, failed_count) if found, None otherwise
     """
-    # Check for passing summary (e.g., "0 passing (131ms)")
     match = PASSING_SUMMARY_PATTERN.match(line)
     if match:
         passed_count = int(match.group(1))
         return (passed_count, 0)
-    
-    # Check for failing summary (e.g., "1 failing")
+
     match = FAILING_SUMMARY_PATTERN.match(line)
     if match:
         failed_count = int(match.group(1))
         return (0, failed_count)
-    
+
     return None
 
 
@@ -295,7 +288,7 @@ def _is_summary_or_header_line(line: str) -> bool:
         True if line is a summary or header line, False otherwise
     """
     return bool(
-        ANSI_SUMMARY_PATTERN.match(line)  # ANSI summary lines
+        ANSI_SUMMARY_PATTERN.match(line)
         or TEST_HEADER_PATTERN.match(line)
         or TEST_REQUESTS_PATTERN.match(line)
         or PASSING_FAILING_PATTERN.match(line)
@@ -463,6 +456,126 @@ def _process_failed_test(
     results["suites"][current_suite]["tests"].append(failure_details)
 
 
+def _update_detailed_failure_section_state(
+    found_summary: bool, in_detailed_failure_section: bool, line: str
+) -> bool:
+    """
+    Update the state for detecting detailed failure section.
+
+    Args:
+        found_summary: Whether summary lines have been found
+        in_detailed_failure_section: Current state of detailed failure section
+        line: Current line being processed
+
+    Returns:
+        Updated state of in_detailed_failure_section
+    """
+    if found_summary and not in_detailed_failure_section:
+        if re.match(r"^\s*\d+\)\s+", line):
+            log_debug("Entering detailed failure section")
+            return True
+    return in_detailed_failure_section
+
+
+def _process_summary_line(
+    line: str, summary_passed: int, summary_failed: int, found_summary: bool
+) -> Tuple[int, int, bool]:
+    """
+    Process summary line and update summary state.
+
+    Args:
+        line: Current line being processed
+        summary_passed: Current count of passed tests from summary
+        summary_failed: Current count of failed tests from summary
+        found_summary: Whether summary has been found
+
+    Returns:
+        Tuple of (updated_summary_passed, updated_summary_failed, updated_found_summary)
+    """
+    summary_counts = _parse_summary_line(line)
+    if summary_counts:
+        passed_count, failed_count = summary_counts
+        return summary_passed + passed_count, summary_failed + failed_count, True
+    return summary_passed, summary_failed, found_summary
+
+
+def _process_failed_test_line(
+    line: str,
+    in_detailed_failure_section: bool,
+    all_errors: List[str],
+    error_index: int,
+    results: Dict[str, Any],
+    current_suite: str,
+) -> int:
+    """
+    Process failed test line and update results.
+
+    Args:
+        line: Current line being processed
+        in_detailed_failure_section: Whether we're in detailed failure section
+        all_errors: List of all error messages
+        error_index: Current error index
+        results: Results dictionary to update
+        current_suite: Current test suite name
+
+    Returns:
+        Updated error_index
+    """
+    failed_test_name = _parse_failed_line(line)
+    if failed_test_name and not in_detailed_failure_section:
+        if error_index < len(all_errors):
+            error_msg = all_errors[error_index]
+        else:
+            error_msg = ""
+            log_warning(
+                f"No error message available for failed test: {failed_test_name}"
+            )
+
+        _process_failed_test(results, failed_test_name, current_suite, error_msg)
+        return error_index + 1
+
+    return error_index
+
+
+def _apply_summary_fallback(
+    results: Dict[str, Any],
+    found_summary: bool,
+    summary_passed: int,
+    summary_failed: int,
+    current_suite: str,
+) -> None:
+    """
+    Apply summary fallback logic when no individual test results found.
+
+    Args:
+        results: Results dictionary to update
+        found_summary: Whether summary lines were found
+        summary_passed: Number of passed tests from summary
+        summary_failed: Number of failed tests from summary
+        current_suite: Current test suite name
+    """
+    if found_summary and results["total"] == 0:
+        log_debug(
+            f"Using summary fallback: {summary_passed} passed, {summary_failed} failed"
+        )
+        results["total"] = summary_passed + summary_failed
+        results["passed"] = summary_passed
+        results["failed"] = summary_failed
+
+        if summary_failed > 0 and len(results["failures"]) == 0:
+            _initialize_suite_if_needed(results, current_suite)
+            results["suites"][current_suite]["failed"] = summary_failed
+            for i in range(summary_failed):
+                failure_details = {
+                    "name": f"Failed Test {i + 1}",
+                    "status": "failed",
+                    "suite": current_suite,
+                    "error": "Test failed (details in raw output)",
+                }
+                results["failures"].append(failure_details)
+                results["suites"][current_suite]["tests"].append(failure_details)
+
+
 def parse_inso_output(output: str) -> Dict[str, Any]:
     """
     Parse Insomnia CLI spec reporter output into structured data.
@@ -488,8 +601,7 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
     all_errors = _collect_fallback_error_lines(lines)
     error_index = 0
     i = 0
-    
-    # Track if we've found summary lines to use as fallback
+
     summary_passed = 0
     summary_failed = 0
     found_summary = False
@@ -502,21 +614,14 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
             i += 1
             continue
 
-        # Detect if we're entering the detailed failure section
-        # This usually starts after the summary lines
-        if found_summary and not in_detailed_failure_section:
-            # Look for numbered failure details (after summary)
-            if re.match(r"^\s*\d+\)\s+", line):
-                in_detailed_failure_section = True
-                log_debug("Entering detailed failure section")
+        in_detailed_failure_section = _update_detailed_failure_section_state(
+            found_summary, in_detailed_failure_section, line
+        )
 
-        # Check for summary lines first
-        summary_counts = _parse_summary_line(line)
-        if summary_counts:
-            passed_count, failed_count = summary_counts
-            summary_passed += passed_count
-            summary_failed += failed_count
-            found_summary = True
+        summary_passed, summary_failed, found_summary = _process_summary_line(
+            line, summary_passed, summary_failed, found_summary
+        )
+        if _parse_summary_line(line):
             i += 1
             continue
 
@@ -533,46 +638,25 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
             i += 1
             continue
 
-        # Only parse numbered failures if we're NOT in detailed failure section
-        # OR if we haven't found summary yet (meaning it's an actual test line)
-        failed_test_name = _parse_failed_line(line)
-        if failed_test_name and not in_detailed_failure_section:
-            if error_index < len(all_errors):
-                error_msg = all_errors[error_index]
-            else:
-                error_msg = ""
-                log_warning(
-                    f"No error message available for failed test: {failed_test_name}"
-                )
-            error_index += 1
-
-            _process_failed_test(results, failed_test_name, current_suite, error_msg)
+        old_error_index = error_index
+        error_index = _process_failed_test_line(
+            line,
+            in_detailed_failure_section,
+            all_errors,
+            error_index,
+            results,
+            current_suite,
+        )
+        if error_index != old_error_index:
             i += 1
             continue
 
         i += 1
-    
-    # If we didn't find individual test results but found summary lines, use them
-    if found_summary and results["total"] == 0:
-        log_debug(f"Using summary fallback: {summary_passed} passed, {summary_failed} failed")
-        results["total"] = summary_passed + summary_failed
-        results["passed"] = summary_passed
-        results["failed"] = summary_failed
-        
-        # Create generic failure entries if we have failed tests but no specific failures
-        if summary_failed > 0 and len(results["failures"]) == 0:
-            _initialize_suite_if_needed(results, current_suite)
-            results["suites"][current_suite]["failed"] = summary_failed
-            for i in range(summary_failed):
-                failure_details = {
-                    "name": f"Failed Test {i+1}",
-                    "status": "failed",
-                    "suite": current_suite,
-                    "error": "Test failed (details in raw output)",
-                }
-                results["failures"].append(failure_details)
-                results["suites"][current_suite]["tests"].append(failure_details)
-    
+
+    _apply_summary_fallback(
+        results, found_summary, summary_passed, summary_failed, current_suite
+    )
+
     return results
 
 
@@ -621,9 +705,7 @@ def _get_github_context() -> Dict[str, str]:
         "repository": os.environ.get("GITHUB_REPOSITORY", ""),
         "run_id": os.environ.get("GITHUB_RUN_ID", ""),
         "actor": os.environ.get("GITHUB_ACTOR", ""),
-        "server_url": os.environ.get("GITHUB_SERVER_URL", "").rstrip(
-            "/"
-        ),  # GHES compatibility
+        "server_url": os.environ.get("GITHUB_SERVER_URL", "").rstrip("/"),
         "event_name": os.environ.get(
             "WORKFLOW_CONTEXT", os.environ.get("GITHUB_EVENT_NAME", "")
         ),
