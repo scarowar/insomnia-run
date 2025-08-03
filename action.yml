@@ -1,5 +1,5 @@
 name: Insomnia Run
-description: Run Insomnia Collections & Tests with automated reporting and GitHub secrets integration.
+description: Run Insomnia Collections & Tests using the Inso CLI with PR comment reporting.
 author: Sourab Kanthavar <@scarowar>
 branding:
   icon: terminal
@@ -12,7 +12,7 @@ inputs:
 
   # --- Insomnia CLI Configuration ---
   inso-version:
-    description: The version of inso CLI to use. Defaults to latest.
+    description: The version of inso CLI to use.
     required: false
     default: 11.3.0
   working-directory:
@@ -101,7 +101,6 @@ inputs:
     description: Fail the GitHub Action if inso CLI reports failures ("true"/"false").
     required: false
     default: "true"
-  # --- Advanced ---
 
 outputs:
   results:
@@ -117,132 +116,121 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: 🧰 Setup inso CLI
-      uses: kong/setup-inso@v2
-      with:
-        inso-version: ${{ inputs.inso-version }}
+  - name: 🧰 Setup inso CLI
+    uses: kong/setup-inso@v2
+    with:
+      inso-version: ${{ inputs.inso-version }}
 
-    - name: 🐍 Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.x
+  - name: 🐍 Set up Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: 3.x
 
-    # No Python dependencies required
+  - name: 🚀 Execute Inso Command
+    id: run_inso_shell
+    shell: bash
+    env:
+      DEBUG: ${{ inputs.debug }}
+    run: |
+      chmod +x ${{ github.action_path }}/scripts/execute-insomnia.sh
+      if [[ "${{ inputs.command }}" != "test" && "${{ inputs.command }}" != "collection" ]]; then
+        echo "::error::❌ Only 'test' and 'collection' commands are supported. You provided: '${{ inputs.command }}'"
+        exit 1
+      fi
+      INSO_CMD="inso run ${{ inputs.command }}"
 
-    - name: 🚀 Execute Inso Command
-      id: run_inso_shell
-      shell: bash
-      env:
-        DEBUG: ${{ inputs.debug }}
-      run: |
-        chmod +x ${{ github.action_path }}/scripts/execute-insomnia.sh
-        # Validate command input
-        if [[ "${{ inputs.command }}" != "test" && "${{ inputs.command }}" != "collection" ]]; then
-          echo "::error::❌ Only 'test' and 'collection' commands are supported. You provided: '${{ inputs.command }}'"
-          exit 1
-        fi
-        # Build Inso CLI command dynamically
-        INSO_CMD="inso run ${{ inputs.command }}"
-
-        # Smart identifier handling based on file type and command
-        if [ -n "${{ inputs.identifier }}" ]; then
-          if [ "${{ inputs.command }}" == "collection" ] && [ -f "${{ inputs.working-directory }}" ]; then
-            # Check if working-directory points to a collection export file
-            if grep -q "type: collection.insomnia.rest" "${{ inputs.working-directory }}" 2>/dev/null; then
-              echo "::warning::🔍 Detected collection export file. Identifier '${{ inputs.identifier }}' will be ignored for direct collection processing."
-              echo "::notice::💡 To use identifier, export as workspace or use .insomnia/ directory instead."
-            else
-              INSO_CMD+=" '${{ inputs.identifier }}'"
-            fi
+      if [ -n "${{ inputs.identifier }}" ]; then
+        if [ "${{ inputs.command }}" == "collection" ] && [ -f "${{ inputs.working-directory }}" ]; then
+          if grep -q "type: collection.insomnia.rest" "${{ inputs.working-directory }}" 2>/dev/null; then
+            echo "::warning::🔍 Detected collection export file. Identifier '${{ inputs.identifier }}' will be ignored for direct collection processing."
+            echo "::notice::💡 To use identifier, export as workspace or use .insomnia/ directory instead."
           else
-            # For test commands or workspace directories, always use identifier
             INSO_CMD+=" '${{ inputs.identifier }}'"
           fi
-        fi
-        if [ -n "${{ inputs.environment }}" ]; then INSO_CMD+=" --env '${{ inputs.environment }}'"; fi
-        # Always use spec reporter for output parsing and PR comments
-        INSO_CMD+=" --reporter spec"
-        if [ "${{ inputs.bail }}" = "true" ]; then INSO_CMD+=" --bail"; fi
-        if [ -n "${{ inputs.working-directory }}" ]; then INSO_CMD+=" --workingDir '${{ inputs.working-directory }}'"; fi
-        if [ "${{ inputs.command }}" == "test" ] && [ -n "${{ inputs.test-name-pattern }}" ]; then INSO_CMD+=" --testNamePattern '${{ inputs.test-name-pattern }}'"; fi
-        if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.request-name-pattern }}" ]; then INSO_CMD+=" --requestNamePattern '${{ inputs.request-name-pattern }}'"; fi
-        if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.item }}" ]; then for i in $(echo ${{ inputs.item }} | tr ',' '\n'); do INSO_CMD+=" --item '$i'"; done; fi
-        if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.delay-request }}" ]; then INSO_CMD+=" --delay-request '${{ inputs.delay-request }}'"; fi
-        if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.iteration-count }}" ]; then INSO_CMD+=" --iteration-count '${{ inputs.iteration-count }}'"; fi
-        if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.iteration-data }}" ]; then INSO_CMD+=" --iteration-data '${{ inputs.iteration-data }}'"; fi
-        if [ "${{ inputs.disable-cert-validation }}" = "true" ]; then INSO_CMD+=" --disableCertValidation"; fi
-        if [ -n "${{ inputs.https-proxy }}" ]; then INSO_CMD+=" --httpsProxy '${{ inputs.https-proxy }}'"; fi
-        if [ -n "${{ inputs.http-proxy }}" ]; then INSO_CMD+=" --httpProxy '${{ inputs.http-proxy }}'"; fi
-        if [ -n "${{ inputs.no-proxy }}" ]; then INSO_CMD+=" --noProxy '${{ inputs.no-proxy }}'"; fi
-        # Handle environment variable overrides
-        if [ -n "${{ inputs.env-var }}" ]; then
-          # Process each line of env-var input
-          IFS=$'\n'
-          for env_var_line in ${{ inputs.env-var }}; do
-            if [ -n "$env_var_line" ]; then
-              # Use printf %q to safely escape the environment variable value
-              escaped_env_var=$(printf %q "$env_var_line")
-              INSO_CMD+=" --env-var $escaped_env_var"
-            fi
-          done
-          unset IFS
-        fi
-        INSO_CMD+=" --ci"
-        echo "::notice::Running: $INSO_CMD"
-        ${{ github.action_path }}/scripts/execute-insomnia.sh "$INSO_CMD"
-
-    - name: 📝 Parse Results and Format Report
-      id: parse_and_format
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      env:
-        INSO_RAW_OUTPUT: ${{ steps.run_inso_shell.outputs.output }}
-        INSO_EXIT_CODE: ${{ steps.run_inso_shell.outputs.exit_code }}
-        INPUT_COMMAND_RAN: ${{ inputs.command }}
-        INPUT_IDENTIFIER_RAN: ${{ inputs.identifier }}
-        WORKFLOW_CONTEXT: ${{ github.event_name }}
-        DEBUG: ${{ inputs.debug }}
-      run: python ${{ github.action_path }}/scripts/generate_report.py
-
-    - name: 🌍 Workflow Context Summary
-      shell: bash
-      run: |
-        echo "::notice::📊 Workflow Context Information"
-        echo "::notice::Event: ${{ github.event_name }}"
-        echo "::notice::Repository: ${{ github.repository }}"
-        echo "::notice::Branch/Ref: ${{ github.ref }}"
-        echo "::notice::Actor: ${{ github.actor }}"
-        echo "::notice::Report Status: ${{ steps.parse_and_format.outputs.summary }}"
-        if [[ "${{ github.event_name }}" == "pull_request" && "${{ inputs.pr-comment }}" == "true" ]]; then
-          echo "::notice::PR Comment: Will be posted to PR #${{ github.event.pull_request.number }}"
         else
-          echo "::notice::PR Comment: Skipped (not a pull_request event or pr-comment disabled)"
+          INSO_CMD+=" '${{ inputs.identifier }}'"
         fi
+      fi
+      if [ -n "${{ inputs.environment }}" ]; then INSO_CMD+=" --env '${{ inputs.environment }}'"; fi
+      INSO_CMD+=" --reporter spec"
+      if [ "${{ inputs.bail }}" = "true" ]; then INSO_CMD+=" --bail"; fi
+      if [ -n "${{ inputs.working-directory }}" ]; then INSO_CMD+=" --workingDir '${{ inputs.working-directory }}'"; fi
+      if [ "${{ inputs.command }}" == "test" ] && [ -n "${{ inputs.test-name-pattern }}" ]; then INSO_CMD+=" --testNamePattern '${{ inputs.test-name-pattern }}'"; fi
+      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.request-name-pattern }}" ]; then INSO_CMD+=" --requestNamePattern '${{ inputs.request-name-pattern }}'"; fi
+      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.item }}" ]; then for i in $(echo ${{ inputs.item }} | tr ',' '\n'); do INSO_CMD+=" --item '$i'"; done; fi
+      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.delay-request }}" ]; then INSO_CMD+=" --delay-request '${{ inputs.delay-request }}'"; fi
+      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.iteration-count }}" ]; then INSO_CMD+=" --iteration-count '${{ inputs.iteration-count }}'"; fi
+      if [ "${{ inputs.command }}" == "collection" ] && [ -n "${{ inputs.iteration-data }}" ]; then INSO_CMD+=" --iteration-data '${{ inputs.iteration-data }}'"; fi
+      if [ "${{ inputs.disable-cert-validation }}" = "true" ]; then INSO_CMD+=" --disableCertValidation"; fi
+      if [ -n "${{ inputs.https-proxy }}" ]; then INSO_CMD+=" --httpsProxy '${{ inputs.https-proxy }}'"; fi
+      if [ -n "${{ inputs.http-proxy }}" ]; then INSO_CMD+=" --httpProxy '${{ inputs.http-proxy }}'"; fi
+      if [ -n "${{ inputs.no-proxy }}" ]; then INSO_CMD+=" --noProxy '${{ inputs.no-proxy }}'"; fi
+      if [ -n "${{ inputs.env-var }}" ]; then
+        IFS=$'\n'
+        for env_var_line in ${{ inputs.env-var }}; do
+          if [ -n "$env_var_line" ]; then
+            escaped_env_var=$(printf %q "$env_var_line")
+            INSO_CMD+=" --env-var $escaped_env_var"
+          fi
+        done
+        unset IFS
+      fi
+      INSO_CMD+=" --ci"
+      echo "::notice::Running: $INSO_CMD"
+      ${{ github.action_path }}/scripts/execute-insomnia.sh "$INSO_CMD"
 
-    - name: 🔑 Validate GitHub Token for PR Comment
-      if: github.event_name == 'pull_request' && inputs.pr-comment == 'true'
-      shell: bash
-      run: |
-        if [ -z "${{ inputs.github-token }}" ]; then
-          echo "::warning::⚠️ github-token input is missing. PR comment will be skipped."
-          echo "::notice::💡 To enable PR comments, add github-token to your workflow."
-          echo "SKIP_PR_COMMENT=true" >> $GITHUB_ENV
-        else
-          echo "::notice::✅ GitHub token provided. PR comment will be posted."
-          echo "SKIP_PR_COMMENT=false" >> $GITHUB_ENV
-        fi
+  - name: 📝 Parse Results and Format Report
+    id: parse_and_format
+    shell: bash
+    working-directory: ${{ github.action_path }}
+    env:
+      INSO_RAW_OUTPUT: ${{ steps.run_inso_shell.outputs.output }}
+      INSO_EXIT_CODE: ${{ steps.run_inso_shell.outputs.exit_code }}
+      INPUT_COMMAND_RAN: ${{ inputs.command }}
+      INPUT_IDENTIFIER_RAN: ${{ inputs.identifier }}
+      WORKFLOW_CONTEXT: ${{ github.event_name }}
+      DEBUG: ${{ inputs.debug }}
+    run: python ${{ github.action_path }}/scripts/generate_report.py
 
-    - name: 💬 Post PR Comment
-      if: github.event_name == 'pull_request' && inputs.pr-comment == 'true' && env.SKIP_PR_COMMENT != 'true'
-      uses: peter-evans/create-or-update-comment@v4
-      with:
-        token: ${{ inputs.github-token }}
-        issue-number: ${{ github.event.pull_request.number }}
-        body: ${{ steps.parse_and_format.outputs.comment_body }}
+  - name: 🌍 Workflow Context Summary
+    shell: bash
+    run: |
+      echo "::notice::📊 Workflow Context Information"
+      echo "::notice::Event: ${{ github.event_name }}"
+      echo "::notice::Repository: ${{ github.repository }}"
+      echo "::notice::Branch/Ref: ${{ github.ref }}"
+      echo "::notice::Actor: ${{ github.actor }}"
+      echo "::notice::Report Status: ${{ steps.parse_and_format.outputs.summary }}"
+      if [[ "${{ github.event_name }}" == "pull_request" && "${{ inputs.pr-comment }}" == "true" ]]; then
+        echo "::notice::PR Comment: Will be posted to PR #${{ github.event.pull_request.number }}"
+      else
+        echo "::notice::PR Comment: Skipped (not a pull_request event or pr-comment disabled)"
+      fi
 
-    - name: 🚨 Final Status Check
-      if: ${{ steps.run_inso_shell.outputs.exit_code != 0 && inputs.fail-on-error == 'true' }}
-      shell: bash
-      run: |
-        echo "::error::❌ Insomnia tests/collection run failed. Marking action as failed."
-        exit 1
+  - name: 🔑 Validate GitHub Token for PR Comment
+    if: github.event_name == 'pull_request' && inputs.pr-comment == 'true'
+    shell: bash
+    run: |
+      if [ -z "${{ inputs.github-token }}" ]; then
+        echo "::warning::⚠️ github-token input is missing. PR comment will be skipped."
+        echo "::notice::💡 To enable PR comments, add github-token to your workflow."
+        echo "SKIP_PR_COMMENT=true" >> $GITHUB_ENV
+      else
+        echo "::notice::✅ GitHub token provided. PR comment will be posted."
+        echo "SKIP_PR_COMMENT=false" >> $GITHUB_ENV
+      fi
+
+  - name: 💬 Post PR Comment
+    if: github.event_name == 'pull_request' && inputs.pr-comment == 'true' && env.SKIP_PR_COMMENT != 'true'
+    uses: peter-evans/create-or-update-comment@v4
+    with:
+      token: ${{ inputs.github-token }}
+      issue-number: ${{ github.event.pull_request.number }}
+      body: ${{ steps.parse_and_format.outputs.comment_body }}
+
+  - name: 🚨 Final Status Check
+    if: ${{ steps.run_inso_shell.outputs.exit_code != 0 && inputs.fail-on-error == 'true' }}
+    shell: bash
+    run: |
+      echo "::error::❌ Insomnia tests/collection run failed. Marking action as failed."
+      exit 1

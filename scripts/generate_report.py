@@ -4,15 +4,12 @@ import re
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
-# Constants for commonly used regex patterns
 PASSING_FAILING_PATTERN = re.compile(r"^\d+\s+(passing|failing)")
 ERROR_PREFIX = "error:"
 
-# ANSI escape sequence patterns (compiled once for performance)
 ANSI_ESCAPE_PATTERN = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 BRACKET_CODES_PATTERN = re.compile(r"\[[0-9;]*m")
 
-# Additional compiled patterns for performance
 TEST_RESULTS_PATTERN = re.compile(
     r"^(Test results?|Tests?:|Test Requests?|Error:|Warning:|Total:|Summary)",
     re.IGNORECASE,
@@ -29,7 +26,6 @@ SUITE_LINE_PATTERN = re.compile(
 )
 SUITE_LEGACY_PATTERN = re.compile(r"^»\s*(.+?)\.")
 
-# Line exclusion prefixes for suite parsing
 EXCLUDED_LINE_PREFIXES = (
     "Error:",
     "at ",
@@ -42,34 +38,85 @@ EXCLUDED_LINE_PREFIXES = (
 
 
 def log_debug(msg: str) -> None:
-    """Log debug message if DEBUG environment variable is set."""
+    """
+    Log debug message if DEBUG environment variable is set.
+
+    Args:
+        msg: Debug message to log
+
+    Returns:
+        None
+    """
     if os.environ.get("DEBUG", "false").lower() == "true":
         print(f"::debug::{msg}")
 
 
 def log_info(msg: str) -> None:
-    """Log informational message."""
+    """
+    Log informational message.
+
+    Args:
+        msg: Informational message to log
+
+    Returns:
+        None
+    """
     print(msg)
 
 
 def log_warning(msg: str) -> None:
-    """Log warning message."""
+    """
+    Log warning message.
+
+    Args:
+        msg: Warning message to log
+
+    Returns:
+        None
+    """
     print(f"::warning::{msg}")
 
 
 def log_section(title: str) -> None:
-    """Log section header for better output organization."""
+    """
+    Log section header for better output organization.
+
+    Args:
+        title: Title text for the section header
+
+    Returns:
+        None
+    """
     print(f"\n{title}\n{'-' * len(title)}")
 
 
 def error_exit(message: str) -> None:
-    """Log error and exit with non-zero status."""
+    """
+    Log error and exit with non-zero status.
+
+    Args:
+        message: Error message to log before exit
+
+    Returns:
+        None
+
+    Raises:
+        SystemExit: Always exits with status code 1
+    """
     print(f"::error::{message}")
     sys.exit(1)
 
 
 def _get_success_rate_emoji(success_rate: float) -> str:
-    """Return appropriate emoji for success rate."""
+    """
+    Return appropriate emoji for success rate.
+
+    Args:
+        success_rate: Success rate as a percentage (0-100)
+
+    Returns:
+        Emoji string representing the success rate level
+    """
     if success_rate == 100:
         return "🏆"
     elif success_rate >= 80:
@@ -90,7 +137,6 @@ def _strip_ansi_codes(text: str) -> str:
     Returns:
         Clean text without ANSI codes
     """
-    # Remove ANSI escape sequences using pre-compiled patterns
     text = ANSI_ESCAPE_PATTERN.sub("", text)
     text = BRACKET_CODES_PATTERN.sub("", text)
     return text
@@ -106,18 +152,15 @@ def _should_exclude_line(stripped_line: str) -> bool:
     Returns:
         True if the line should be excluded, False otherwise
     """
-    # Skip summary lines like "1 passing (264ms)", "Test results:", etc.
     if PASSING_FAILING_PATTERN.match(stripped_line):
         return True
 
     if TEST_RESULTS_PATTERN.match(stripped_line):
         return True
 
-    # Skip lines that look like error messages, stack traces, or analysis content
     if stripped_line.startswith(EXCLUDED_LINE_PREFIXES):
         return True
 
-    # Skip lines that contain analysis keywords
     if ANALYSIS_KEYWORDS_PATTERN.search(stripped_line):
         return True
 
@@ -139,27 +182,24 @@ def _parse_suite_line(line: str) -> Optional[str]:
     """
     stripped = line.strip()
 
-    # Use helper function to check if line should be excluded
     if _should_exclude_line(stripped):
         return None
 
-    # Only match lines that are indented (typically 2 spaces) but don't start with test status symbols
     suite_regexes = [
-        SUITE_LINE_PATTERN,  # Indented, not a status symbol
-        SUITE_LEGACY_PATTERN,  # Legacy/alt format
+        SUITE_LINE_PATTERN,
+        SUITE_LEGACY_PATTERN,
     ]
 
     for regex in suite_regexes:
         match = regex.match(line)
         if match:
             suite_name = match.group(1).strip()
-            # Use helper function for additional filtering
             if not _should_exclude_line(suite_name) and len(suite_name) > 0:
                 return suite_name
     return None
 
 
-def _parse_passed_line(line: str) -> str:
+def _parse_passed_line(line: str) -> Optional[str]:
     """
     Extract test name from a passed test line.
 
@@ -173,7 +213,7 @@ def _parse_passed_line(line: str) -> str:
     return match.group(1).strip() if match else None
 
 
-def _parse_failed_line(line: str) -> str:
+def _parse_failed_line(line: str) -> Optional[str]:
     """
     Extract test name from a failed test line.
 
@@ -188,13 +228,18 @@ def _parse_failed_line(line: str) -> str:
 
 
 def _is_test_result_line(line: str) -> bool:
-    """Check if line is a test result or suite line."""
-    # Check for test result lines with status symbols
+    """
+    Check if line is a test result or suite line.
+
+    Args:
+        line: CLI output line to check
+
+    Returns:
+        True if line contains test results or suite information, False otherwise
+    """
     if TEST_STATUS_SYMBOLS_PATTERN.match(line):
         return True
 
-    # Check for suite lines: indented (2+ spaces) but not starting with status symbols or error indicators
-    # More specific than just "any letter" - exclude common error/debug prefixes
     if SUITE_LINE_PATTERN.match(line):
         return True
 
@@ -202,7 +247,15 @@ def _is_test_result_line(line: str) -> bool:
 
 
 def _is_summary_or_header_line(line: str) -> bool:
-    """Check if line is a summary or header line that indicates end of error details."""
+    """
+    Check if line is a summary or header line that indicates end of error details.
+
+    Args:
+        line: CLI output line to check
+
+    Returns:
+        True if line is a summary or header line, False otherwise
+    """
     return bool(
         ANSI_SUMMARY_PATTERN.match(line)  # ANSI summary lines
         or TEST_HEADER_PATTERN.match(line)
@@ -212,7 +265,15 @@ def _is_summary_or_header_line(line: str) -> bool:
 
 
 def _extract_error_from_line(line: str) -> Optional[str]:
-    """Extract clean error message from a line if it contains an error."""
+    """
+    Extract clean error message from a line if it contains an error.
+
+    Args:
+        line: CLI output line to check for error content
+
+    Returns:
+        Clean error message if found, None otherwise
+    """
     if not line.startswith(ERROR_PREFIX):
         return None
 
@@ -222,7 +283,16 @@ def _extract_error_from_line(line: str) -> Optional[str]:
 
 
 def _collect_immediate_error_lines(lines: List[str], start_idx: int) -> List[str]:
-    """Collect error lines immediately following a failed test."""
+    """
+    Collect error lines immediately following a failed test.
+
+    Args:
+        lines: All CLI output lines
+        start_idx: Index of the failed test line
+
+    Returns:
+        List of error messages found immediately after the failed test
+    """
     error_lines = []
 
     for j in range(start_idx + 1, len(lines)):
@@ -230,15 +300,12 @@ def _collect_immediate_error_lines(lines: List[str], start_idx: int) -> List[str
         if not next_line:
             continue
 
-        # Stop if we hit another test result or suite
         if _is_test_result_line(next_line):
             break
 
-        # Stop if we hit summary lines
         if _is_summary_or_header_line(next_line):
             break
 
-        # Include actual error lines
         clean_error = _extract_error_from_line(next_line)
         if clean_error and clean_error not in error_lines:
             error_lines.append(clean_error)
@@ -247,7 +314,15 @@ def _collect_immediate_error_lines(lines: List[str], start_idx: int) -> List[str
 
 
 def _collect_fallback_error_lines(lines: List[str]) -> List[str]:
-    """Collect error lines from entire output as fallback."""
+    """
+    Collect error lines from entire output as fallback.
+
+    Args:
+        lines: All CLI output lines
+
+    Returns:
+        List of all error messages found in the output
+    """
     error_lines = []
     for line in lines:
         clean_error = _extract_error_from_line(line.strip())
@@ -269,10 +344,8 @@ def _extract_failure_details(lines: List[str], start_idx: int) -> Tuple[str, str
     """
     test_name = _parse_failed_line(lines[start_idx])
 
-    # First try to get errors immediately following the failed test
     error_lines = _collect_immediate_error_lines(lines, start_idx)
 
-    # If no specific errors found, look for them in the entire output
     if not error_lines:
         error_lines = _collect_fallback_error_lines(lines)
 
@@ -281,7 +354,16 @@ def _extract_failure_details(lines: List[str], start_idx: int) -> Tuple[str, str
 
 
 def _initialize_suite_if_needed(results: Dict[str, Any], suite_name: str) -> None:
-    """Initialize suite in results if it doesn't exist."""
+    """
+    Initialize suite in results if it doesn't exist.
+
+    Args:
+        results: Test results dictionary to update
+        suite_name: Name of the suite to initialize
+
+    Returns:
+        None
+    """
     if suite_name not in results["suites"]:
         results["suites"][suite_name] = {
             "passed": 0,
@@ -293,7 +375,17 @@ def _initialize_suite_if_needed(results: Dict[str, Any], suite_name: str) -> Non
 def _process_passed_test(
     results: Dict[str, Any], test_name: str, current_suite: str
 ) -> None:
-    """Process a passed test and update results."""
+    """
+    Process a passed test and update results.
+
+    Args:
+        results: Test results dictionary to update
+        test_name: Name of the test that passed
+        current_suite: Name of the current test suite
+
+    Returns:
+        None
+    """
     results["total"] += 1
     results["passed"] += 1
     _initialize_suite_if_needed(results, current_suite)
@@ -306,7 +398,18 @@ def _process_passed_test(
 def _process_failed_test(
     results: Dict[str, Any], test_name: str, current_suite: str, error_msg: str
 ) -> None:
-    """Process a failed test and update results."""
+    """
+    Process a failed test and update results.
+
+    Args:
+        results: Test results dictionary to update
+        test_name: Name of the test that failed
+        current_suite: Name of the current test suite
+        error_msg: Error message associated with the failure
+
+    Returns:
+        None
+    """
     results["total"] += 1
     results["failed"] += 1
     _initialize_suite_if_needed(results, current_suite)
@@ -344,7 +447,6 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
     current_suite = "General"
     lines = output.splitlines()
 
-    # Extract all error messages first
     all_errors = _collect_fallback_error_lines(lines)
     error_index = 0
     i = 0
@@ -356,7 +458,6 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
             i += 1
             continue
 
-        # Check for suite line
         suite_name = _parse_suite_line(line)
         if suite_name:
             current_suite = suite_name
@@ -364,17 +465,14 @@ def parse_inso_output(output: str) -> Dict[str, Any]:
             i += 1
             continue
 
-        # Check for passed test
         test_name = _parse_passed_line(line)
         if test_name:
             _process_passed_test(results, test_name, current_suite)
             i += 1
             continue
 
-        # Check for failed test
         failed_test_name = _parse_failed_line(line)
         if failed_test_name:
-            # Get error message with validation
             if error_index < len(all_errors):
                 error_msg = all_errors[error_index]
             else:
@@ -411,10 +509,9 @@ def _format_suite_details(suite: str, data: Dict[str, Any]) -> str:
         status_char = "✓" if test["status"] == "passed" else "✖"
         details += f"{status_char} {test['name']}\n"
         if test["status"] == "failed" and test.get("error"):
-            # Clean up error message (remove redundant "Error:" prefix if it exists)
             error_msg = test["error"]
             if error_msg.startswith("Error: "):
-                error_msg = error_msg[7:]  # Remove "Error: " prefix
+                error_msg = error_msg[7:]
             details += f"  Error: {error_msg}\n"
 
     details += "```\n"
@@ -474,7 +571,15 @@ def _get_workflow_context_display(context: Dict[str, str]) -> str:
 
 
 def _determine_command_type(command: str) -> str:
-    """Determine command type for display purposes."""
+    """
+    Determine command type for display purposes.
+
+    Args:
+        command: The command string to analyze
+
+    Returns:
+        Formatted command type string for display
+    """
     if command.startswith("test") or command.startswith("run test"):
         return "Test"
     elif command.startswith("collection") or command.startswith("run collection"):
@@ -490,13 +595,23 @@ def _build_report_header(
     identifier: str,
     github_context: Dict[str, str],
 ) -> str:
-    """Build the main report header with status and context."""
+    """
+    Build the main report header with status and context.
+
+    Args:
+        command_type: Type of command that was executed
+        overall_status: Overall test status (PASSED/FAILED)
+        status_emoji: Emoji representing the status
+        identifier: Test identifier or collection name
+        github_context: GitHub context information
+
+    Returns:
+        Formatted Markdown header string
+    """
     report_content = f"## Insomnia {command_type} Results\n\n"
 
-    # Status line with identifier info
     report_content += f"{status_emoji} **Insomnia {command_type} Status: {overall_status}**{f' for `{identifier}`' if identifier else ''}"
 
-    # Add workflow context and actor info
     workflow_display = _get_workflow_context_display(github_context)
     if github_context["actor"]:
         report_content += (
@@ -505,7 +620,6 @@ def _build_report_header(
     else:
         report_content += f" — {workflow_display.lower()}"
 
-    # Add GitHub Action run link
     if github_context.get("run_id") and github_context.get("repository"):
         run_url = f"https://github.com/{github_context['repository']}/actions/runs/{github_context['run_id']}"
         report_content += f" | [📋 View Action Run]({run_url})"
@@ -515,7 +629,16 @@ def _build_report_header(
 
 
 def _build_summary_table(parsed_results: Dict[str, Any], command_type: str) -> str:
-    """Build the summary metrics table."""
+    """
+    Build the summary metrics table.
+
+    Args:
+        parsed_results: Parsed test results data
+        command_type: Type of command for display purposes
+
+    Returns:
+        Formatted Markdown table string with summary metrics
+    """
     success_rate = (
         round((parsed_results["passed"] / parsed_results["total"]) * 100)
         if parsed_results["total"] > 0
@@ -535,7 +658,15 @@ def _build_summary_table(parsed_results: Dict[str, Any], command_type: str) -> s
 
 
 def _build_suite_details_section(parsed_results: Dict[str, Any]) -> str:
-    """Build the collapsible suite details section."""
+    """
+    Build the collapsible suite details section.
+
+    Args:
+        parsed_results: Parsed test results data
+
+    Returns:
+        Formatted Markdown string with collapsible suite details, or empty string if no meaningful suites
+    """
     meaningful_suites = {
         k: v
         for k, v in parsed_results.get("suites", {}).items()
@@ -554,7 +685,15 @@ def _build_suite_details_section(parsed_results: Dict[str, Any]) -> str:
 
 
 def _build_failure_details_section(parsed_results: Dict[str, Any]) -> str:
-    """Build the failure details section."""
+    """
+    Build the failure details section.
+
+    Args:
+        parsed_results: Parsed test results data
+
+    Returns:
+        Formatted Markdown string with failure details, or empty string if no failures
+    """
     failures = parsed_results.get("failures", [])
     if not failures:
         return ""
@@ -576,7 +715,15 @@ def _build_failure_details_section(parsed_results: Dict[str, Any]) -> str:
 
 
 def _build_raw_output_section(raw_output: str) -> str:
-    """Build the raw output section."""
+    """
+    Build the raw output section.
+
+    Args:
+        raw_output: Raw CLI output string
+
+    Returns:
+        Formatted Markdown string with collapsible raw output section
+    """
     content = "<details><summary>Raw Inso CLI Output 📜</summary>\n\n"
     content += "```\n" + raw_output.strip() + "\n```\n"
     content += "</details>\n"
@@ -606,30 +753,25 @@ def format_markdown_report(
     Raises:
         ValueError: If required parameters are invalid
     """
-    # Input validation
     if not isinstance(parsed_results, dict):
         raise ValueError("parsed_results must be a dictionary")
     if not isinstance(exit_code, int):
         raise ValueError("exit_code must be an integer")
 
-    # Ensure required keys exist with defaults
     parsed_results.setdefault("total", 0)
     parsed_results.setdefault("passed", 0)
     parsed_results.setdefault("failed", 0)
     parsed_results.setdefault("suites", {})
     parsed_results.setdefault("failures", [])
 
-    # Determine overall status
     status_emoji = "✅" if parsed_results["failed"] == 0 and exit_code == 0 else "❌"
     overall_status = (
         "PASSED" if parsed_results["failed"] == 0 and exit_code == 0 else "FAILED"
     )
 
-    # Get GitHub context and determine command type
     github_context = _get_github_context()
     command_type = _determine_command_type(command)
 
-    # Build report sections
     report_content = _build_report_header(
         command_type, overall_status, status_emoji, identifier, github_context
     )
@@ -660,7 +802,6 @@ def main() -> None:
     """
     log_section("🚦 Insomnia Action Report Generation Start")
 
-    # Validate required environment variables
     required_envs = [
         "INSO_RAW_OUTPUT",
         "INSO_EXIT_CODE",
@@ -672,7 +813,6 @@ def main() -> None:
     if missing:
         error_exit(f"Missing required environment variables: {', '.join(missing)}")
 
-    # Extract and validate environment variables
     inso_raw_output = os.environ["INSO_RAW_OUTPUT"]
     if not inso_raw_output.strip():
         error_exit("INSO_RAW_OUTPUT must not be empty")
@@ -686,7 +826,6 @@ def main() -> None:
     identifier_ran = os.environ["INPUT_IDENTIFIER_RAN"]
     github_output = os.environ["GITHUB_OUTPUT"]
 
-    # Parse and process results
     log_debug(
         f"Parsing inso output for command: {command_ran}, identifier: {identifier_ran}"
     )
@@ -698,7 +837,6 @@ def main() -> None:
     except Exception as e:
         error_exit(f"Failed to process inso output: {str(e)}")
 
-    # Set GitHub Action outputs (deterministic, no file artifacts)
     try:
         with open(github_output, "a", encoding="utf-8") as out:
             out.write(f"summary={overall_status}\n")

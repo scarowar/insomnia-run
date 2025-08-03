@@ -3,33 +3,28 @@ set -euo pipefail
 
 echo "--- 🚦 Starting Insomnia Action Execution ---"
 
-# Debug log function
 debug_log() {
 	if [[ ${DEBUG:-false} == "true" ]]; then
 		echo "::debug::🐞 \"$1\""
 	fi
 }
 
-# Error log function
 error_log() {
 	echo "::error::❌ \"$1\""
 }
 
-# Info log function
 info_log() {
 	echo "::notice::ℹ️ \"$1\""
 }
 
 echo "::group::🔍 Validating Required Arguments and Environment Variables"
 
-# Accept the full command string as a single argument
 if [[ $# -lt 1 ]]; then
 	error_log "Missing required argument: Inso CLI command string"
 	exit 1
 fi
 INSO_CMD="$1"
 
-# Validate GITHUB_OUTPUT
 if [[ -z ${GITHUB_OUTPUT-} ]]; then
 	error_log "GITHUB_OUTPUT environment variable is not set."
 	exit 1
@@ -47,9 +42,6 @@ echo "::endgroup::"
 
 echo "::group::🚀 Executing Inso CLI"
 set +e
-# Use eval to properly handle shell quoting in the command string
-# The command string is constructed in action.yml and passed as a single argument
-# This allows proper handling of quoted arguments while maintaining security
 OUTPUT=$(eval "${INSO_CMD}" 2>&1)
 EXIT_CODE=$?
 set -e
@@ -61,8 +53,7 @@ fi
 echo "::endgroup::"
 
 echo "::group::📤 Exporting Outputs for GitHub Action"
-# Output to GITHUB_OUTPUT for subsequent steps to use
-# Use a unique delimiter to prevent accidental termination if output contains "EOF"
+
 HEREDOC_DELIMITER="INSOMNIA_OUTPUT_END_$(date +%s)_$$"
 {
 	echo "output<<${HEREDOC_DELIMITER}"
@@ -79,5 +70,4 @@ info_log "✅ Inso CLI execution complete."
 
 echo "--- 🏁 Insomnia Action Execution Complete ---"
 
-# The script's own exit code will determine the step's success (0 for success, non-zero for failure)
 exit 0

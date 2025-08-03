@@ -5,7 +5,7 @@ GitHub Action for running Insomnia API tests and collections using the Inso CLI 
 ## What it does
 
 - Executes Insomnia test suites and collections
-- Posts detailed results as PR comments\*\*
+- Posts detailed results as PR comments
 - Integrates with GitHub Actions secrets
 - Generates formatted reports
 
