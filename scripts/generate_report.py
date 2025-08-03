@@ -238,8 +238,7 @@ def _is_test_result_line(line: str) -> bool:
         True if line contains test results or suite information, False otherwise
     """
     return bool(
-        TEST_STATUS_SYMBOLS_PATTERN.match(line)
-        or SUITE_LINE_PATTERN.match(line)
+        TEST_STATUS_SYMBOLS_PATTERN.match(line) or SUITE_LINE_PATTERN.match(line)
     )
 
 
