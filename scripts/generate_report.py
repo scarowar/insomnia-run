@@ -16,11 +16,15 @@ TEST_RESULTS_PATTERN = re.compile(
 )
 ANALYSIS_KEYWORDS_PATTERN = re.compile(r"\b(?:Analysis|Summary|Total)\b", re.IGNORECASE)
 
-PASSED_TEST_PATTERN = re.compile(r"^\s*[✓✔✅]\s*([^\s][^\r\n]{0,200})(?:\s+\((\d+)ms\))?\s*$")
+PASSED_TEST_PATTERN = re.compile(
+    r"^\s*[✓✔✅]\s*([^\s][^\r\n]{0,200})(?:\s+\((\d+)ms\))?\s*$"
+)
 FAILED_TEST_PATTERN = re.compile(r"^\s*[✗✖❌]\s*([^\r\n]{1,200}?)\s*$")
 
 TEST_STATUS_SYMBOLS_PATTERN = re.compile(r"^\s*[✓✔✅✗✖❌]")
-ANSI_SUMMARY_PATTERN = re.compile(r"^\[[0-9;]*m[^[\r\n]{0,100}\[[0-9;]*m[^[\r\n]{0,100}total")
+ANSI_SUMMARY_PATTERN = re.compile(
+    r"^\[[0-9;]*m[^[\r\n]{0,100}\[[0-9;]*m[^[\r\n]{0,100}total"
+)
 TEST_HEADER_PATTERN = re.compile(r"^Tests?:\s+")
 TEST_REQUESTS_PATTERN = re.compile(r"^Test Requests?:\s+")
 
