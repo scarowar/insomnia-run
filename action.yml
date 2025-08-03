@@ -131,6 +131,7 @@ runs:
     shell: bash
     env:
       DEBUG: ${{ inputs.debug }}
+      INPUT_IDENTIFIER_RAN: ${{ inputs.identifier }}
     run: |
       chmod +x ${{ github.action_path }}/scripts/execute-insomnia.sh
       if [[ "${{ inputs.command }}" != "test" && "${{ inputs.command }}" != "collection" ]]; then

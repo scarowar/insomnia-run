@@ -159,19 +159,12 @@ def _should_exclude_line(stripped_line: str) -> bool:
     Returns:
         True if the line should be excluded, False otherwise
     """
-    if PASSING_FAILING_PATTERN.match(stripped_line):
-        return True
-
-    if TEST_RESULTS_PATTERN.match(stripped_line):
-        return True
-
-    if stripped_line.startswith(EXCLUDED_LINE_PREFIXES):
-        return True
-
-    if ANALYSIS_KEYWORDS_PATTERN.search(stripped_line):
-        return True
-
-    return False
+    return (
+        PASSING_FAILING_PATTERN.match(stripped_line)
+        or TEST_RESULTS_PATTERN.match(stripped_line)
+        or stripped_line.startswith(EXCLUDED_LINE_PREFIXES)
+        or ANALYSIS_KEYWORDS_PATTERN.search(stripped_line)
+    )
 
 
 def _parse_suite_line(line: str) -> Optional[str]:
@@ -244,13 +237,10 @@ def _is_test_result_line(line: str) -> bool:
     Returns:
         True if line contains test results or suite information, False otherwise
     """
-    if TEST_STATUS_SYMBOLS_PATTERN.match(line):
-        return True
-
-    if SUITE_LINE_PATTERN.match(line):
-        return True
-
-    return False
+    return bool(
+        TEST_STATUS_SYMBOLS_PATTERN.match(line)
+        or SUITE_LINE_PATTERN.match(line)
+    )
 
 
 def _is_summary_or_header_line(line: str) -> bool:

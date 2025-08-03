@@ -42,7 +42,8 @@ echo "::endgroup::"
 
 echo "::group::🚀 Executing Inso CLI"
 set +e
-OUTPUT=$(eval "${INSO_CMD}" 2>&1)
+# Use bash -c instead of eval for safer execution while preserving shell expansion
+OUTPUT=$(bash -c "${INSO_CMD}" 2>&1)
 EXIT_CODE=$?
 set -e
 if [[ ${EXIT_CODE} -ne 0 ]]; then
@@ -61,7 +62,7 @@ HEREDOC_DELIMITER="INSOMNIA_OUTPUT_END_$(date +%s)_$$"
 	echo "${HEREDOC_DELIMITER}"
 	echo "exit_code=${EXIT_CODE}"
 	echo "command_ran=${INSO_CMD}"
-	echo "identifier_ran="
+	echo "identifier_ran=${INPUT_IDENTIFIER_RAN:-}"
 } >>"${GITHUB_OUTPUT}"
 echo "✅ Output and exit code exported to GITHUB_OUTPUT."
 echo "::endgroup::"
