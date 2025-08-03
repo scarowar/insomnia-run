@@ -7,24 +7,27 @@ from typing import Any, Dict, List, Optional, Tuple
 PASSING_FAILING_PATTERN = re.compile(r"^\d+\s+(passing|failing)")
 ERROR_PREFIX = "error:"
 
-ANSI_ESCAPE_PATTERN = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+ANSI_ESCAPE_PATTERN = re.compile(r"\x1B\[[0-9;]*[a-zA-Z]")
 BRACKET_CODES_PATTERN = re.compile(r"\[[0-9;]*m")
 
 TEST_RESULTS_PATTERN = re.compile(
-    r"^(Test results?|Tests?:|Test Requests?|Error:|Warning:|Total:|Summary)",
+    r"^(?:Test results?|Tests?:|Test Requests?|Error:|Warning:|Total:|Summary)",
     re.IGNORECASE,
 )
-ANALYSIS_KEYWORDS_PATTERN = re.compile(r"\b(Analysis|Summary|Total)\b", re.IGNORECASE)
-PASSED_TEST_PATTERN = re.compile(r"^\s*[✓✔✅]\s*(.*?)(?:\s\((\d+)ms\))?$")
-FAILED_TEST_PATTERN = re.compile(r"^\s*[✗✖❌]\s*(.*)$")
+ANALYSIS_KEYWORDS_PATTERN = re.compile(r"\b(?:Analysis|Summary|Total)\b", re.IGNORECASE)
+
+PASSED_TEST_PATTERN = re.compile(r"^\s*[✓✔✅]\s*([^\s].*?)(?:\s+\((\d+)ms\))?\s*$")
+FAILED_TEST_PATTERN = re.compile(r"^\s*[✗✖❌]\s*(.+?)\s*$")
+
 TEST_STATUS_SYMBOLS_PATTERN = re.compile(r"^\s*[✓✔✅✗✖❌]")
-ANSI_SUMMARY_PATTERN = re.compile(r"^\[[0-9;]*m.*\[[0-9;]*m.*total")
-TEST_HEADER_PATTERN = re.compile(r"^Test(s)?:\s+")
+ANSI_SUMMARY_PATTERN = re.compile(r"^\[[0-9;]*m[^[]*\[[0-9;]*m[^[]*total")
+TEST_HEADER_PATTERN = re.compile(r"^Tests?:\s+")
 TEST_REQUESTS_PATTERN = re.compile(r"^Test Requests?:\s+")
+
 SUITE_LINE_PATTERN = re.compile(
-    r"^\s{2,}(?![\s✓✗✔❌✅✖]|Error|at\s|Expected|AssertionError|TypeError|ReferenceError)([A-Za-z][\w\s.-]+)$"
+    r"^\s{2,}(?![✓✗✔❌✅✖\s]|Error|at\s|Expected|AssertionError|TypeError|ReferenceError)([A-Za-z][A-Za-z0-9\s._-]+)\s*$"
 )
-SUITE_LEGACY_PATTERN = re.compile(r"^»\s*(.+?)\.")
+SUITE_LEGACY_PATTERN = re.compile(r"^»\s*([^.]+)\.")
 
 EXCLUDED_LINE_PREFIXES = (
     "Error:",
