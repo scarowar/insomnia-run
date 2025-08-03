@@ -4,11 +4,11 @@ import re
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
-PASSING_FAILING_PATTERN = re.compile(r"^\d+\s+(passing|failing)")
+PASSING_FAILING_PATTERN = re.compile(r"^\d+\s+(?:passing|failing)")
 ERROR_PREFIX = "error:"
 
-ANSI_ESCAPE_PATTERN = re.compile(r"\x1B\[[0-9;]*[a-zA-Z]")
-BRACKET_CODES_PATTERN = re.compile(r"\[[0-9;]*m")
+ANSI_ESCAPE_PATTERN = re.compile(r"\x1B\[[0-9;]{0,20}[a-zA-Z]")
+BRACKET_CODES_PATTERN = re.compile(r"\[[0-9;]{0,20}m")
 
 TEST_RESULTS_PATTERN = re.compile(
     r"^(?:Test results?|Tests?:|Test Requests?|Error:|Warning:|Total:|Summary)",
@@ -16,18 +16,18 @@ TEST_RESULTS_PATTERN = re.compile(
 )
 ANALYSIS_KEYWORDS_PATTERN = re.compile(r"\b(?:Analysis|Summary|Total)\b", re.IGNORECASE)
 
-PASSED_TEST_PATTERN = re.compile(r"^\s*[✓✔✅]\s*([^\s].*?)(?:\s+\((\d+)ms\))?\s*$")
-FAILED_TEST_PATTERN = re.compile(r"^\s*[✗✖❌]\s*(.+?)\s*$")
+PASSED_TEST_PATTERN = re.compile(r"^\s*[✓✔✅]\s*([^\s][^\r\n]{0,200})(?:\s+\((\d+)ms\))?\s*$")
+FAILED_TEST_PATTERN = re.compile(r"^\s*[✗✖❌]\s*([^\r\n]{1,200}?)\s*$")
 
 TEST_STATUS_SYMBOLS_PATTERN = re.compile(r"^\s*[✓✔✅✗✖❌]")
-ANSI_SUMMARY_PATTERN = re.compile(r"^\[[0-9;]*m[^[]*\[[0-9;]*m[^[]*total")
+ANSI_SUMMARY_PATTERN = re.compile(r"^\[[0-9;]*m[^[\r\n]{0,100}\[[0-9;]*m[^[\r\n]{0,100}total")
 TEST_HEADER_PATTERN = re.compile(r"^Tests?:\s+")
 TEST_REQUESTS_PATTERN = re.compile(r"^Test Requests?:\s+")
 
 SUITE_LINE_PATTERN = re.compile(
-    r"^\s{2,}(?![✓✗✔❌✅✖\s]|Error|at\s|Expected|AssertionError|TypeError|ReferenceError)([A-Za-z][A-Za-z0-9\s._-]+)\s*$"
+    r"^\s{2,10}(?![✓✗✔❌✅✖\s]|Error|at\s|Expected|AssertionError|TypeError|ReferenceError)([A-Za-z][A-Za-z0-9\s._-]{0,100})\s*$"
 )
-SUITE_LEGACY_PATTERN = re.compile(r"^»\s*([^.]+)\.")
+SUITE_LEGACY_PATTERN = re.compile(r"^»\s*([^.\r\n]{1,100})\.")
 
 EXCLUDED_LINE_PREFIXES = (
     "Error:",
