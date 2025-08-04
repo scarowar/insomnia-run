@@ -782,64 +782,79 @@ def _build_report_header(
     Returns:
         Formatted Markdown header string
     """
-    report_content = f"## Insomnia {command_type} Results\n\n"
+    # Determine appropriate header text based on command type
+    if command_type.lower() == "test":
+        action_type = "Tests"
+    else:  # collection
+        action_type = "Collection"
 
-    report_content += f"{status_emoji} **Insomnia {command_type} Status: {overall_status}**{f' for `{identifier}`' if identifier else ''}"
-
-    workflow_display = _get_workflow_context_display(github_context)
-    if github_context["actor"]:
-        report_content += (
-            f" — {workflow_display.lower()} by `{github_context['actor']}`"
-        )
+    # Build header with target context if available
+    if identifier and identifier.strip():
+        if overall_status == "PASSED":
+            header_text = f"Insomnia {action_type} Passed: {identifier}"
+        else:
+            header_text = f"Insomnia {action_type} Failed: {identifier}"
     else:
-        report_content += f" — {workflow_display.lower()}"
+        header_text = (
+            f"Insomnia {action_type} Passed"
+            if overall_status == "PASSED"
+            else f"Insomnia {action_type} Failed"
+        )
 
-    if github_context.get("run_id") and github_context.get("repository"):
-        run_url = f"https://github.com/{github_context['repository']}/actions/runs/{github_context['run_id']}"
-        report_content += f" | [📋 View Action Run]({run_url})"
+    report_content = f"## {status_emoji} {header_text}\n\n"
 
-    report_content += "\n\n"
     return report_content
 
 
-def _build_summary_table(parsed_results: Dict[str, Any], command_type: str) -> str:
+def _build_summary_table(
+    parsed_results: Dict[str, Any], command_type: str, identifier: str
+) -> str:
     """
-    Build the summary metrics table.
+    Build a comprehensive summary section with key metrics and target info.
 
     Args:
         parsed_results: Parsed test results data
         command_type: Type of command for display purposes
+        identifier: Test identifier or collection name
 
     Returns:
-        Formatted Markdown table string with summary metrics
+        Formatted Markdown string with comprehensive summary
     """
+    # Determine the appropriate terminology
+    run_type = "tests" if command_type.lower() == "test" else "requests"
+
+    # Calculate success rate
     success_rate = (
         round((parsed_results["passed"] / parsed_results["total"]) * 100)
         if parsed_results["total"] > 0
         else 0
     )
 
-    content = "### Summary\n"
-    content += "| Metric | Value | Status |\n"
-    content += "|--------|-------|--------|\n"
-    content += f"| **Total {command_type}s** | {parsed_results['total']} | {'🎯' if parsed_results['total'] > 0 else '⚠️'} |\n"
-    content += f"| **Passed** | {parsed_results['passed']} | {'✅' if parsed_results['passed'] > 0 else '⚪'} |\n"
-    content += f"| **Failed** | {parsed_results['failed']} | {'❌' if parsed_results['failed'] > 0 else '✅'} |\n"
-    success_rate_emoji = _get_success_rate_emoji(success_rate)
-    content += f"| **Success Rate** | {success_rate}% | {success_rate_emoji} |\n"
+    content = "### Test Summary\n\n"
+
+    # Build summary with key metrics in bullet point format
+    if parsed_results["failed"] > 0:
+        content += f"- **{parsed_results['total']} {run_type} executed** ({parsed_results['passed']} passed, {parsed_results['failed']} failed, {success_rate}% success rate)\n"
+    else:
+        content += f"- **{parsed_results['total']} {run_type} executed** (all passed)\n"
+
+    # Add target info if available
+    if identifier and identifier.strip():
+        content += f"- **Target:** `{identifier}`\n"
+
     content += "\n"
     return content
 
 
 def _build_suite_details_section(parsed_results: Dict[str, Any]) -> str:
     """
-    Build the collapsible suite details section.
+    Build a detailed results section showing all tests/requests with their outcomes.
 
     Args:
         parsed_results: Parsed test results data
 
     Returns:
-        Formatted Markdown string with collapsible suite details, or empty string if no meaningful suites
+        Formatted Markdown string with detailed results
     """
     meaningful_suites = {
         k: v
@@ -850,41 +865,58 @@ def _build_suite_details_section(parsed_results: Dict[str, Any]) -> str:
     if not meaningful_suites:
         return ""
 
-    content = "<details><summary>Detailed Test Results by Suite 📚</summary>\n\n"
+    content = "### Test Results\n\n"
+
     for suite_name, suite_data in meaningful_suites.items():
-        suite_details = _format_suite_details(suite_name, suite_data)
-        content += suite_details
-    content += "</details>\n\n"
+        # Only show suite name if it's meaningful (not "General")
+        if suite_name != "General" and len(meaningful_suites) > 1:
+            suite_status = "✅" if suite_data["failed"] == 0 else "❌"
+            content += f"**{suite_status} {suite_name}** ({suite_data['passed']} passed, {suite_data['failed']} failed)\n\n"
+
+        # Show all tests/requests in a clean list format
+        for test in suite_data["tests"]:
+            status_symbol = "✅" if test["status"] == "passed" else "❌"
+            content += f"- {status_symbol} **{test['name']}**"
+
+            # Add error details for failed tests in a compact format
+            if test["status"] == "failed" and test.get("error"):
+                error_msg = test["error"].strip()
+                # Show error inline with proper formatting
+                content += f" → `{error_msg}`"
+
+            content += "\n"
+
+        content += "\n"
+
     return content
 
 
 def _build_failure_details_section(parsed_results: Dict[str, Any]) -> str:
     """
-    Build the failure details section.
+    Build details section with workflow logs link.
 
     Args:
         parsed_results: Parsed test results data
 
     Returns:
-        Formatted Markdown string with failure details, or empty string if no failures
+        Formatted Markdown string with details section
     """
-    failures = parsed_results.get("failures", [])
-    if not failures:
-        return ""
+    github_context = _get_github_context()
 
-    content = "<details><summary>❌ Failure Details</summary>\n\n"
-    for i, failure in enumerate(failures, 1):
-        suite_info = (
-            f" ({failure.get('suite', 'Unknown Suite')})"
-            if failure.get("suite")
-            else ""
-        )
-        content += f"**{i}. {failure.get('name', 'Unknown Test')}{suite_info}**\n"
-        if failure.get("error"):
-            content += f"```\n{failure['error']}\n```\n\n"
-        else:
-            content += "No error details available.\n\n"
-    content += "</details>\n\n"
+    content = "### Additional Information\n\n"
+
+    # Add workflow run link if available
+    if (
+        github_context.get("server_url")
+        and github_context.get("repository")
+        and github_context.get("run_id")
+    ):
+        logs_url = f"{github_context['server_url']}/{github_context['repository']}/actions/runs/{github_context['run_id']}"
+        content += f"Check the [workflow logs]({logs_url}) for details\n\n"
+    else:
+        # Fallback for when we don't have full context
+        content += "Check the [workflow logs](../actions) for details\n\n"
+
     return content
 
 
@@ -898,7 +930,7 @@ def _build_raw_output_section(raw_output: str) -> str:
     Returns:
         Formatted Markdown string with collapsible raw output section
     """
-    content = "<details><summary>Raw Inso CLI Output 📜</summary>\n\n"
+    content = "<details><summary>View raw output</summary>\n\n"
     content += "```\n" + raw_output.strip() + "\n```\n"
     content += "</details>\n"
     return content
@@ -949,9 +981,15 @@ def format_markdown_report(
     report_content = _build_report_header(
         command_type, overall_status, status_emoji, identifier, github_context
     )
-    report_content += _build_summary_table(parsed_results, command_type)
+    report_content += _build_summary_table(parsed_results, command_type, identifier)
+
+    # Add detailed results (all tests/requests with outcomes)
     report_content += _build_suite_details_section(parsed_results)
+
+    # Add details section with workflow information
     report_content += _build_failure_details_section(parsed_results)
+
+    # Always include raw output at the end
     report_content += _build_raw_output_section(raw_output)
 
     return report_content, overall_status
