@@ -280,7 +280,9 @@ runs:
 
       set +e
       if [ -n "$INSO_WORKING_DIR" ]; then
-        cd "$INSO_WORKING_DIR"
+        if [ -d "$INSO_WORKING_DIR" ]; then
+          cd "$INSO_WORKING_DIR"
+        fi
       fi
       "${INSO_ARGS[@]}" > /tmp/inso_output.txt 2>&1
       EXIT_CODE=$?
@@ -315,7 +317,7 @@ runs:
       INPUT_IDENTIFIER_RAN: ${{ inputs.identifier }}
       WORKFLOW_CONTEXT: ${{ github.event_name }}
       DEBUG: ${{ inputs.debug }}
-    run: python ${{ github.action_path }}/scripts/generate_report.py
+    run: python scripts/generate_report.py
 
   - name: 🌍 Workflow Context Summary
     shell: bash
