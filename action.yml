@@ -257,7 +257,7 @@ runs:
       INSO_ARGS+=("--ci")
 
       DISPLAY_CMD="inso run $INSO_COMMAND"
-      if [ -n "$INSO_IDENTIFIER" ] && \
+      if [[ -n "$INSO_IDENTIFIER" ]] && \
          [[ ! ( "$INSO_COMMAND" == "collection" && -f "$INSO_WORKING_DIR" && \
                 grep -q "type: collection.insomnia.rest" "$INSO_WORKING_DIR" 2>/dev/null ) ]]; then
         DISPLAY_CMD+=" [identifier]"
