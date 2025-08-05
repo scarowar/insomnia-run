@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import base64
 import os
 import re
 import sys
@@ -763,11 +764,7 @@ def _determine_command_type(command: str) -> str:
 
 
 def _build_report_header(
-    command_type: str,
-    overall_status: str,
-    status_emoji: str,
-    identifier: str,
-    github_context: Dict[str, str],
+    command_type: str, overall_status: str, status_emoji: str, identifier: str
 ) -> str:
     """
     Build the main report header with status and context.
@@ -782,13 +779,11 @@ def _build_report_header(
     Returns:
         Formatted Markdown header string
     """
-    # Determine appropriate header text based on command type
     if command_type.lower() == "test":
         action_type = "Tests"
-    else:  # collection
+    else:
         action_type = "Collection"
 
-    # Build header with target context if available
     if identifier and identifier.strip():
         if overall_status == "PASSED":
             header_text = f"Insomnia {action_type} Passed: {identifier}"
@@ -820,10 +815,8 @@ def _build_summary_table(
     Returns:
         Formatted Markdown string with comprehensive summary
     """
-    # Determine the appropriate terminology
     run_type = "tests" if command_type.lower() == "test" else "requests"
 
-    # Calculate success rate
     success_rate = (
         round((parsed_results["passed"] / parsed_results["total"]) * 100)
         if parsed_results["total"] > 0
@@ -832,18 +825,73 @@ def _build_summary_table(
 
     content = "### Test Summary\n\n"
 
-    # Build summary with key metrics in bullet point format
     if parsed_results["failed"] > 0:
         content += f"- **{parsed_results['total']} {run_type} executed** ({parsed_results['passed']} passed, {parsed_results['failed']} failed, {success_rate}% success rate)\n"
     else:
         content += f"- **{parsed_results['total']} {run_type} executed** (all passed)\n"
 
-    # Add target info if available
     if identifier and identifier.strip():
         content += f"- **Target:** `{identifier}`\n"
 
     content += "\n"
     return content
+
+
+def _filter_meaningful_suites(parsed_results: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Filter out suites that don't have meaningful test results.
+
+    Args:
+        parsed_results: Parsed test results data
+
+    Returns:
+        Dictionary of meaningful suites with test data
+    """
+    return {
+        k: v
+        for k, v in parsed_results.get("suites", {}).items()
+        if not PASSING_FAILING_PATTERN.match(k) and (v["passed"] > 0 or v["failed"] > 0)
+    }
+
+
+def _format_suite_header(
+    suite_name: str, suite_data: Dict[str, Any], total_suites: int
+) -> str:
+    """
+    Format the header for a test suite if needed.
+
+    Args:
+        suite_name: Name of the test suite
+        suite_data: Suite data with passed/failed counts
+        total_suites: Total number of meaningful suites
+
+    Returns:
+        Formatted suite header string or empty string
+    """
+    if suite_name != "General" and total_suites > 1:
+        suite_status = "✅" if suite_data["failed"] == 0 else "❌"
+        return f"**{suite_status} {suite_name}** ({suite_data['passed']} passed, {suite_data['failed']} failed)\n\n"
+    return ""
+
+
+def _format_test_result(test: Dict[str, Any]) -> str:
+    """
+    Format a single test result line.
+
+    Args:
+        test: Test data containing name, status, and optional error
+
+    Returns:
+        Formatted test result string
+    """
+    status_symbol = "✅" if test["status"] == "passed" else "❌"
+    content = f"- {status_symbol} **{test['name']}**"
+
+    if test["status"] == "failed" and test.get("error"):
+        error_msg = test["error"].strip()
+        content += f" → `{error_msg}`"
+
+    return content + "\n"
 
 
 def _build_suite_details_section(parsed_results: Dict[str, Any]) -> str:
@@ -856,11 +904,7 @@ def _build_suite_details_section(parsed_results: Dict[str, Any]) -> str:
     Returns:
         Formatted Markdown string with detailed results
     """
-    meaningful_suites = {
-        k: v
-        for k, v in parsed_results.get("suites", {}).items()
-        if not PASSING_FAILING_PATTERN.match(k) and (v["passed"] > 0 or v["failed"] > 0)
-    }
+    meaningful_suites = _filter_meaningful_suites(parsed_results)
 
     if not meaningful_suites:
         return ""
@@ -868,30 +912,17 @@ def _build_suite_details_section(parsed_results: Dict[str, Any]) -> str:
     content = "### Test Results\n\n"
 
     for suite_name, suite_data in meaningful_suites.items():
-        # Only show suite name if it's meaningful (not "General")
-        if suite_name != "General" and len(meaningful_suites) > 1:
-            suite_status = "✅" if suite_data["failed"] == 0 else "❌"
-            content += f"**{suite_status} {suite_name}** ({suite_data['passed']} passed, {suite_data['failed']} failed)\n\n"
+        content += _format_suite_header(suite_name, suite_data, len(meaningful_suites))
 
-        # Show all tests/requests in a clean list format
         for test in suite_data["tests"]:
-            status_symbol = "✅" if test["status"] == "passed" else "❌"
-            content += f"- {status_symbol} **{test['name']}**"
-
-            # Add error details for failed tests in a compact format
-            if test["status"] == "failed" and test.get("error"):
-                error_msg = test["error"].strip()
-                # Show error inline with proper formatting
-                content += f" → `{error_msg}`"
-
-            content += "\n"
+            content += _format_test_result(test)
 
         content += "\n"
 
     return content
 
 
-def _build_failure_details_section(parsed_results: Dict[str, Any]) -> str:
+def _build_failure_details_section() -> str:
     """
     Build details section with workflow logs link.
 
@@ -905,7 +936,6 @@ def _build_failure_details_section(parsed_results: Dict[str, Any]) -> str:
 
     content = "### Additional Information\n\n"
 
-    # Add workflow run link if available
     if (
         github_context.get("server_url")
         and github_context.get("repository")
@@ -914,7 +944,6 @@ def _build_failure_details_section(parsed_results: Dict[str, Any]) -> str:
         logs_url = f"{github_context['server_url']}/{github_context['repository']}/actions/runs/{github_context['run_id']}"
         content += f"Check the [workflow logs]({logs_url}) for details\n\n"
     else:
-        # Fallback for when we don't have full context
         content += "Check the [workflow logs](../actions) for details\n\n"
 
     return content
@@ -975,21 +1004,17 @@ def format_markdown_report(
         "PASSED" if parsed_results["failed"] == 0 and exit_code == 0 else "FAILED"
     )
 
-    github_context = _get_github_context()
     command_type = _determine_command_type(command)
 
     report_content = _build_report_header(
-        command_type, overall_status, status_emoji, identifier, github_context
+        command_type, overall_status, status_emoji, identifier
     )
     report_content += _build_summary_table(parsed_results, command_type, identifier)
 
-    # Add detailed results (all tests/requests with outcomes)
     report_content += _build_suite_details_section(parsed_results)
 
-    # Add details section with workflow information
-    report_content += _build_failure_details_section(parsed_results)
+    report_content += _build_failure_details_section()
 
-    # Always include raw output at the end
     report_content += _build_raw_output_section(raw_output)
 
     return report_content, overall_status
@@ -1003,7 +1028,7 @@ def main() -> None:
     Designed for enterprise-grade reliability and deterministic behavior.
 
     Environment Variables Required:
-        INSO_RAW_OUTPUT: Raw output from inso CLI
+        INSO_RAW_OUTPUT_ENCODED: Base64-encoded output from inso CLI
         INSO_EXIT_CODE: Exit code from inso CLI
         INPUT_COMMAND_RAN: Command that was executed
         INPUT_IDENTIFIER_RAN: Identifier used (may be empty)
@@ -1015,7 +1040,7 @@ def main() -> None:
     log_section("🚦 Insomnia Action Report Generation Start")
 
     required_envs = [
-        "INSO_RAW_OUTPUT",
+        "INSO_RAW_OUTPUT_ENCODED",
         "INSO_EXIT_CODE",
         "INPUT_COMMAND_RAN",
         "INPUT_IDENTIFIER_RAN",
@@ -1025,9 +1050,16 @@ def main() -> None:
     if missing:
         error_exit(f"Missing required environment variables: {', '.join(missing)}")
 
-    inso_raw_output = os.environ["INSO_RAW_OUTPUT"]
-    if not inso_raw_output.strip():
+    inso_raw_output_encoded = os.environ["INSO_RAW_OUTPUT_ENCODED"]
+    if not inso_raw_output_encoded.strip():
         error_exit("INSO_RAW_OUTPUT must not be empty")
+
+    try:
+        inso_raw_output_bytes = base64.b64decode(inso_raw_output_encoded, validate=True)
+        inso_raw_output = inso_raw_output_bytes.decode("utf-8")
+        log_debug("Successfully decoded base64-encoded inso output")
+    except Exception as e:
+        error_exit(f"Failed to decode base64-encoded output: {str(e)}")
 
     try:
         inso_exit_code = int(os.environ["INSO_EXIT_CODE"])

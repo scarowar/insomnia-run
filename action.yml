@@ -108,7 +108,7 @@ inputs:
 
 outputs:
   results:
-    description: The raw output from the inso CLI command.
+    description: The base64-encoded output from the inso CLI command.
     value: ${{ steps.run_inso_shell.outputs.output }}
   summary:
     description: A summarized result of the inso run.
@@ -194,7 +194,9 @@ runs:
       fi
 
       if [ -n "$INSO_WORKING_DIR" ]; then
-        INSO_ARGS+=("--workingDir" "$INSO_WORKING_DIR")
+        if [ -f "$INSO_WORKING_DIR" ]; then
+          INSO_ARGS+=("--workingDir" "$INSO_WORKING_DIR")
+        fi
       fi
 
       if [ "$INSO_COMMAND" == "test" ] && [ -n "$INSO_TEST_NAME_PATTERN" ]; then
@@ -255,13 +257,19 @@ runs:
       INSO_ARGS+=("--ci")
 
       DISPLAY_CMD="inso run $INSO_COMMAND"
-      if [ -n "$INSO_IDENTIFIER" ] && [[ ! ("$INSO_COMMAND" == "collection" && -f "$INSO_WORKING_DIR" && $(grep -q "type: collection.insomnia.rest" "$INSO_WORKING_DIR" 2>/dev/null)) ]]; then
+      if [ -n "$INSO_IDENTIFIER" ] && \
+         [[ ! ( "$INSO_COMMAND" == "collection" && -f "$INSO_WORKING_DIR" && \
+                grep -q "type: collection.insomnia.rest" "$INSO_WORKING_DIR" 2>/dev/null ) ]]; then
         DISPLAY_CMD+=" [identifier]"
       fi
       if [ -n "$INSO_ENVIRONMENT" ]; then DISPLAY_CMD+=" --env [environment]"; fi
       DISPLAY_CMD+=" --reporter spec"
       if [ "$(normalize_bool "$INSO_BAIL")" = "true" ]; then DISPLAY_CMD+=" --bail"; fi
-      if [ -n "$INSO_WORKING_DIR" ]; then DISPLAY_CMD+=" --workingDir [working-dir]"; fi
+      if [ -n "$INSO_WORKING_DIR" ]; then
+        if [ -f "$INSO_WORKING_DIR" ]; then
+          DISPLAY_CMD+=" --workingDir [working-dir]"
+        fi
+      fi
       if [ "$INSO_COMMAND" == "test" ] && [ -n "$INSO_TEST_NAME_PATTERN" ]; then DISPLAY_CMD+=" --testNamePattern [pattern]"; fi
       if [ "$INSO_COMMAND" == "collection" ] && [ -n "$INSO_REQUEST_NAME_PATTERN" ]; then DISPLAY_CMD+=" --requestNamePattern [pattern]"; fi
       if [ "$INSO_COMMAND" == "collection" ] && [ -n "$INSO_ITEM" ]; then DISPLAY_CMD+=" --item [items]"; fi
@@ -290,10 +298,17 @@ runs:
       rm -f /tmp/inso_output.txt
       set -e
 
+      ENCODED_OUTPUT=$(echo "${OUTPUT}" | base64 -w 0)
+
+      echo "INSO_RAW_OUTPUT_ENCODED=${ENCODED_OUTPUT}" >> $GITHUB_ENV
+      echo "INSO_EXIT_CODE=${EXIT_CODE}" >> $GITHUB_ENV
+      echo "INPUT_COMMAND_RAN=${INSO_COMMAND}" >> $GITHUB_ENV
+      echo "INPUT_IDENTIFIER_RAN=${INSO_IDENTIFIER}" >> $GITHUB_ENV
+
       HEREDOC_DELIMITER="INSOMNIA_OUTPUT_END_$(date +%s)_$$"
       {
         echo "output<<${HEREDOC_DELIMITER}"
-        echo "${OUTPUT}"
+        echo "${ENCODED_OUTPUT}"
         echo "${HEREDOC_DELIMITER}"
         echo "exit_code=${EXIT_CODE}"
         echo "command_ran=${DISPLAY_CMD}"
@@ -311,7 +326,7 @@ runs:
     shell: bash
     working-directory: ${{ github.action_path }}
     env:
-      INSO_RAW_OUTPUT: ${{ steps.run_inso_shell.outputs.output }}
+      INSO_RAW_OUTPUT_ENCODED: ${{ steps.run_inso_shell.outputs.output }}
       INSO_EXIT_CODE: ${{ steps.run_inso_shell.outputs.exit_code }}
       INPUT_COMMAND_RAN: ${{ inputs.command }}
       INPUT_IDENTIFIER_RAN: ${{ inputs.identifier }}
