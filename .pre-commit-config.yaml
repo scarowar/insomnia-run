@@ -16,7 +16,7 @@ repos:
   - id: gitleaks
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.12.4
+  rev: v0.12.7
   hooks:
   - id: ruff-check
     args: [ --fix ]
@@ -48,7 +48,7 @@ repos:
   - id: gitlint
 
 - repo: https://github.com/jazzband/pip-tools
-  rev: 7.4.1
+  rev: v7.5.0
   hooks:
   - id: pip-compile
     name: pip-compile requirements.in
