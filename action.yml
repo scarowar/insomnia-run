@@ -1,0 +1,385 @@
+name: Insomnia Run
+description: Run Insomnia Collections & Tests using the Inso CLI with PR comment reporting.
+author: Sourab Kanthavar <@scarowar>
+branding:
+  icon: terminal
+  color: purple
+inputs:
+  # --- Authentication & Permissions ---
+  github-token:
+    description: GitHub token for API access. Pass as an input from your workflow using secrets.GITHUB_TOKEN.
+    required: false
+
+  # --- Insomnia CLI Configuration ---
+  inso-version:
+    description: The version of inso CLI to use.
+    required: false
+    default: 11.3.0
+  working-directory:
+    description: |
+      The working directory or export file where your Insomnia Design Document data is located (e.g., .insomnia/ or insomnia-export.yaml).
+      Must be a directory containing a .insomnia folder (from Git Sync) or a full workspace export (not just a collection).
+      See README for details.
+    required: false
+    default: .
+  environment:
+    description: The name of the Insomnia environment to use.
+    required: false
+  command:
+    description: |
+      The command to run: "test" to execute test suites, "collection" to execute collections.
+      Only these two commands are supported.
+    required: true
+  identifier:
+    description: |
+      The name or ID (or truncated ID) of the unit test suite (for 'test') or collection/workspace (for 'collection') to run.
+
+      IMPORTANT: When using collection export files (type: collection.insomnia.rest/5.0), this parameter is automatically ignored
+      as the CLI processes the export file directly. Use this parameter only with:
+      - Workspace exports (type: workspace.insomnia.rest/4.0)
+      - .insomnia/ directories from Git Sync
+      - When you want to run a specific collection within a workspace containing multiple collections
+      If omitted, inso CLI will prompt for selection (disabled with --ci flag).
+      Refer to Inso CLI documentation for details.
+    required: false
+  test-name-pattern:
+    description: Regex pattern to filter test names (for 'test' command).
+    required: false
+  request-name-pattern:
+    description: Regex pattern to filter request names (for 'collection' command).
+    required: false
+  item:
+    description: Request or folder UID(s) to run (for 'collection' command). Comma-separated.
+    required: false
+  delay-request:
+    description: Delay in milliseconds between requests (for 'collection' command).
+    required: false
+  iteration-count:
+    description: Number of times to run the collection (for 'collection' command).
+    required: false
+  iteration-data:
+    description: Path or URL to iteration data file (JSON or CSV) (for 'collection' command).
+    required: false
+  disable-cert-validation:
+    description: Disable certificate validation for requests with SSL.
+    required: false
+    default: "false"
+  https-proxy:
+    description: URL for the proxy server for https requests.
+    required: false
+  http-proxy:
+    description: URL for the proxy server for http requests.
+    required: false
+  no-proxy:
+    description: Comma separated list of hostnames that do not require a proxy.
+    required: false
+  bail:
+    description: Exit on first test failure ("true"/"false").
+    required: false
+    default: "false"
+  debug:
+    description: Enable debug logging for troubleshooting ("true"/"false").
+    required: false
+    default: "false"
+  env-var:
+    description: |
+      Environment variable overrides in key=value format. Multiple values can be provided separated by newlines.
+      Perfect for injecting GitHub Actions secrets into Insomnia templates.
+
+      ⚠️ IMPORTANT: Environment variables (--env-var) are ONLY supported for 'collection' command, NOT for 'test' command.
+      For test commands, use Insomnia environment files instead.
+
+      Examples:
+        Single: "password=secret_value"
+        Multiple:
+          password=secret_value
+          username=secret_username
+    required: false
+
+  # --- PR Commenting & Reporting ---
+  pr-comment:
+    description: Whether to post results as a PR comment when in a pull_request context ("true"/"false"). Automatically disabled for non-PR workflows.
+    required: false
+    default: "true"
+  fail-on-error:
+    description: Fail the GitHub Action if inso CLI reports failures ("true"/"false").
+    required: false
+    default: "true"
+
+outputs:
+  results:
+    description: The base64-encoded output from the inso CLI command.
+    value: ${{ steps.run_inso_shell.outputs.output }}
+  summary:
+    description: A summarized result of the inso run.
+    value: ${{ steps.parse_and_format.outputs.summary }}
+  comment_body:
+    description: The formatted Markdown body of the PR comment.
+    value: ${{ steps.parse_and_format.outputs.comment_body }}
+
+runs:
+  using: composite
+  steps:
+  - name: 🧰 Setup inso CLI
+    uses: kong/setup-inso@v2
+    with:
+      inso-version: ${{ inputs.inso-version }}
+
+  - name: 🐍 Set up Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: 3.x
+
+  - name: 🚀 Execute Inso Command (Secure)
+    id: run_inso_shell
+    shell: bash
+    env:
+      DEBUG: ${{ inputs.debug }}
+      INPUT_IDENTIFIER_RAN: ${{ inputs.identifier }}
+      INSO_COMMAND: ${{ inputs.command }}
+      INSO_IDENTIFIER: ${{ inputs.identifier }}
+      INSO_ENVIRONMENT: ${{ inputs.environment }}
+      INSO_BAIL: ${{ inputs.bail }}
+      INSO_WORKING_DIR: ${{ inputs.working-directory }}
+      INSO_TEST_NAME_PATTERN: ${{ inputs.test-name-pattern }}
+      INSO_REQUEST_NAME_PATTERN: ${{ inputs.request-name-pattern }}
+      INSO_ITEM: ${{ inputs.item }}
+      INSO_DELAY_REQUEST: ${{ inputs.delay-request }}
+      INSO_ITERATION_COUNT: ${{ inputs.iteration-count }}
+      INSO_ITERATION_DATA: ${{ inputs.iteration-data }}
+      INSO_DISABLE_CERT_VALIDATION: ${{ inputs.disable-cert-validation }}
+      INSO_HTTPS_PROXY: ${{ inputs.https-proxy }}
+      INSO_HTTP_PROXY: ${{ inputs.http-proxy }}
+      INSO_NO_PROXY: ${{ inputs.no-proxy }}
+      INSO_ENV_VAR: ${{ inputs.env-var }}
+    run: |
+      if [[ "$INSO_COMMAND" != "test" && "$INSO_COMMAND" != "collection" ]]; then
+        echo "::error::❌ Only 'test' and 'collection' commands are supported. You provided: '$INSO_COMMAND'"
+        exit 1
+      fi
+
+      echo "::group::🛠️ Building Inso CLI Command Array (Secure)"
+
+      normalize_bool() {
+        local val="${1,,}"
+        case "$val" in
+          true|yes|1|on) echo "true" ;;
+          *) echo "false" ;;
+        esac
+      }
+
+      INSO_ARGS=("inso" "run" "$INSO_COMMAND")
+
+      if [ -n "$INSO_IDENTIFIER" ]; then
+        if [ "$INSO_COMMAND" == "collection" ] && [ -f "$INSO_WORKING_DIR" ]; then
+          if grep -q "type: collection.insomnia.rest" "$INSO_WORKING_DIR" 2>/dev/null; then
+            echo "::warning::🔍 Detected collection export file. Identifier '$INSO_IDENTIFIER' will be ignored for direct collection processing."
+            echo "::notice::💡 To use identifier, export as workspace or use .insomnia/ directory instead."
+          else
+            INSO_ARGS+=("$INSO_IDENTIFIER")
+          fi
+        else
+          INSO_ARGS+=("$INSO_IDENTIFIER")
+        fi
+      fi
+
+      if [ -n "$INSO_ENVIRONMENT" ]; then
+        INSO_ARGS+=("--env" "$INSO_ENVIRONMENT")
+      fi
+
+      INSO_ARGS+=("--reporter" "spec")
+
+      if [ "$(normalize_bool "$INSO_BAIL")" = "true" ]; then
+        INSO_ARGS+=("--bail")
+      fi
+
+      if [ -n "$INSO_WORKING_DIR" ]; then
+        if [ -f "$INSO_WORKING_DIR" ]; then
+          INSO_ARGS+=("--workingDir" "$INSO_WORKING_DIR")
+        fi
+      fi
+
+      if [ "$INSO_COMMAND" == "test" ] && [ -n "$INSO_TEST_NAME_PATTERN" ]; then
+        INSO_ARGS+=("--testNamePattern" "$INSO_TEST_NAME_PATTERN")
+      fi
+
+      if [ "$INSO_COMMAND" == "collection" ]; then
+        if [ -n "$INSO_REQUEST_NAME_PATTERN" ]; then
+          INSO_ARGS+=("--requestNamePattern" "$INSO_REQUEST_NAME_PATTERN")
+        fi
+        if [ -n "$INSO_ITEM" ]; then
+          IFS=',' read -ra ITEMS <<< "$INSO_ITEM"
+          for item in "${ITEMS[@]}"; do
+            if [ -n "$item" ]; then
+              INSO_ARGS+=("--item" "$item")
+            fi
+          done
+        fi
+        if [ -n "$INSO_DELAY_REQUEST" ]; then
+          INSO_ARGS+=("--delay-request" "$INSO_DELAY_REQUEST")
+        fi
+        if [ -n "$INSO_ITERATION_COUNT" ]; then
+          INSO_ARGS+=("--iteration-count" "$INSO_ITERATION_COUNT")
+        fi
+        if [ -n "$INSO_ITERATION_DATA" ]; then
+          INSO_ARGS+=("--iteration-data" "$INSO_ITERATION_DATA")
+        fi
+      fi
+
+      if [ "$(normalize_bool "$INSO_DISABLE_CERT_VALIDATION")" = "true" ]; then
+        INSO_ARGS+=("--disableCertValidation")
+      fi
+      if [ -n "$INSO_HTTPS_PROXY" ]; then
+        INSO_ARGS+=("--httpsProxy" "$INSO_HTTPS_PROXY")
+      fi
+      if [ -n "$INSO_HTTP_PROXY" ]; then
+        INSO_ARGS+=("--httpProxy" "$INSO_HTTP_PROXY")
+      fi
+      if [ -n "$INSO_NO_PROXY" ]; then
+        INSO_ARGS+=("--noProxy" "$INSO_NO_PROXY")
+      fi
+
+      ENV_VAR_COUNT=0
+      if [ -n "$INSO_ENV_VAR" ]; then
+        if [ "$INSO_COMMAND" == "collection" ]; then
+          while IFS= read -r env_var_line; do
+            if [ -n "$env_var_line" ]; then
+              INSO_ARGS+=("--env-var" "$env_var_line")
+              ENV_VAR_COUNT=$((ENV_VAR_COUNT + 1))
+            fi
+          done <<< "$INSO_ENV_VAR"
+        else
+          echo "::warning::🚨 Environment variables (--env-var) are only supported for 'collection' command, not for 'test' command."
+          echo "::notice::💡 For test commands, use Insomnia environment files instead of --env-var flag."
+        fi
+      fi
+
+      INSO_ARGS+=("--ci")
+
+      DISPLAY_CMD="inso run $INSO_COMMAND"
+      if [[ -n "$INSO_IDENTIFIER" ]]; then
+        SKIP_IDENTIFIER=false
+        if [[ "$INSO_COMMAND" == "collection" && -f "$INSO_WORKING_DIR" ]]; then
+          if grep -q "type: collection.insomnia.rest" "$INSO_WORKING_DIR" 2>/dev/null; then
+            SKIP_IDENTIFIER=true
+          fi
+        fi
+
+        if [[ "$SKIP_IDENTIFIER" != "true" ]]; then
+          DISPLAY_CMD+=" [identifier]"
+        fi
+      fi
+      if [ -n "$INSO_ENVIRONMENT" ]; then DISPLAY_CMD+=" --env [environment]"; fi
+      DISPLAY_CMD+=" --reporter spec"
+      if [ "$(normalize_bool "$INSO_BAIL")" = "true" ]; then DISPLAY_CMD+=" --bail"; fi
+      if [ -n "$INSO_WORKING_DIR" ]; then
+        if [ -f "$INSO_WORKING_DIR" ]; then
+          DISPLAY_CMD+=" --workingDir [working-dir]"
+        fi
+      fi
+      if [ "$INSO_COMMAND" == "test" ] && [ -n "$INSO_TEST_NAME_PATTERN" ]; then DISPLAY_CMD+=" --testNamePattern [pattern]"; fi
+      if [ "$INSO_COMMAND" == "collection" ] && [ -n "$INSO_REQUEST_NAME_PATTERN" ]; then DISPLAY_CMD+=" --requestNamePattern [pattern]"; fi
+      if [ "$INSO_COMMAND" == "collection" ] && [ -n "$INSO_ITEM" ]; then DISPLAY_CMD+=" --item [items]"; fi
+      if [ "$INSO_COMMAND" == "collection" ] && [ -n "$INSO_DELAY_REQUEST" ]; then DISPLAY_CMD+=" --delay-request [delay]"; fi
+      if [ "$INSO_COMMAND" == "collection" ] && [ -n "$INSO_ITERATION_COUNT" ]; then DISPLAY_CMD+=" --iteration-count [count]"; fi
+      if [ "$INSO_COMMAND" == "collection" ] && [ -n "$INSO_ITERATION_DATA" ]; then DISPLAY_CMD+=" --iteration-data [data]"; fi
+      if [ "$(normalize_bool "$INSO_DISABLE_CERT_VALIDATION")" = "true" ]; then DISPLAY_CMD+=" --disableCertValidation"; fi
+      if [ -n "$INSO_HTTPS_PROXY" ]; then DISPLAY_CMD+=" --httpsProxy [proxy]"; fi
+      if [ -n "$INSO_HTTP_PROXY" ]; then DISPLAY_CMD+=" --httpProxy [proxy]"; fi
+      if [ -n "$INSO_NO_PROXY" ]; then DISPLAY_CMD+=" --noProxy [hosts]"; fi
+      if [ "$INSO_COMMAND" == "collection" ] && [ $ENV_VAR_COUNT -gt 0 ]; then DISPLAY_CMD+=" --env-var [${ENV_VAR_COUNT} variables]"; fi
+      DISPLAY_CMD+=" --ci"
+
+      echo "::notice::Running (sanitized): $DISPLAY_CMD"
+      echo "::endgroup::"
+
+      set +e
+      if [ -n "$INSO_WORKING_DIR" ]; then
+        if [ -d "$INSO_WORKING_DIR" ]; then
+          cd "$INSO_WORKING_DIR"
+        fi
+      fi
+      "${INSO_ARGS[@]}" > /tmp/inso_output.txt 2>&1
+      EXIT_CODE=$?
+      OUTPUT=$(cat /tmp/inso_output.txt)
+      rm -f /tmp/inso_output.txt
+      set -e
+
+      ENCODED_OUTPUT=$(echo "${OUTPUT}" | base64 -w 0)
+
+      echo "INSO_RAW_OUTPUT_ENCODED=${ENCODED_OUTPUT}" >> $GITHUB_ENV
+      echo "INSO_EXIT_CODE=${EXIT_CODE}" >> $GITHUB_ENV
+      echo "INPUT_COMMAND_RAN=${INSO_COMMAND}" >> $GITHUB_ENV
+      echo "INPUT_IDENTIFIER_RAN=${INSO_IDENTIFIER}" >> $GITHUB_ENV
+
+      HEREDOC_DELIMITER="INSOMNIA_OUTPUT_END_$(date +%s)_$$"
+      {
+        echo "output<<${HEREDOC_DELIMITER}"
+        echo "${ENCODED_OUTPUT}"
+        echo "${HEREDOC_DELIMITER}"
+        echo "exit_code=${EXIT_CODE}"
+        echo "command_ran=${DISPLAY_CMD}"
+        echo "identifier_ran=${INSO_IDENTIFIER}"
+      } >> "$GITHUB_OUTPUT"
+
+      if [ $EXIT_CODE -ne 0 ]; then
+        echo "::warning::Inso CLI exited with code $EXIT_CODE"
+      else
+        echo "::notice::✅ Inso CLI executed successfully"
+      fi
+
+  - name: 📝 Parse Results and Format Report
+    id: parse_and_format
+    shell: bash
+    working-directory: ${{ github.action_path }}
+    env:
+      INSO_RAW_OUTPUT_ENCODED: ${{ steps.run_inso_shell.outputs.output }}
+      INSO_EXIT_CODE: ${{ steps.run_inso_shell.outputs.exit_code }}
+      INPUT_COMMAND_RAN: ${{ inputs.command }}
+      INPUT_IDENTIFIER_RAN: ${{ inputs.identifier }}
+      WORKFLOW_CONTEXT: ${{ github.event_name }}
+      DEBUG: ${{ inputs.debug }}
+    run: python scripts/generate_report.py
+
+  - name: 🌍 Workflow Context Summary
+    shell: bash
+    run: |
+      echo "::notice::📊 Workflow Context Information"
+      echo "::notice::Event: ${{ github.event_name }}"
+      echo "::notice::Repository: ${{ github.repository }}"
+      echo "::notice::Branch/Ref: ${{ github.ref }}"
+      echo "::notice::Actor: ${{ github.actor }}"
+      echo "::notice::Report Status: ${{ steps.parse_and_format.outputs.summary }}"
+      if [[ "${{ github.event_name }}" == "pull_request" && "${{ inputs.pr-comment }}" == "true" ]]; then
+        echo "::notice::PR Comment: Will be posted to PR #${{ github.event.pull_request.number }}"
+      else
+        echo "::notice::PR Comment: Skipped (not a pull_request event or pr-comment disabled)"
+      fi
+
+  - name: 🔑 Validate GitHub Token for PR Comment
+    if: github.event_name == 'pull_request' && inputs.pr-comment == 'true'
+    shell: bash
+    run: |
+      if [ -z "${{ inputs.github-token }}" ]; then
+        echo "::warning::⚠️ github-token input is missing. PR comment will be skipped."
+        echo "::notice::💡 To enable PR comments, add github-token to your workflow."
+        echo "SKIP_PR_COMMENT=true" >> $GITHUB_ENV
+      else
+        echo "::notice::✅ GitHub token provided. PR comment will be posted."
+        echo "SKIP_PR_COMMENT=false" >> $GITHUB_ENV
+      fi
+
+  - name: 💬 Post PR Comment
+    if: github.event_name == 'pull_request' && inputs.pr-comment == 'true' && env.SKIP_PR_COMMENT != 'true'
+    uses: peter-evans/create-or-update-comment@v4
+    with:
+      token: ${{ inputs.github-token }}
+      issue-number: ${{ github.event.pull_request.number }}
+      body: ${{ steps.parse_and_format.outputs.comment_body }}
+
+  - name: 🚨 Final Status Check
+    if: ${{ steps.run_inso_shell.outputs.exit_code != 0 && inputs.fail-on-error == 'true' }}
+    shell: bash
+    run: |
+      echo "::error::❌ Insomnia tests/collection run failed. Marking action as failed."
+      exit 1
