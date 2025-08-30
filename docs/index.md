@@ -3,39 +3,67 @@
 ![Insomnia Run Cover Dark](assets/images/cover-dark.png#only-dark)
 ![Insomnia Run Cover Light](assets/images/cover-light.png#only-light)
 
+[![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/scarowar/insomnia-run/blob/main/LICENSE)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=scarowar_insomnia-run&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=scarowar_insomnia-run)
+[![CodeQL](https://github.com/scarowar/insomnia-run/actions/workflows/codeql.yml/badge.svg)](https://github.com/scarowar/insomnia-run/actions/workflows/codeql.yml)
+[![Dependabot](https://img.shields.io/badge/dependabot-enabled-brightgreen?logo=dependabot)](https://github.com/scarowar/insomnia-run/security/dependabot)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/scarowar/insomnia-run/main.svg)](https://results.pre-commit.ci/latest/github/scarowar/insomnia-run/main)
+
 ## Overview
 
-**Insomnia Run** is a GitHub Action for running [Insomnia](https://insomnia.rest/) API test suites and collections using the Inso CLI, with rich PR comment reporting and seamless GitHub integration.
-
-- **Automate API testing** in your CI/CD pipelines
-- **Post results as PR comments** for fast feedback
-- **Supports secrets, environments, and custom reports**
-- **Works with both test suites and collections**
-
----
+Insomnia Run automates [Insomnia](https://insomnia.rest/) API testing in GitHub Actions workflows, delivering instant feedback through PR comments and comprehensive test reporting.
 
 ## Key Features
 
-- **Run Insomnia test suites and collections** with a single action
-- **PR comment reporting**: Post formatted results directly to pull requests
-- **GitHub Actions secrets integration** for secure credentials
-- **Flexible data sources**: Use .insomnia directories, export files, or NeDB
-- **Customizable**: Filter tests/requests, set environments, and more
-- **Fail on error**: Optionally fail builds on test failures
-- **Debug mode**: Enable detailed logs for troubleshooting
+- **Automated API testing**: Execute Insomnia test suites and collections in CI/CD pipelines
+- **PR-driven feedback**: Post detailed test results as pull request comments
+- **Environment targeting**: Run tests against different environments with variable injection
+- **Secure integration**: Native GitHub Actions secrets support
 
----
+## Workflow Example
 
-## How It Works
+See how Insomnia Run provides instant API test feedback in your pull requests:
 
-1. **Checkout your code**
-2. **Run the Insomnia Run action** with your desired command and identifier
-3. **View results** in the Actions log and as PR comments
+=== "1. Successful collection run"
+	![Collection Pass](assets/images/collection-pass.png)
+    /// caption
+	All API requests pass, showing green status with detailed test results posted to the PR.
+    ///
 
-![Workflow Overview Placeholder](assets/images/workflow-overview.png)
-*_(Insert a diagram or screenshot of the workflow here)_*
+=== "2. Failed test run"
+	![Test Fail](assets/images/test-fail.png)
+    /// caption
+	Test failures are clearly highlighted with error details for quick debugging.
+    ///
 
----
+## Quick Start
+
+```yaml linenums="1" title=".github/workflows/api-tests.yml"
+name: API Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: scarowar/insomnia-run@v0.1.0
+        with:
+          command: "test"
+          identifier: "My Test Suite"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+!!! tip "Version Pinning Options"
+    For maximum security, pin to a specific commit SHA. Find commit SHAs at our [releases page](https://github.com/scarowar/insomnia-run/releases).
 
 ## Need Help?
 
@@ -45,7 +73,7 @@
 
 ## Contributing
 
-We welcome contributions! See our [contributing guide](https://github.com/scarowar/insomnia-run/blob/main/CONTRIBUTING.md).
+We'd love your help making Insomnia Run even better! Check out our [contributing guide](https://github.com/scarowar/insomnia-run/blob/main/CONTRIBUTING.md) to get started.
 
 ## License
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "--- 🚦 Starting Insomnia Action Execution ---"
+echo "--- 🚦 Starting Insomnia Run Execution ---"
 
 debug_log() {
 	if [[ ${DEBUG:-false} == "true" ]]; then
@@ -68,6 +68,6 @@ echo "::endgroup::"
 
 info_log "✅ Inso CLI execution complete."
 
-echo "--- 🏁 Insomnia Action Execution Complete ---"
+echo "--- 🏁 Insomnia Run Execution Complete ---"
 
 exit 0

@@ -1,229 +1,60 @@
 # Insomnia Run
 
-GitHub Action for running Insomnia API tests and collections using the Inso CLI with PR comment reporting.
+[![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/scarowar/insomnia-run/blob/main/LICENSE)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=scarowar_insomnia-run&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=scarowar_insomnia-run)
+[![CodeQL](https://github.com/scarowar/insomnia-run/actions/workflows/codeql.yml/badge.svg)](https://github.com/scarowar/insomnia-run/actions/workflows/codeql.yml)
+[![Dependabot](https://img.shields.io/badge/dependabot-enabled-brightgreen?logo=dependabot)](https://github.com/scarowar/insomnia-run/network/updates)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/scarowar/insomnia-run/main.svg)](https://results.pre-commit.ci/latest/github/scarowar/insomnia-run/main)
 
-## What it does
+<p align="center">
+  <a href="https://scarowar.github.io/insomnia-run/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/assets/images/cover-dark.png">
+      <source media="(prefers-color-scheme: light)" srcset="docs/assets/images/cover-light.png">
+      <img alt="Insomnia Run - GitHub Action for running Insomnia API tests with automated PR reporting" src="docs/assets/images/cover-light.png" width="600">
+    </picture>
+  </a>
+</p>
 
-- Executes Insomnia test suites and collections
-- Posts detailed results as PR comments
-- Integrates with GitHub Actions secrets
-- Generates formatted reports
+<p align="center">
+  <b><a href="https://scarowar.github.io/insomnia-run/">📖 Documentation (GitHub Pages)</a></b>
+</p>
 
-## Quick Start
+## 📝 Overview
+
+GitHub Action for running Insomnia API tests and collections using the Inso CLI with automated PR comment reporting.
+
+## 🚀 Quick Start
 
 ```yaml
-- uses: actions/checkout@v4
-- uses: scarowar/insomnia-run@v0.1.0
+- name: Run Insomnia Tests
+  uses: scarowar/insomnia-run@v0.1.0
   with:
-    command: "test"
-    identifier: "My Test Suite"
-    github-token: ${{ secrets.GITHUB_TOKEN }}
+    command: 'test'                      # test or collection
+    identifier: 'test-suite'             # name of your test suite
+    working-directory: 'insomnia-export.yaml'  # or path to .insomnia/ directory
 ```
 
-## Inputs
+👉 **[View complete configuration options →](https://scarowar.github.io/insomnia-run/quickstart/)**
 
-| Input               | Description                                          | Required                                     | Default  |
-| ------------------- | ---------------------------------------------------- | -------------------------------------------- | -------- |
-| `command`           | `test` or `collection`                               | Yes                                          |          |
-| `identifier`        | Test suite or collection name/ID                     | Yes for `test`, conditional for `collection` |          |
-| `github-token`      | GitHub token for PR comments                         | No                                           |          |
-| `working-directory` | Path to Insomnia data                                | No                                           | `.`      |
-| `environment`       | Insomnia environment name                            | No                                           |          |
-| `inso-version`      | Inso CLI version                                     | No                                           | `11.3.0` |
-| `env-var`           | Environment variables (key=value, newline separated) | No                                           |          |
-| `pr-comment`        | Post PR comments                                     | No                                           | `true`   |
-| `fail-on-error`     | Fail action on test failures                         | No                                           | `true`   |
-| `debug`             | Enable debug logging                                 | No                                           | `false`  |
+## ⭐ Key Features
 
-### Test Command Options
+- **Automated API testing**: Execute Insomnia test suites and collections in CI/CD pipelines
+- **PR-driven feedback**: Post detailed test results as pull request comments
+- **Environment targeting**: Run tests against different environments with variable injection
+- **Secure integration**: Native GitHub Actions secrets support
 
-| Input               | Description                | Default |
-| ------------------- | -------------------------- | ------- |
-| `test-name-pattern` | Regex to filter test names |         |
-| `bail`              | Stop on first failure      | `false` |
+## 📃 License
 
-### Collection Command Options
+MIT License - see [LICENSE](https://github.com/scarowar/insomnia-run/blob/main/LICENSE) for details.
 
-| Input                  | Description                               | Default |
-| ---------------------- | ----------------------------------------- | ------- |
-| `request-name-pattern` | Regex to filter request names             |         |
-| `item`                 | Request/folder UIDs (comma-separated)     |         |
-| `delay-request`        | Delay between requests (ms)               |         |
-| `iteration-count`      | Number of iterations                      |         |
-| `iteration-data`       | Path to iteration data file (JSON or CSV) |         |
+---
 
-### Network Options
+## 🔗 Quick Links
 
-| Input                     | Description                        | Default |
-| ------------------------- | ---------------------------------- | ------- |
-| `disable-cert-validation` | Disable SSL certificate validation | `false` |
-| `https-proxy`             | HTTPS proxy URL                    |         |
-| `http-proxy`              | HTTP proxy URL                     |         |
-| `no-proxy`                | Hostnames to exclude from proxy    |         |
-
-## Outputs
-
-| Output         | Description         |
-| -------------- | ------------------- |
-| `results`      | Raw inso CLI output |
-| `summary`      | Test summary        |
-| `comment_body` | PR comment markdown |
-
-## Examples
-
-### Basic Test
-
-```yaml
-name: API Tests
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: scarowar/insomnia-run@v0.1.0
-        with:
-          command: "test"
-          identifier: "Auth Tests"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### Pull Request with Comments
-
-```yaml
-name: API Tests
-on:
-  pull_request:
-    branches: [main]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: scarowar/insomnia-run@v0.1.0
-        with:
-          command: "test"
-          identifier: "API Tests"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          # PR comments are automatically enabled for pull_request events
-```
-
-### Collection with Environment
-
-```yaml
-- uses: scarowar/insomnia-run@v0.1.0
-  with:
-    command: "collection"
-    identifier: "API Collection"
-    environment: "staging"
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### With Secrets
-
-```yaml
-- uses: scarowar/insomnia-run@v0.1.0
-  with:
-    command: "collection"
-    identifier: "Secure Tests"
-    env-var: |
-      api_key=${{ secrets.API_KEY }}
-      password=${{ secrets.PASSWORD }}
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### Matrix Testing
-
-```yaml
-strategy:
-  matrix:
-    env: [dev, staging, prod]
-steps:
-  - uses: actions/checkout@v4
-  - uses: scarowar/insomnia-run@v0.1.0
-    with:
-      command: "test"
-      identifier: "API Tests"
-      environment: ${{ matrix.env }}
-      github-token: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### Advanced Collection Testing
-
-```yaml
-- uses: scarowar/insomnia-run@v0.1.0
-  with:
-    command: "collection"
-    identifier: "Load Tests"
-    iteration-count: 10
-    delay-request: 1000
-    disable-cert-validation: true
-    bail: true
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-```
-
-## Data Sources
-
-### Git Sync (.insomnia directory)
-
-```yaml
-working-directory: "./" # Contains .insomnia/ folder
-```
-
-### Export Files
-
-```yaml
-working-directory: "./export.yaml"    # Workspace or collection export
-working-directory: "./export.json"    # JSON format
-working-directory: "./data.db.json"   # NeDB format
-```
-
-## Identifier Requirements
-
-- **Test command**: Always required (test suite name/ID)
-- **Collection command**:
-  - Required for workspace exports and .insomnia directories
-  - Optional for single collection exports (automatically ignored)
-
-## PR Comments
-
-Automatic when:
-
-- Event is `pull_request`
-- `pr-comment` is `true` (default)
-- `github-token` is provided
-
-Required permissions: `pull-requests: write`
-
-## Environment Variables
-
-Variables in `env-var` are passed to inso CLI and available in Insomnia templates:
-
-```yaml
-env-var: |
-  api_key=${{ secrets.API_KEY }}
-  base_url=https://api.example.com
-```
-
-Use in Insomnia: `{{api_key}}`, `{{base_url}}`
-
-**Note**: Environment variables only work with `collection` command. The `test` command will show a warning if `env-var` is provided.
-
-## Limitations
-
-- Only supports `test` and `collection` commands
-- Uses fixed `spec` reporter for consistent PR comments
-- Requires inso CLI version 11.3.0+
-- Environment variables (`env-var`) only work with `collection` command
-
-## Troubleshooting
-
-**"Command not supported"**: Only `test` and `collection` are allowed
-
-**"Identifier ignored"**: Expected for single collection exports
-
-**Missing PR comments**: Check token permissions and event type
-
-**Debug mode**: Set `debug: true` for detailed logs
+- [Documentation site](https://scarowar.github.io/insomnia-run/)
+- [GitHub Discussions](https://github.com/scarowar/insomnia-run/discussions)
+- [Report a bug](https://github.com/scarowar/insomnia-run/issues)
+- [Security policy](https://github.com/scarowar/insomnia-run/blob/main/SECURITY.md)
+- [Contributing guide](https://github.com/scarowar/insomnia-run/blob/main/CONTRIBUTING.md)
+- [License](https://github.com/scarowar/insomnia-run/blob/main/LICENSE)
