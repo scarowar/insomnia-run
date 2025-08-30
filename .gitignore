@@ -32,7 +32,7 @@ coverage.xml
 # Python virtual environments
 venv/
 .venv/
-.venv-insomnia-action/
+/.venv-insomnia-*/
 __pycache__/
 *.pyc
 *.pyo

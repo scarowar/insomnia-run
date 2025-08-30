@@ -1,66 +1,94 @@
 # Quickstart
 
-Get up and running with Insomnia Run in just a few steps.
+Get started with Insomnia Run in your repository in just a few steps.
 
 ## Prerequisites
 
-- An Insomnia workspace or exported collection
-- A GitHub repository with Actions enabled
-- (Optional) GitHub secrets for API keys, tokens, etc.
+Before you begin, make sure you have:
 
----
+- A GitHub repository with Insomnia test suites or collections
+- GitHub Actions enabled in your repository
+- Workflow permissions configured for `pull-requests: write` (uses automatic `GITHUB_TOKEN`, no personal token needed)
 
 ## 1. Add the Workflow
 
-Create a workflow file at `.github/workflows/insomnia-tests.yml`:
+Create a workflow file at `.github/workflows/insomnia-tests.yml` in your repository:
 
 ```yaml linenums="1" title=".github/workflows/insomnia-tests.yml"
-name: "Insomnia API Tests"
+name: "Insomnia Run"
 
-on: [push, pull_request]
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
-  test:
+  api_test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: scarowar/insomnia-run@v0.1.0
+
+      - name: Run API Tests
+        uses: scarowar/insomnia-run@v0.1.0
         with:
           command: "test"
           identifier: "My Test Suite"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
----
+## 2. Configure Data Source
 
-## 2. Configure Your Data Source
+Specify where your Insomnia data is located. The `working-directory` input can point to either a directory containing `.insomnia/` (for Git Sync) or the path to an Insomnia export file.
 
-You can use:
-
-- A `.insomnia/` directory (from Git sync)
-- An export file (`export.yaml`, `export.json`, or `data.db.json`)
-
-Set the `working-directory` input as needed:
-
-```yaml
-working-directory: "./"           # .insomnia/ folder
-working-directory: "./export.yaml" # Export file
+**Git Sync (.insomnia directory):**
+```yaml linenums="1" title="Using Git Sync"
+- name: Run API Tests
+  uses: scarowar/insomnia-run@v0.1.0
+  with:
+    command: "test"
+    identifier: "My Test Suite"
+    working-directory: "./"  # Directory containing .insomnia/
+    github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
----
+**Export files:**
+```yaml linenums="1" title="Using export files"
+- name: Run API Tests from export
+  uses: scarowar/insomnia-run@v0.1.0
+  with:
+    command: "test"
+    identifier: "My Test Suite"
+    working-directory: "./insomnia-export.yaml"  # Path to export file
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+```
 
-## 3. Run and Review
+## 3. Test from Pull Requests
 
-- On every push or PR, the action will run your Insomnia tests.
-- Results are posted as PR comments (if enabled) and as workflow outputs.
+Create a pull request to see the workflow in action:
 
-![PR Comment Example Placeholder](assets/images/pr-comment-example.png)
-*_(Insert screenshot of a PR comment with test results)_*
+- Tests execute automatically on PR creation and updates
+- Results are posted as PR comments with detailed feedback
+- Failed tests can prevent merging if branch protection rules require the test job to pass
 
----
+!!! tip "Using Different Environments"
+
+    Target specific Insomnia environments by adding the `environment` parameter:
+
+    ```yaml linenums="1" title="Using staging environment"
+    - name: Run API Tests on Staging
+      uses: scarowar/insomnia-run@v0.1.0
+      with:
+        command: "test"
+        identifier: "My Test Suite"
+        environment: "staging"
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+    ```
 
 ## Next Steps
 
-- See [Configuration](configuration.md) for all inputs and options
-- Explore [Examples](examples.md) for advanced usage
-- Learn about [Troubleshooting](troubleshooting.md) and best practices
+- See [Configuration](configuration.md) for advanced options and all available inputs
+- Explore [Examples](examples.md) for common patterns and real-world workflows

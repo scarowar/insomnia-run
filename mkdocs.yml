@@ -1,74 +1,78 @@
 # Project information
 site_name: Insomnia Run
+site_description: GitHub Action for running Insomnia API tests with instant PR feedback
 site_url: https://scarowar.github.io/insomnia-run/
-repo_name: insomnia-run
 repo_url: https://github.com/scarowar/insomnia-run
+repo_name: scarowar/insomnia-run
+
+# Build configuration
+strict: true
+edit_uri: edit/main/docs/
 
 # Navigation
 nav:
-  - Home: index.md
-  - Quickstart: quickstart.md
-  - Configuration: configuration.md
-  - Examples: examples.md
+- Home: index.md
+- Quickstart: quickstart.md
+- Configuration: configuration.md
+- Examples: examples.md
 
 # Theme configuration
 theme:
   name: material
-  logo: assets/git-pull-request.png
-  favicon: assets/git-pull-request.png
+  logo: assets/terminal.png
+  favicon: assets/terminal.png
   palette:
     scheme: dracula
     primary: deep purple
     accent: deep purple
   features:
-    - content.code.annotate
-    - content.code.copy
-    - content.tooltips
-    - navigation.footer
-    - navigation.indexes
-    - navigation.sections
-    - navigation.tabs
-    - navigation.top
-    - navigation.tracking
-    - navigation.instant
-    - navigation.instant.progress
-    - search.highlight
-    - search.share
-    - search.suggest
-    - toc.follow
+  - content.code.annotate
+  - content.code.copy
+  - content.tooltips
+  - navigation.footer
+  - navigation.indexes
+  - navigation.sections
+  - navigation.tabs
+  - navigation.top
+  - navigation.tracking
+  - navigation.instant
+  - navigation.instant.progress
+  - search.highlight
+  - search.share
+  - search.suggest
+  - toc.follow
 
 # Markdown extensions
 markdown_extensions:
-  - admonition
-  - attr_list
-  - footnotes
-  - md_in_html
-  - pymdownx.arithmatex:
-      generic: true
-  - pymdownx.blocks.caption
-  - pymdownx.details
-  - pymdownx.emoji:
-      emoji_index: !!python/name:material.extensions.emoji.twemoji
-      emoji_generator: !!python/name:material.extensions.emoji.to_svg
-  - pymdownx.highlight:
-      anchor_linenums: true
-      line_spans: __span
-      pygments_lang_class: true
-  - pymdownx.inlinehilite
-  - pymdownx.mark
-  - pymdownx.snippets
-  - pymdownx.superfences
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-  - pymdownx.tabbed
+- admonition
+- attr_list
+- footnotes
+- md_in_html
+- pymdownx.arithmatex:
+    generic: true
+- pymdownx.blocks.caption
+- pymdownx.details
+- pymdownx.emoji:
+    emoji_index: !!python/name:material.extensions.emoji.twemoji ""
+    emoji_generator: !!python/name:material.extensions.emoji.to_svg ""
+- pymdownx.highlight:
+    anchor_linenums: true
+    line_spans: __span
+    pygments_lang_class: true
+- pymdownx.inlinehilite
+- pymdownx.mark
+- pymdownx.snippets
+- pymdownx.superfences:
+    custom_fences:
+    - name: mermaid
+      class: mermaid
+- pymdownx.tabbed
 
 # Plugins
 plugins:
-  - mkdocs_pymdownx_material_extras
-  - search:
-      lang: en
+- mkdocs_pymdownx_material_extras
+- search:
+    lang: en
 
 extra_css:
-  - assets/stylesheets/extra.css
+- assets/stylesheets/extra.css

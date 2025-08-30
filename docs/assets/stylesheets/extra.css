@@ -19,6 +19,15 @@
     transform: scale(1.15);
   }
 }
+
 .heart {
-  animation: heart 1500ms infinite;
+  /* Default state without animation for accessibility */
+  transform: scale(1);
+}
+
+/* Only animate if user hasn't requested reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  .heart {
+    animation: heart 1500ms ease-in-out infinite;
+  }
 }
