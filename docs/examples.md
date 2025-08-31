@@ -263,12 +263,12 @@ jobs:
 
 !!! tip "Security and Environment Setup"
     **For enhanced security:**
-    
+
     - Pin all GitHub Actions to commit SHAs: Use SHA hashes instead of version tags to prevent supply chain attacks
     - Set explicit permissions in your workflow to limit token scope
-    
+
     **For environment secrets:**
-    
+
     - Create repository environments (Settings → Environments) named `development`, `staging`, and `production`
     - In each environment, define secrets with consistent names like `API_URL` and `API_KEY`
     - This allows matrix jobs to access environment-specific secrets automatically
