@@ -120,7 +120,7 @@ Access these in Insomnia as `{{API_KEY}}`, `{{BASE_URL}}`, etc.
 
 !!! warning "Environment Variables and Commands"
     Environment variables (`env-var`) **only work with the `collection` command**. The `test` command will display a warning if `env-var` is provided.
-    
+
     **For the `test` command**: Define environment variables within **Insomnia Environment files** instead of using the `env-var` input. This is the recommended approach for test suites as it provides better integration with Insomnia's testing framework.
 
 ## PR Comments and Permissions
