@@ -1,12 +1,12 @@
 name: "Question or Support"
-description: "Ask a question or request support for insomnia-action"
+description: "Ask a question or request support for insomnia-run"
 title: "[Question] <short description>"
 labels: [ question ]
 body:
 - type: markdown
   attributes:
     value: |
-      Have a question or need help? Please check the [Discussions](https://github.com/scarowar/insomnia-action/discussions) first. If your question isn't answered there, fill out the details below.
+      Have a question or need help? Please check the [Discussions](https://github.com/scarowar/insomnia-run/discussions) first. If your question isn't answered there, fill out the details below.
 - type: input
   id: summary
   attributes:

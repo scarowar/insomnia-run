@@ -774,7 +774,6 @@ def _build_report_header(
         overall_status: Overall test status (PASSED/FAILED)
         status_emoji: Emoji representing the status
         identifier: Test identifier or collection name
-        github_context: GitHub context information
 
     Returns:
         Formatted Markdown header string
@@ -926,9 +925,6 @@ def _build_failure_details_section() -> str:
     """
     Build details section with workflow logs link.
 
-    Args:
-        parsed_results: Parsed test results data
-
     Returns:
         Formatted Markdown string with details section
     """
@@ -1022,7 +1018,7 @@ def format_markdown_report(
 
 def main() -> None:
     """
-    Main entry point for the Insomnia Action report generator.
+    Main entry point for the Insomnia Run report generator.
 
     Validates environment, parses CLI output, generates reports, and sets GitHub outputs.
     Designed for enterprise-grade reliability and deterministic behavior.
@@ -1037,7 +1033,7 @@ def main() -> None:
     Raises:
         SystemExit: On validation errors or processing failures
     """
-    log_section("🚦 Insomnia Action Report Generation Start")
+    log_section("🚦 Insomnia Run Report Generation Start")
 
     required_envs = [
         "INSO_RAW_OUTPUT_ENCODED",
