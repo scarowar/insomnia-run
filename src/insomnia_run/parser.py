@@ -22,7 +22,7 @@ class TapParser:
                 self.state = "parsing"
                 report.tap_version = int(match.group(1))
                 continue
-            
+
             if self.state != "parsing":
                 continue
 
@@ -31,7 +31,7 @@ class TapParser:
                 report.plan_start = int(match.group(1))
                 report.plan_end = int(match.group(2))
                 continue
-            
+
             match = re.search(self.TEST_LINE, line)
             if match:
                 status_str = match.group(1)
@@ -42,7 +42,5 @@ class TapParser:
 
                 result = TestResult(id=test_id, status=status, description=description)
                 report.results.append(result)
-        
-        return report
 
-        
+        return report
