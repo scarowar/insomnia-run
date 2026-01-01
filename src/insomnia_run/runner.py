@@ -1,0 +1,2 @@
+class InsoRunner:
+    pass
