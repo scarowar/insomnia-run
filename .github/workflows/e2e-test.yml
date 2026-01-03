@@ -7,6 +7,10 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   test-collection:
     name: Test Collection Command
@@ -26,7 +30,7 @@ jobs:
         uses: ./
         with:
           command: collection
-          working-directory: tests/fixtures/sample_collection.yaml
+          working-directory: tests/fixtures/passing_suite.yaml
           environment: Test Environment
           request-timeout: "30000"
           disable-cert-validation: "true"
@@ -44,7 +48,7 @@ jobs:
         with:
           command: test
           working-directory: tests/fixtures/passing_test_suite.yaml
-          identifier: "wrk_test_passing_001"
+          identifier: "Todo API Tests"
           pr-comment: "true"
 
   test-failure-handling:
@@ -53,21 +57,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Test mixed results (should fail)
+      - name: Test mixed results - test suite (should fail)
         id: mixed-test
         uses: ./
         with:
           command: test
           working-directory: tests/fixtures/mixed_test_suite.yaml
-          identifier: "wrk_mixed_001"
+          identifier: "Mixed Results Suite"
           fail-on-error: "false"
           pr-comment: "true"
 
-      - name: Verify exit code captured
+      - name: Verify test suite exit code
         run: |
           echo "Exit code: ${{ steps.mixed-test.outputs.exit-code }}"
           if [ "${{ steps.mixed-test.outputs.exit-code }}" != "1" ]; then
-            echo "Expected exit code 1 for failing tests"
+            echo "Expected exit code 1 for failing test suite"
+            exit 1
+          fi
+
+      - name: Test mixed results - collection (should fail)
+        id: mixed-collection
+        uses: ./
+        with:
+          command: collection
+          working-directory: tests/fixtures/mixed_results_suite.yaml
+          environment: Test Environment
+          fail-on-error: "false"
+          pr-comment: "true"
+
+      - name: Verify collection exit code
+        run: |
+          echo "Exit code: ${{ steps.mixed-collection.outputs.exit-code }}"
+          if [ "${{ steps.mixed-collection.outputs.exit-code }}" != "1" ]; then
+            echo "Expected exit code 1 for failing collection"
             exit 1
           fi
 
