@@ -51,7 +51,7 @@ class TestInsoRunReport:
         assert report.passed_count == 0
         assert report.failed_count == 0
         assert report.skipped_count == 0
-        assert report.success_rate == 0.0
+        assert report.success_rate == pytest.approx(0.0)
 
     def test_all_passing_report(self):
         report = InsoRunReport(
@@ -65,7 +65,7 @@ class TestInsoRunReport:
         assert report.total_tests == 3
         assert report.passed_count == 3
         assert report.failed_count == 0
-        assert report.success_rate == 100.0
+        assert report.success_rate == pytest.approx(100.0)
 
     def test_mixed_results_report(self):
         report = InsoRunReport(
@@ -81,7 +81,7 @@ class TestInsoRunReport:
         assert report.passed_count == 2
         assert report.failed_count == 1
         assert report.skipped_count == 1
-        assert report.success_rate == 50.0
+        assert report.success_rate == pytest.approx(50.0)
 
     def test_default_run_type(self):
         report = InsoRunReport(plan_end=0)

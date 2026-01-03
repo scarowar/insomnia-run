@@ -14,7 +14,7 @@ console = Console()
 
 
 @app.command()
-def run_collection(
+def run_collection( # NOSONAR - CLI command requires many options
     working_dir: str = typer.Option(..., "--working-dir", "-w", help="Path to Insomnia export or .insomnia directory"),
     identifier: Optional[str] = typer.Option(None, "--identifier", "-i", help="Collection name or workspace ID"),
     environment: Optional[str] = typer.Option(None, "--env", "-e", help="Environment name to use"),
@@ -77,7 +77,7 @@ def run_collection(
         raise typer.Exit(code=1)
 
 @app.command()
-def run_test(
+def run_test( # NOSONAR - CLI command requires many options
     working_dir: str = typer.Option(..., "--working-dir", "-w", help="Path to Insomnia export or .insomnia directory"),
     identifier: Optional[str] = typer.Option(None, "--identifier", "-i", help="Test suite or API spec ID"),
     environment: Optional[str] = typer.Option(None, "--env", "-e", help="Environment name to use"),
