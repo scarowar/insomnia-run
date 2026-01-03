@@ -129,7 +129,7 @@ runs:
 
     # Step 3: Install uv (fast Python package manager)
     - name: 📦 Install uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
 
     # Step 4: Install insomnia-run CLI
     - name: 🔧 Install insomnia-run
