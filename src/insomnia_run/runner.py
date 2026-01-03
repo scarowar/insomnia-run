@@ -87,11 +87,22 @@ class InsoRunner:
 
         result = subprocess.run(cmd, capture_output=True, text=True)
 
+        full_output = result.stdout + result.stderr
+
         parser = TapParser()
         report = parser.parse(result.stdout)
-        report.raw_output = result.stdout
+        report.raw_output = full_output
         report.run_type = RunType.COLLECTION
         report.target_name = options.identifier
+
+        if result.returncode != 0 and report.total_tests == 0:
+            from .models import InsoResult, InsoStatus
+            error_msg = result.stderr.strip() or 'Unknown error'
+            report.results.append(InsoResult(
+                id=1,
+                status=InsoStatus.FAIL,
+                description=f"Inso CLI Error: {error_msg}"
+            ))
 
         return report
 
@@ -102,10 +113,21 @@ class InsoRunner:
 
         result = subprocess.run(cmd, capture_output=True, text=True)
 
+        full_output = result.stdout + result.stderr
+
         parser = TapParser()
         report = parser.parse(result.stdout)
-        report.raw_output = result.stdout
+        report.raw_output = full_output
         report.run_type = RunType.TEST
         report.target_name = options.identifier
+
+        if result.returncode != 0 and report.total_tests == 0:
+            from .models import InsoResult, InsoStatus
+            error_msg = result.stderr.strip() or 'Unknown error'
+            report.results.append(InsoResult(
+                id=1,
+                status=InsoStatus.FAIL,
+                description=f"Inso CLI Error: {error_msg}"
+            ))
 
         return report
