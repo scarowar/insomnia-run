@@ -7,14 +7,13 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pull-requests: write
-
 jobs:
   test-collection:
     name: Test Collection Command
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -40,6 +39,9 @@ jobs:
   test-test-command:
     name: Test Test Command
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -54,6 +56,9 @@ jobs:
   test-failure-handling:
     name: Test Failure Handling
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -96,6 +101,9 @@ jobs:
   test-env-vars:
     name: Test Environment Variables
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -122,6 +130,9 @@ jobs:
   test-outputs:
     name: Test Action Outputs
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
