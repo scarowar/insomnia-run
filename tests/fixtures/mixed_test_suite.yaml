@@ -1,91 +1,86 @@
-# Test Fixture: Mixed Results (Pass + Fail) Test Suite
-# Purpose: Validates that the CLI correctly reports failures for unit tests
-# Expected: 1 test suite, 3 tests, 2 passing, 1 failing
-type: spec.insomnia.rest/5.0
-name: Todo API - Mixed Results Test Suite
-meta:
-  id: wrk_test_mixed_001
-  created: 1735000000000
-  modified: 1735000000000
-  description: "Integration test fixture - mix of passing and failing unit tests"
-collection:
-  - url: https://jsonplaceholder.typicode.com/todos/1
-    name: GET Todo by ID
-    meta:
-      id: req_todo_mixed_001
-      created: 1735000000001
-      modified: 1735000000001
-      isPrivate: false
-      description: "Fetch a single todo item"
-      sortKey: -1
+_type: export
+__export_format: 4
+__export_date: 1735000000000
+__export_source: insomnia.desktop.app:v2024.1.0
+
+resources:
+  # 1. THE WORKSPACE
+  - _id: wrk_mixed_001
+    _type: workspace
+    parentId: null
+    name: Todo API - Mixed Results Suite
+    description: "Integration test fixture - mix of passing and failing tests"
+    scope: design
+
+  # 2. THE ENVIRONMENT
+  - _id: env_mixed_001
+    _type: environment
+    parentId: wrk_mixed_001
+    name: Test Environment
+    data: {}
+
+  # 3. REQUESTS
+  - _id: req_pass_001
+    _type: request
+    parentId: wrk_mixed_001
+    url: https://jsonplaceholder.typicode.com/todos/1
+    name: GET /todos/1 - Passing
     method: GET
     headers:
       - name: User-Agent
         value: insomnia-run/tests
-    settings:
-      renderRequestBody: true
-      encodeUrl: true
-      followRedirects: global
-      cookies:
-        send: true
-        store: true
-      rebuildPath: true
 
-cookieJar:
-  name: Default Jar
-  meta:
-    id: jar_test_mixed_001
-    created: 1735000000000
-    modified: 1735000000000
-environments:
-  name: Test Environment
-  data: {}
-  meta:
-    id: env_test_mixed_001
-    created: 1735000000000
-    modified: 1735000000000
-    isPrivate: false
-spec:
-  meta:
-    id: spc_mixed_001
-    created: 1735000000000
-    modified: 1735000000000
-testSuites:
-  - name: Todo API Tests - Mixed
-    meta:
-      id: uts_mixed_001
-      created: 1735000000010
-      modified: 1735000000010
-      sortKey: -1
-    tests:
-      - name: Status code is 200
-        meta:
-          id: ut_pass_001
-          created: 1735000000011
-          modified: 1735000000011
-          sortKey: -1
-        requestId: req_todo_mixed_001
-        code: |-
-          const response = await insomnia.send();
-          expect(response.status).to.equal(200);
-      - name: Status code is 404 (intentional failure)
-        meta:
-          id: ut_fail_001
-          created: 1735000000012
-          modified: 1735000000012
-          sortKey: -2
-        requestId: req_todo_mixed_001
-        code: |-
-          const response = await insomnia.send();
-          expect(response.status).to.equal(404);
-      - name: Response has userId field
-        meta:
-          id: ut_pass_002
-          created: 1735000000013
-          modified: 1735000000013
-          sortKey: -3
-        requestId: req_todo_mixed_001
-        code: |-
-          const response = await insomnia.send();
-          const data = JSON.parse(response.data);
-          expect(data.userId).to.exist;
+  - _id: req_fail_001
+    _type: request
+    parentId: wrk_mixed_001
+    url: https://jsonplaceholder.typicode.com/todos/1
+    name: GET /todos/1 - Intentional Failure
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+
+  - _id: req_pass_002
+    _type: request
+    parentId: wrk_mixed_001
+    url: https://jsonplaceholder.typicode.com/users/1
+    name: GET /users/1 - Passing
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+
+  # 4. TEST SUITE
+  - _id: uts_mixed_001
+    _type: unit_test_suite
+    parentId: wrk_mixed_001
+    name: Mixed Results Suite
+
+  # 5. INDIVIDUAL TESTS
+  - _id: ut_mixed_pass_001
+    _type: unit_test
+    parentId: uts_mixed_001
+    name: Status code is 200
+    requestId: req_pass_001
+    code: |-
+      const response = await insomnia.send();
+      expect(response.status).to.equal(200);
+
+  - _id: ut_mixed_fail_001
+    _type: unit_test
+    parentId: uts_mixed_001
+    name: Status code is 404 (intentional failure)
+    requestId: req_fail_001
+    code: |-
+      const response = await insomnia.send();
+      expect(response.status).to.equal(404);
+
+  - _id: ut_mixed_pass_002
+    _type: unit_test
+    parentId: uts_mixed_001
+    name: Response has name field
+    requestId: req_pass_002
+    code: |-
+      const response = await insomnia.send();
+      const user = JSON.parse(response.data);
+      expect(user.name).to.exist;
