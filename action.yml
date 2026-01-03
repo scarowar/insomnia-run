@@ -26,7 +26,7 @@ inputs:
   inso-version:
     description: "Version of Inso CLI to use."
     required: false
-    default: "12.1.0"
+    default: "12.2.0"
 
   identifier:
     required: false
@@ -91,9 +91,16 @@ runs:
   using: composite
   steps:
     - name: 🧰 Setup Inso CLI
-      uses: kong/setup-inso@v2
-      with:
-        inso-version: ${{ inputs.inso-version }}
+      shell: bash
+      run: |
+        INSO_VERSION="${{ inputs.inso-version }}"
+        echo "Installing inso version ${INSO_VERSION}..."
+        curl -sL "https://github.com/Kong/insomnia/releases/download/core%40${INSO_VERSION}/inso-linux-x64-${INSO_VERSION}.tar.xz" -o /tmp/inso.tar.xz
+        mkdir -p /tmp/inso
+        tar -xJf /tmp/inso.tar.xz -C /tmp/inso
+        sudo mv /tmp/inso/inso /usr/local/bin/inso
+        sudo chmod +x /usr/local/bin/inso
+        inso --version
 
     - name: 🐍 Setup Python
       uses: actions/setup-python@v5
