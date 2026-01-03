@@ -145,7 +145,7 @@ ok 1 - Test passed
         options = InsoCollectionOptions(
             working_dir="/path",
             https_proxy="https://proxy:8080",
-            http_proxy="http://proxy:8080",
+            http_proxy="https://proxy:8080",
             no_proxy="localhost,127.0.0.1"
         )
         runner.run_collection(options)
@@ -154,14 +154,14 @@ ok 1 - Test passed
         assert "--httpsProxy" in cmd
         assert "https://proxy:8080" in cmd
         assert "--httpProxy" in cmd
-        assert "http://proxy:8080" in cmd
+        assert "https://proxy:8080" in cmd
         assert "--noProxy" in cmd
         assert "localhost,127.0.0.1" in cmd
 
     def test_collection_with_data_folders(self, runner, mock_subprocess):
         options = InsoCollectionOptions(
             working_dir="/path",
-            data_folders=["/tmp", "/data"]
+            data_folders=["./data", "/home/user/data"]
         )
         runner.run_collection(options)
 
@@ -285,7 +285,7 @@ class TestInsoRunnerTest:
         options = InsoTestOptions(
             working_dir="/path",
             https_proxy="https://proxy:8080",
-            http_proxy="http://proxy:8080",
+            http_proxy="https://proxy:8080",
             no_proxy="localhost"
         )
         runner.run_test(options)

@@ -128,7 +128,7 @@ jobs:
     command: collection
     working-directory: .insomnia
     https-proxy: "https://proxy.example.com:8080"
-    http-proxy: "http://proxy.example.com:8080"
+    http-proxy: "https://proxy.example.com:8080"
     no-proxy: "localhost,127.0.0.1"
 ```
 

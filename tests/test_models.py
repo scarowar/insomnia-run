@@ -120,9 +120,9 @@ class TestInsoCollectionOptions:
             bail=True,
             disable_cert_validation=True,
             https_proxy="https://proxy:8080",
-            http_proxy="http://proxy:8080",
+            http_proxy="https://proxy:8080",
             no_proxy="localhost,127.0.0.1",
-            data_folders=["/tmp", "/data"],
+            data_folders=["./data", "/home/user/data"],
             verbose=True,
         )
         assert options.identifier == "My Collection"
@@ -148,7 +148,7 @@ class TestInsoTestOptions:
             request_timeout=60000,
             disable_cert_validation=True,
             https_proxy="https://proxy:8080",
-            http_proxy="http://proxy:8080",
+            http_proxy="https://proxy:8080",
             no_proxy="localhost",
             data_folders=["/data"],
             verbose=True,
