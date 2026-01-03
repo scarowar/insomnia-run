@@ -1,6 +1,6 @@
 [project]
 name = "insomnia-run"
-version = "0.0.1"
+version = "0.1.0"
 description = "CLI runner for Insomnia API tests and collections."
 readme = "README.md"
 authors = [
