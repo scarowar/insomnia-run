@@ -1,0 +1,60 @@
+# Test Fixture: Environment Variable Usage
+# Purpose: Tests that environment variables are correctly passed to requests
+# Uses: {{ _.API_TOKEN }} template syntax in Insomnia
+type: collection.insomnia.rest/5.0
+name: Env Var Test Collection
+meta:
+  id: wrk_env_test_001
+  created: 1735000000000
+  modified: 1735000000000
+  description: "Test fixture for environment variable passthrough"
+collection:
+  - url: https://httpbin.org/headers
+    name: Check Headers with Auth
+    meta:
+      id: req_auth_check_001
+      created: 1735000000001
+      modified: 1735000000001
+      isPrivate: false
+      description: "Verify API_TOKEN is passed in Authorization header"
+      sortKey: -1
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+      - name: Authorization
+        value: "Bearer {{ _.API_TOKEN }}"
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+    afterScript: |-
+      if (insomnia.response.status === 200) {
+        const data = JSON.parse(insomnia.response.data);
+        const authHeader = data.headers.Authorization || data.headers.authorization || '';
+        if (authHeader.includes('test_secret_token')) {
+          insomnia.test('API_TOKEN was passed correctly', () => true);
+        } else {
+          insomnia.test('API_TOKEN was passed correctly', () => {
+            throw new Error('Authorization header did not contain expected token: ' + authHeader);
+          });
+        }
+      }
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_env_test_001
+    created: 1735000000000
+    modified: 1735000000000
+environments:
+  name: Test Environment
+  data: {}
+  meta:
+    id: env_env_test_001
+    created: 1735000000000
+    modified: 1735000000000
+    isPrivate: false

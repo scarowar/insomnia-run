@@ -1,0 +1,91 @@
+# Test Fixture: Mixed Results (Pass + Fail) Test Suite
+# Purpose: Validates that the CLI correctly reports failures for unit tests
+# Expected: 1 test suite, 3 tests, 2 passing, 1 failing
+type: spec.insomnia.rest/5.0
+name: Todo API - Mixed Results Test Suite
+meta:
+  id: wrk_test_mixed_001
+  created: 1735000000000
+  modified: 1735000000000
+  description: "Integration test fixture - mix of passing and failing unit tests"
+collection:
+  - url: https://jsonplaceholder.typicode.com/todos/1
+    name: GET Todo by ID
+    meta:
+      id: req_todo_mixed_001
+      created: 1735000000001
+      modified: 1735000000001
+      isPrivate: false
+      description: "Fetch a single todo item"
+      sortKey: -1
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_test_mixed_001
+    created: 1735000000000
+    modified: 1735000000000
+environments:
+  name: Test Environment
+  data: {}
+  meta:
+    id: env_test_mixed_001
+    created: 1735000000000
+    modified: 1735000000000
+    isPrivate: false
+spec:
+  meta:
+    id: spc_mixed_001
+    created: 1735000000000
+    modified: 1735000000000
+testSuites:
+  - name: Todo API Tests - Mixed
+    meta:
+      id: uts_mixed_001
+      created: 1735000000010
+      modified: 1735000000010
+      sortKey: -1
+    tests:
+      - name: Status code is 200
+        meta:
+          id: ut_pass_001
+          created: 1735000000011
+          modified: 1735000000011
+          sortKey: -1
+        requestId: req_todo_mixed_001
+        code: |-
+          const response = await insomnia.send();
+          expect(response.status).to.equal(200);
+      - name: Status code is 404 (intentional failure)
+        meta:
+          id: ut_fail_001
+          created: 1735000000012
+          modified: 1735000000012
+          sortKey: -2
+        requestId: req_todo_mixed_001
+        code: |-
+          const response = await insomnia.send();
+          expect(response.status).to.equal(404);
+      - name: Response has userId field
+        meta:
+          id: ut_pass_002
+          created: 1735000000013
+          modified: 1735000000013
+          sortKey: -3
+        requestId: req_todo_mixed_001
+        code: |-
+          const response = await insomnia.send();
+          const data = JSON.parse(response.data);
+          expect(data.userId).to.exist;

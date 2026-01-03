@@ -1,0 +1,107 @@
+# Test Fixture: Mixed Results (Pass + Fail)
+# Purpose: Validates that the CLI correctly reports failures
+# Expected: 2 passing tests, 1 failing test
+type: collection.insomnia.rest/5.0
+name: Todo API - Mixed Results Suite
+meta:
+  id: wrk_mixed_001
+  created: 1735000000000
+  modified: 1735000000000
+  description: "Integration test fixture - mix of passing and failing tests"
+collection:
+  - url: https://jsonplaceholder.typicode.com/todos/1
+    name: GET /todos/1 - Passing
+    meta:
+      id: req_pass_001
+      created: 1735000000001
+      modified: 1735000000001
+      isPrivate: false
+      description: "This test should pass"
+      sortKey: -1
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+    scripts:
+      afterResponse: |
+        insomnia.test('Status code is 200', () => {
+            insomnia.expect(insomnia.response.code).to.eql(200);
+        });
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+
+  - url: https://jsonplaceholder.typicode.com/todos/1
+    name: GET /todos/1 - Intentional Failure
+    meta:
+      id: req_fail_001
+      created: 1735000000002
+      modified: 1735000000002
+      isPrivate: false
+      description: "This test intentionally fails (expects 404)"
+      sortKey: -2
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+    scripts:
+      afterResponse: |
+        insomnia.test('Status code is 404 (intentional failure)', () => {
+            insomnia.expect(insomnia.response.code).to.eql(404);
+        });
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+
+  - url: https://jsonplaceholder.typicode.com/users/1
+    name: GET /users/1 - Passing
+    meta:
+      id: req_pass_002
+      created: 1735000000003
+      modified: 1735000000003
+      isPrivate: false
+      description: "This test should pass"
+      sortKey: -3
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+    scripts:
+      afterResponse: |
+        insomnia.test('Response has name field', () => {
+            const user = insomnia.response.json();
+            insomnia.expect(user.name).to.exist;
+        });
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_mixed_001
+    created: 1735000000000
+    modified: 1735000000000
+environments:
+  name: Test Environment
+  data: {}
+  meta:
+    id: env_mixed_001
+    created: 1735000000000
+    modified: 1735000000000
+    isPrivate: false

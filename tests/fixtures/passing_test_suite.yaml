@@ -1,0 +1,122 @@
+# Test Fixture: All Tests Passing (Test Suite)
+# Purpose: Validates that the CLI correctly reports 100% success for unit tests
+# Expected: 2 test suites, 3 total tests, all passing
+type: spec.insomnia.rest/5.0
+name: Todo API - Passing Test Suite
+meta:
+  id: wrk_test_passing_001
+  created: 1735000000000
+  modified: 1735000000000
+  description: "Integration test fixture - all unit tests should pass"
+collection:
+  - url: https://jsonplaceholder.typicode.com/todos/1
+    name: GET Todo by ID
+    meta:
+      id: req_todo_get_001
+      created: 1735000000001
+      modified: 1735000000001
+      isPrivate: false
+      description: "Fetch a single todo item"
+      sortKey: -1
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+
+  - url: https://jsonplaceholder.typicode.com/users/1
+    name: GET User by ID
+    meta:
+      id: req_user_get_001
+      created: 1735000000002
+      modified: 1735000000002
+      isPrivate: false
+      description: "Fetch user profile"
+      sortKey: -2
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_test_passing_001
+    created: 1735000000000
+    modified: 1735000000000
+environments:
+  name: Test Environment
+  data: {}
+  meta:
+    id: env_test_passing_001
+    created: 1735000000000
+    modified: 1735000000000
+    isPrivate: false
+spec:
+  meta:
+    id: spc_passing_001
+    created: 1735000000000
+    modified: 1735000000000
+testSuites:
+  - name: Todo API Tests
+    meta:
+      id: uts_todo_001
+      created: 1735000000010
+      modified: 1735000000010
+      sortKey: -1
+    tests:
+      - name: GET /todos/1 returns 200
+        meta:
+          id: ut_todo_200_001
+          created: 1735000000011
+          modified: 1735000000011
+          sortKey: -1
+        requestId: req_todo_get_001
+        code: |-
+          const response = await insomnia.send();
+          expect(response.status).to.equal(200);
+      - name: GET /todos/1 returns valid JSON
+        meta:
+          id: ut_todo_json_001
+          created: 1735000000012
+          modified: 1735000000012
+          sortKey: -2
+        requestId: req_todo_get_001
+        code: |-
+          const response = await insomnia.send();
+          const data = JSON.parse(response.data);
+          expect(data.id).to.equal(1);
+
+  - name: User API Tests
+    meta:
+      id: uts_user_001
+      created: 1735000000020
+      modified: 1735000000020
+      sortKey: -2
+    tests:
+      - name: GET /users/1 returns user with email
+        meta:
+          id: ut_user_email_001
+          created: 1735000000021
+          modified: 1735000000021
+          sortKey: -1
+        requestId: req_user_get_001
+        code: |-
+          const response = await insomnia.send();
+          const user = JSON.parse(response.data);
+          expect(user.email).to.exist;

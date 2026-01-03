@@ -1,17 +1,17 @@
 import re
-from .models import TestResult, TestStatus, TestRunReport
+from .models import InsoResult, InsoStatus, InsoRunReport
 
 
 class TapParser:
     def __init__(self):
         self.state = "searching"
 
-    VERSION = "^TAP version (\d+)$"
-    PLAN = "^(\d+)\.\.(\d+)$"
-    TEST_LINE = "^(ok|not ok)\s+(\d+)\s+(?:-\s+)?(.*)$"
+    VERSION = r"^TAP version (\d+)$"
+    PLAN = r"^(\d+)\.\.(\d+)$"
+    TEST_LINE = r"^(ok|not ok)\s+(\d+)\s+(?:-\s+)?(.*)$"
 
-    def parse(self, output: str) -> TestRunReport:
-        report = TestRunReport(plan_end=0)
+    def parse(self, output: str) -> InsoRunReport:
+        report = InsoRunReport(plan_end=0)
 
         lines = output.strip().split('\n')
         for line in lines:
@@ -21,9 +21,6 @@ class TapParser:
             if match:
                 self.state = "parsing"
                 report.tap_version = int(match.group(1))
-                continue
-            
-            if self.state != "parsing":
                 continue
 
             match = re.search(self.PLAN, line)
@@ -38,9 +35,9 @@ class TapParser:
                 test_id = int(match.group(2))
                 description = match.group(3)
 
-                status = TestStatus.PASS if status_str == "ok" else TestStatus.FAIL
+                status = InsoStatus.PASS if status_str == "ok" else InsoStatus.FAIL
 
-                result = TestResult(id=test_id, status=status, description=description)
+                result = InsoResult(id=test_id, status=status, description=description)
                 report.results.append(result)
         
         return report

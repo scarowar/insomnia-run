@@ -9,6 +9,7 @@ pip-log.txt
 # Build output (if any)
 dist/
 build/
+site/
 
 # OS generated files
 .DS_Store
