@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: scarowar/insomnia-run@v0.1.0
         with:
           command: collection

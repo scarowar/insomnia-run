@@ -16,14 +16,14 @@ ok 1 - Check if status is 200
 
 Test: 1 passed, 1 total
     """
-    
+
     report = TapParser().parse(raw_output)
-    
+
     assert report.tap_version == 13
     assert report.plan_start == 1
     assert report.plan_end == 1
     assert len(report.results) == 1
-    
+
     result = report.results[0]
     assert result.id == 1
     assert result.status == InsoStatus.PASS

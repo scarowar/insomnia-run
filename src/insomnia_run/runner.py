@@ -8,7 +8,7 @@ class InsoRunner:
 
         if options.identifier:
             cmd.append(options.identifier)
-        
+
         cmd.extend(["-w", options.working_dir, "--reporter", "tap", "--ci"])
 
         if options.environment:
@@ -54,11 +54,11 @@ class InsoRunner:
 
         if options.no_proxy:
             cmd.extend(["--noProxy", options.no_proxy])
-        
+
         if options.data_folders:
             for folder in options.data_folders:
                 cmd.extend(["--dataFolders", folder])
-        
+
         if options.verbose:
             cmd.append("--verbose")
 
@@ -72,13 +72,13 @@ class InsoRunner:
         report.target_name = options.identifier
 
         return report
-    
+
     def run_test(self, options: InsoTestOptions) -> InsoRunReport:
         cmd = ["inso", "run", "test"]
 
         if options.identifier:
             cmd.append(options.identifier)
-        
+
         cmd.extend(["-w", options.working_dir, "--reporter", "tap", "--ci"])
 
         if options.environment:

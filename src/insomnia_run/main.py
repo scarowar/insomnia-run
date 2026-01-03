@@ -43,7 +43,7 @@ def run_collection(
         for pair in env_var:
             key, value = pair.split("=", 1)
             env_var_dict[key] = value
-    
+
     options = InsoCollectionOptions(
         working_dir=working_dir,
         identifier=identifier,
@@ -64,15 +64,15 @@ def run_collection(
         data_folders=data_folders,
         verbose=verbose,
     )
-    
+
     runner = InsoRunner()
     report = runner.run_collection(options)
-    
+
     reporter = Reporter()
     markdown = reporter.generate_markdown(report, workflow_url=workflow_url)
-    
+
     print(markdown)
-    
+
     if report.failed_count > 0:
         raise typer.Exit(code=1)
 
@@ -94,7 +94,7 @@ def run_test(
     workflow_url: Optional[str] = typer.Option(None, "--workflow-url", help="GitHub workflow URL for report links"),
 ):
     """Run Insomnia unit tests and generate a markdown report."""
-    
+
     options = InsoTestOptions(
         working_dir=working_dir,
         identifier=identifier,
@@ -110,15 +110,15 @@ def run_test(
         data_folders=data_folders,
         verbose=verbose,
     )
-    
+
     runner = InsoRunner()
     report = runner.run_test(options)
-    
+
     reporter = Reporter()
     markdown = reporter.generate_markdown(report, workflow_url=workflow_url)
-    
+
     print(markdown)
-    
+
     if report.failed_count > 0:
         raise typer.Exit(code=1)
 
