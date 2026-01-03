@@ -1,268 +1,217 @@
 name: Insomnia Run
 description: Run Insomnia Collections & Tests using the Inso CLI with PR comment reporting.
 author: Sourab Kanthavar <@scarowar>
+
 branding:
   icon: terminal
   color: purple
 
 inputs:
-  # --- Required ---
   command:
     description: 'The command to run: "test" or "collection".'
     required: true
+    type: choice
+    options:
+      - test
+      - collection
+
   working-directory:
     description: "Path to Insomnia export file or .insomnia directory."
     required: true
 
-  # --- Authentication ---
   github-token:
     description: "GitHub token for posting PR comments. Uses GITHUB_TOKEN if not provided."
     required: false
 
-  # --- Inso CLI Configuration ---
   inso-version:
     description: "Version of Inso CLI to use."
     required: false
     default: "10.3.1"
+
   identifier:
-    description: "Test suite ID, collection name, or workspace ID."
     required: false
   environment:
-    description: "Insomnia environment name to use."
     required: false
 
-  # --- Collection Options ---
   request-name-pattern:
-    description: "Regex to filter request names (collection command)."
     required: false
   item:
-    description: "Request or folder IDs to run, comma-separated (collection command)."
     required: false
   globals:
-    description: "Global environment file or ID (collection command)."
     required: false
   delay-request:
-    description: "Delay in milliseconds between requests (collection command)."
     required: false
   iteration-count:
-    description: "Number of times to run the collection (collection command)."
     required: false
   iteration-data:
-    description: "Path or URL to iteration data file (collection command)."
     required: false
   env-var:
-    description: |
-      Environment variable overrides (collection command).
-      Format: key=value, one per line.
     required: false
 
-  # --- Test Options ---
   test-name-pattern:
-    description: "Regex to filter test names (test command)."
     required: false
   keep-file:
-    description: "Keep generated test file (test command)."
     required: false
     default: "false"
 
-  # --- Common Options ---
   bail:
-    description: "Stop on first failure."
     required: false
     default: "false"
   request-timeout:
-    description: "Request timeout in milliseconds."
     required: false
   disable-cert-validation:
-    description: "Disable SSL certificate validation."
     required: false
     default: "false"
   https-proxy:
-    description: "HTTPS proxy URL."
     required: false
   http-proxy:
-    description: "HTTP proxy URL."
     required: false
   no-proxy:
-    description: "Comma-separated list of hosts to bypass proxy."
     required: false
   data-folders:
-    description: "Folders Insomnia can access, comma-separated."
     required: false
   verbose:
-    description: "Enable verbose logging."
     required: false
     default: "false"
 
-  # --- Reporting ---
   pr-comment:
-    description: "Post results as a PR comment."
     required: false
     default: "true"
   fail-on-error:
-    description: "Fail the action if tests fail."
     required: false
     default: "true"
 
 outputs:
   markdown:
-    description: "The generated Markdown report."
     value: ${{ steps.run-cli.outputs.markdown }}
   exit-code:
-    description: "Exit code from the CLI (0 = success, 1 = failures)."
     value: ${{ steps.run-cli.outputs.exit-code }}
 
 runs:
   using: composite
   steps:
-    # Step 1: Setup Inso CLI
     - name: 🧰 Setup Inso CLI
       uses: kong/setup-inso@v2
       with:
         inso-version: ${{ inputs.inso-version }}
 
-    # Step 2: Setup Python (>=3.10 for compatibility)
     - name: 🐍 Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: ">=3.10"
 
-    # Step 3: Install uv (fast Python package manager)
     - name: 📦 Install uv
       uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867
 
-    # Step 4: Install insomnia-run CLI
     - name: 🔧 Install insomnia-run
       shell: bash
-      run: uv pip install --system ${{ github.action_path }}
+      run: uv pip install --system "$GITHUB_ACTION_PATH"
 
-    # Step 5: Run the CLI
     - name: 🚀 Run Insomnia
       id: run-cli
       shell: bash
       env:
+        COMMAND: ${{ inputs.command }}
+        WORKING_DIR: ${{ inputs.working-directory }}
+        IDENTIFIER: ${{ inputs.identifier }}
+        ENVIRONMENT: ${{ inputs.environment }}
+
+        REQUEST_NAME_PATTERN: ${{ inputs.request-name-pattern }}
+        ITEM: ${{ inputs.item }}
+        GLOBALS: ${{ inputs.globals }}
+        DELAY_REQUEST: ${{ inputs.delay-request }}
+        ITERATION_COUNT: ${{ inputs.iteration-count }}
+        ITERATION_DATA: ${{ inputs.iteration-data }}
+        ENV_VAR: ${{ inputs.env-var }}
+
+        TEST_NAME_PATTERN: ${{ inputs.test-name-pattern }}
+        KEEP_FILE: ${{ inputs.keep-file }}
+
+        BAIL: ${{ inputs.bail }}
+        REQUEST_TIMEOUT: ${{ inputs.request-timeout }}
+        DISABLE_CERT_VALIDATION: ${{ inputs.disable-cert-validation }}
+
+        HTTPS_PROXY: ${{ inputs.https-proxy }}
+        HTTP_PROXY: ${{ inputs.http-proxy }}
+        NO_PROXY: ${{ inputs.no-proxy }}
+        DATA_FOLDERS: ${{ inputs.data-folders }}
+        VERBOSE: ${{ inputs.verbose }}
+
         WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
       run: |
         set +e
 
-        # Build command based on inputs
-        if [[ "${{ inputs.command }}" == "collection" ]]; then
-          CMD="insomnia-run run-collection"
-        elif [[ "${{ inputs.command }}" == "test" ]]; then
-          CMD="insomnia-run run-test"
+        if [[ "$COMMAND" == "collection" ]]; then
+          CMD=(insomnia-run run-collection)
         else
-          echo "::error::Invalid command: ${{ inputs.command }}. Must be 'test' or 'collection'."
-          exit 1
+          CMD=(insomnia-run run-test)
         fi
 
-        # Required options
-        CMD="$CMD --working-dir '${{ inputs.working-directory }}'"
+        CMD+=(--working-dir "$WORKING_DIR")
+        [[ -n "$IDENTIFIER" ]] && CMD+=(--identifier "$IDENTIFIER")
+        [[ -n "$ENVIRONMENT" ]] && CMD+=(--env "$ENVIRONMENT")
 
-        # Optional: identifier
-        if [[ -n "${{ inputs.identifier }}" ]]; then
-          CMD="$CMD --identifier '${{ inputs.identifier }}'"
-        fi
+        if [[ "$COMMAND" == "collection" ]]; then
+          [[ -n "$REQUEST_NAME_PATTERN" ]] && CMD+=(--request-name-pattern "$REQUEST_NAME_PATTERN")
+          [[ -n "$GLOBALS" ]] && CMD+=(--globals "$GLOBALS")
+          [[ -n "$DELAY_REQUEST" ]] && CMD+=(--delay-request "$DELAY_REQUEST")
+          [[ -n "$ITERATION_COUNT" ]] && CMD+=(--iteration-count "$ITERATION_COUNT")
+          [[ -n "$ITERATION_DATA" ]] && CMD+=(--iteration-data "$ITERATION_DATA")
 
-        # Optional: environment
-        if [[ -n "${{ inputs.environment }}" ]]; then
-          CMD="$CMD --env '${{ inputs.environment }}'"
-        fi
-
-        # Collection-specific options
-        if [[ "${{ inputs.command }}" == "collection" ]]; then
-          if [[ -n "${{ inputs.request-name-pattern }}" ]]; then
-            CMD="$CMD --request-name-pattern '${{ inputs.request-name-pattern }}'"
-          fi
-          if [[ -n "${{ inputs.item }}" ]]; then
-            IFS=',' read -ra ITEMS <<< "${{ inputs.item }}"
-            for item in "${ITEMS[@]}"; do
-              CMD="$CMD --item '$item'"
+          if [[ -n "$ITEM" ]]; then
+            IFS=',' read -ra ITEMS <<< "$ITEM"
+            for i in "${ITEMS[@]}"; do
+              CMD+=(--item "$i")
             done
           fi
-          if [[ -n "${{ inputs.globals }}" ]]; then
-            CMD="$CMD --globals '${{ inputs.globals }}'"
-          fi
-          if [[ -n "${{ inputs.delay-request }}" ]]; then
-            CMD="$CMD --delay-request '${{ inputs.delay-request }}'"
-          fi
-          if [[ -n "${{ inputs.iteration-count }}" ]]; then
-            CMD="$CMD --iteration-count '${{ inputs.iteration-count }}'"
-          fi
-          if [[ -n "${{ inputs.iteration-data }}" ]]; then
-            CMD="$CMD --iteration-data '${{ inputs.iteration-data }}'"
-          fi
-          if [[ -n "${{ inputs.env-var }}" ]]; then
+
+          if [[ -n "$ENV_VAR" ]]; then
             while IFS= read -r line; do
-              if [[ -n "$line" ]]; then
-                CMD="$CMD --env-var '$line'"
-              fi
-            done <<< "${{ inputs.env-var }}"
+              [[ -n "$line" ]] && CMD+=(--env-var "$line")
+            done <<< "$ENV_VAR"
           fi
         fi
 
-        # Test-specific options
-        if [[ "${{ inputs.command }}" == "test" ]]; then
-          if [[ -n "${{ inputs.test-name-pattern }}" ]]; then
-            CMD="$CMD --test-name-pattern '${{ inputs.test-name-pattern }}'"
-          fi
-          if [[ "${{ inputs.keep-file }}" == "true" ]]; then
-            CMD="$CMD --keep-file"
-          fi
+        if [[ "$COMMAND" == "test" ]]; then
+          [[ -n "$TEST_NAME_PATTERN" ]] && CMD+=(--test-name-pattern "$TEST_NAME_PATTERN")
+          [[ "$KEEP_FILE" == "true" ]] && CMD+=(--keep-file)
         fi
 
-        # Common options
-        if [[ "${{ inputs.bail }}" == "true" ]]; then
-          CMD="$CMD --bail"
-        fi
-        if [[ -n "${{ inputs.request-timeout }}" ]]; then
-          CMD="$CMD --request-timeout '${{ inputs.request-timeout }}'"
-        fi
-        if [[ "${{ inputs.disable-cert-validation }}" == "true" ]]; then
-          CMD="$CMD --disable-cert-validation"
-        fi
-        if [[ -n "${{ inputs.https-proxy }}" ]]; then
-          CMD="$CMD --https-proxy '${{ inputs.https-proxy }}'"
-        fi
-        if [[ -n "${{ inputs.http-proxy }}" ]]; then
-          CMD="$CMD --http-proxy '${{ inputs.http-proxy }}'"
-        fi
-        if [[ -n "${{ inputs.no-proxy }}" ]]; then
-          CMD="$CMD --no-proxy '${{ inputs.no-proxy }}'"
-        fi
-        if [[ -n "${{ inputs.data-folders }}" ]]; then
-          IFS=',' read -ra FOLDERS <<< "${{ inputs.data-folders }}"
-          for folder in "${FOLDERS[@]}"; do
-            CMD="$CMD --data-folders '$folder'"
+        [[ "$BAIL" == "true" ]] && CMD+=(--bail)
+        [[ -n "$REQUEST_TIMEOUT" ]] && CMD+=(--request-timeout "$REQUEST_TIMEOUT")
+        [[ "$DISABLE_CERT_VALIDATION" == "true" ]] && CMD+=(--disable-cert-validation)
+        [[ -n "$HTTPS_PROXY" ]] && CMD+=(--https-proxy "$HTTPS_PROXY")
+        [[ -n "$HTTP_PROXY" ]] && CMD+=(--http-proxy "$HTTP_PROXY")
+        [[ -n "$NO_PROXY" ]] && CMD+=(--no-proxy "$NO_PROXY")
+        [[ "$VERBOSE" == "true" ]] && CMD+=(--verbose)
+
+        if [[ -n "$DATA_FOLDERS" ]]; then
+          IFS=',' read -ra FOLDERS <<< "$DATA_FOLDERS"
+          for f in "${FOLDERS[@]}"; do
+            CMD+=(--data-folders "$f")
           done
         fi
-        if [[ "${{ inputs.verbose }}" == "true" ]]; then
-          CMD="$CMD --verbose"
-        fi
 
-        # Always add workflow URL
-        CMD="$CMD --workflow-url '$WORKFLOW_URL'"
+        CMD+=(--workflow-url "$WORKFLOW_URL")
 
-        # Execute and capture output
-        echo "::group::Running: $CMD"
-        MARKDOWN=$(eval $CMD)
+        echo "::group::Running Insomnia"
+        MARKDOWN="$("${CMD[@]}")"
         EXIT_CODE=$?
         echo "::endgroup::"
 
-        # Set outputs
-        echo "exit-code=$EXIT_CODE" >> $GITHUB_OUTPUT
+        echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
 
-        # Handle multiline markdown output
         EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-        echo "markdown<<$EOF" >> $GITHUB_OUTPUT
-        echo "$MARKDOWN" >> $GITHUB_OUTPUT
-        echo "$EOF" >> $GITHUB_OUTPUT
+        {
+          echo "markdown<<$EOF"
+          echo "$MARKDOWN"
+          echo "$EOF"
+        } >> "$GITHUB_OUTPUT"
 
-        # Print summary
-        echo "$MARKDOWN" >> $GITHUB_STEP_SUMMARY
+        echo "$MARKDOWN" >> "$GITHUB_STEP_SUMMARY"
+        exit 0
 
-        exit 0  # Don't fail here - we handle it later
-
-    # Step 6: Post PR Comment
     - name: 💬 Post PR Comment
       if: inputs.pr-comment == 'true' && github.event_name == 'pull_request'
       uses: peter-evans/create-or-update-comment@v4
@@ -271,7 +220,6 @@ runs:
         issue-number: ${{ github.event.pull_request.number }}
         body: ${{ steps.run-cli.outputs.markdown }}
 
-    # Step 7: Fail if tests failed and fail-on-error is true
     - name: ❌ Check for Failures
       if: inputs.fail-on-error == 'true' && steps.run-cli.outputs.exit-code != '0'
       shell: bash
