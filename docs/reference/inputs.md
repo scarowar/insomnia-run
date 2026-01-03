@@ -17,7 +17,7 @@
 | `pr-comment` | `true` | Post results to PR |
 | `fail-on-error` | `true` | Fail workflow on test failure |
 | `verbose` | `false` | Enable debug logging |
-| `inso-version` | `12.2.0` | Inso CLI version |
+| `inso-version` | `10.1.0` | Inso CLI version |
 
 ## Collection Only
 

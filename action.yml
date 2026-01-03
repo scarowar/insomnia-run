@@ -23,7 +23,7 @@ inputs:
   inso-version:
     description: "Version of Inso CLI to use."
     required: false
-    default: "12.2.0"
+    default: "10.1.0"
   identifier:
     description: "Test suite ID, collection name, or workspace ID."
     required: false
