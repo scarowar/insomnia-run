@@ -1,0 +1,108 @@
+# Test Fixture: All Tests Passing
+# Purpose: Validates that the CLI correctly reports 100% success
+# Expected: 3 passing tests, 0 failures
+type: collection.insomnia.rest/5.0
+name: Todo API - Passing Suite
+meta:
+  id: wrk_passing_001
+  created: 1735000000000
+  modified: 1735000000000
+  description: "Integration test fixture - all tests should pass"
+collection:
+  - url: https://jsonplaceholder.typicode.com/todos/1
+    name: GET /todos/1
+    meta:
+      id: req_get_todo_001
+      created: 1735000000001
+      modified: 1735000000001
+      isPrivate: false
+      description: "Fetch a single todo item"
+      sortKey: -1
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+    scripts:
+      afterResponse: |
+        insomnia.test('Status code is 200', () => {
+            insomnia.expect(insomnia.response.code).to.eql(200);
+        });
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+
+  - url: https://jsonplaceholder.typicode.com/todos
+    name: GET /todos (list)
+    meta:
+      id: req_get_todos_list
+      created: 1735000000002
+      modified: 1735000000002
+      isPrivate: false
+      description: "Fetch list of todos"
+      sortKey: -2
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+    scripts:
+      afterResponse: |
+        insomnia.test('Response is an array', () => {
+            const data = insomnia.response.json();
+            insomnia.expect(Array.isArray(data)).to.be.true;
+        });
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+
+  - url: https://jsonplaceholder.typicode.com/users/1
+    name: GET /users/1
+    meta:
+      id: req_get_user_001
+      created: 1735000000003
+      modified: 1735000000003
+      isPrivate: false
+      description: "Fetch user profile"
+      sortKey: -3
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+    scripts:
+      afterResponse: |
+        insomnia.test('User has email field', () => {
+            const user = insomnia.response.json();
+            insomnia.expect(user.email).to.exist;
+        });
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_passing_001
+    created: 1735000000000
+    modified: 1735000000000
+environments:
+  name: Test Environment
+  data: {}
+  meta:
+    id: env_passing_001
+    created: 1735000000000
+    modified: 1735000000000
+    isPrivate: false

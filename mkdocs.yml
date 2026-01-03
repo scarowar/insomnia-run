@@ -1,0 +1,88 @@
+# Project information
+site_name: Insomnia Run
+site_description: GitHub Action for running Insomnia API tests with instant PR feedback
+site_url: https://scarowar.github.io/insomnia-run/
+repo_url: https://github.com/scarowar/insomnia-run
+repo_name: scarowar/insomnia-run
+
+# Build configuration
+strict: true
+edit_uri: edit/main/docs/
+
+# Navigation
+nav:
+  - Home: index.md
+  - Getting Started: getting-started/index.md
+  - Guides:
+    - Running Collections: guides/collections.md
+    - Running Test Suites: guides/test-suites.md
+    - Handling Secrets: guides/secrets.md
+  - Reference: reference/inputs.md
+  - Examples: examples/index.md
+  - Troubleshooting: troubleshooting.md
+
+# Theme configuration
+theme:
+  name: material
+  logo: assets/terminal.png
+  favicon: assets/terminal.png
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - content.code.annotate
+    - content.code.copy
+    - content.tooltips
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - navigation.tracking
+    - navigation.instant
+    - navigation.instant.progress
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+
+# Markdown extensions
+markdown_extensions:
+  - admonition
+  - attr_list
+  - footnotes
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.mark
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+  - pymdownx.tabbed:
+      alternate_style: true
+
+# Extra CSS
+extra_css:
+  - assets/stylesheets/extra.css
+
+# Extra configuration
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/scarowar/insomnia-run

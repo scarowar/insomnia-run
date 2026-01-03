@@ -1,0 +1,28 @@
+[project]
+name = "insomnia-run"
+version = "0.0.1"
+description = "CLI runner for Insomnia API tests and collections."
+readme = "README.md"
+authors = [
+    { name = "scarowar", email = "skanthavar@live.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.12.5",
+    "rich>=14.2.0",
+    "typer>=0.21.0",
+]
+
+[project.scripts]
+insomnia-run = "insomnia_run.main:main"
+
+[build-system]
+requires = ["uv_build>=0.8.15,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.14.10",
+    "zensical>=0.0.15",
+]

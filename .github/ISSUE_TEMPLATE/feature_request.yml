@@ -1,5 +1,5 @@
 name: "Feature request"
-description: "Suggest an idea or improvement for insomnia-action"
+description: "Suggest an idea or improvement for insomnia-run"
 title: "[Feature] <short description>"
 labels: [ enhancement ]
 body:
