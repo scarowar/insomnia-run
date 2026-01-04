@@ -1,10 +1,15 @@
 from .models import InsoRunReport, InsoStatus, RunType
 
+
 class Reporter:
-    def generate_markdown(self, report: InsoRunReport, workflow_url: str | None = None) -> str:
+    def generate_markdown(
+        self, report: InsoRunReport, workflow_url: str | None = None
+    ) -> str:
         lines = []
 
-        run_label = "Collection" if report.run_type == RunType.COLLECTION else "Test Suite"
+        run_label = (
+            "Collection" if report.run_type == RunType.COLLECTION else "Test Suite"
+        )
         status = "Passed" if report.failed_count == 0 else "Failed"
         icon = "✅" if report.failed_count == 0 else "❌"
         target = f": {report.target_name}" if report.target_name else ""
@@ -13,7 +18,11 @@ class Reporter:
 
         lines.append("### Test Summary")
         lines.append("")
-        passed_text = "(all passed)" if report.failed_count == 0 else f"({report.passed_count} passed, {report.failed_count} failed)"
+        passed_text = (
+            "(all passed)"
+            if report.failed_count == 0
+            else f"({report.passed_count} passed, {report.failed_count} failed)"
+        )
         lines.append(f"- **{report.total_tests} requests executed** {passed_text}")
         if report.target_name:
             lines.append(f"- **Target:** `{report.target_name}`")

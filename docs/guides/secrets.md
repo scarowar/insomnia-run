@@ -14,7 +14,7 @@
 
 Access in Insomnia templates:
 
-```
+```jinja2
 {{ _.API_KEY }}
 {{ _.AUTH_TOKEN }}
 ```

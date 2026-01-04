@@ -17,6 +17,7 @@ class TestInsoRunnerCollection:
 1..1
 ok 1 - Test passed
 """
+            mock_result.stderr = ""
             mock_result.returncode = 0
             mock_run.return_value = mock_result
             yield mock_run
@@ -200,6 +201,7 @@ class TestInsoRunnerTest:
 # pass 1
 1..1
 """
+            mock_result.stderr = ""
             mock_result.returncode = 0
             mock_run.return_value = mock_result
             yield mock_run

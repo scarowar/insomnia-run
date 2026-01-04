@@ -10,10 +10,6 @@ inputs:
   command:
     description: 'The command to run: "test" or "collection".'
     required: true
-    type: choice
-    options:
-      - test
-      - collection
 
   working-directory:
     description: "Path to Insomnia export file or .insomnia directory."

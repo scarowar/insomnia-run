@@ -81,11 +81,13 @@ class InsoRunner:
             cmd.append("--keepFile")
 
     def run_collection(self, options: InsoCollectionOptions) -> InsoRunReport:
-        cmd = self._base_cmd(RunType.COLLECTION, options.working_dir, options.identifier)
+        cmd = self._base_cmd(
+            RunType.COLLECTION, options.working_dir, options.identifier
+        )
         self._apply_common_options(cmd, options)
         self._apply_collection_options(cmd, options)
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
         full_output = result.stdout + result.stderr
 
@@ -97,12 +99,15 @@ class InsoRunner:
 
         if result.returncode != 0 and report.total_tests == 0:
             from .models import InsoResult, InsoStatus
-            error_msg = result.stderr.strip() or 'Unknown error'
-            report.results.append(InsoResult(
-                id=1,
-                status=InsoStatus.FAIL,
-                description=f"Inso CLI Error: {error_msg}"
-            ))
+
+            error_msg = result.stderr.strip() or "Unknown error"
+            report.results.append(
+                InsoResult(
+                    id=1,
+                    status=InsoStatus.FAIL,
+                    description=f"Inso CLI Error: {error_msg}",
+                )
+            )
 
         return report
 
@@ -111,7 +116,7 @@ class InsoRunner:
         self._apply_common_options(cmd, options)
         self._apply_test_options(cmd, options)
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
         full_output = result.stdout + result.stderr
 
@@ -123,11 +128,14 @@ class InsoRunner:
 
         if result.returncode != 0 and report.total_tests == 0:
             from .models import InsoResult, InsoStatus
-            error_msg = result.stderr.strip() or 'Unknown error'
-            report.results.append(InsoResult(
-                id=1,
-                status=InsoStatus.FAIL,
-                description=f"Inso CLI Error: {error_msg}"
-            ))
+
+            error_msg = result.stderr.strip() or "Unknown error"
+            report.results.append(
+                InsoResult(
+                    id=1,
+                    status=InsoStatus.FAIL,
+                    description=f"Inso CLI Error: {error_msg}",
+                )
+            )
 
         return report

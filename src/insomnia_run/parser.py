@@ -13,7 +13,7 @@ class TapParser:
     def parse(self, output: str) -> InsoRunReport:
         report = InsoRunReport(plan_end=0)
 
-        lines = output.strip().split('\n')
+        lines = output.strip().split("\n")
         for line in lines:
             line = line.strip()
 

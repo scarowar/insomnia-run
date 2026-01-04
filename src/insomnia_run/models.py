@@ -2,19 +2,23 @@ from enum import Enum
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
+
 class RunType(str, Enum):
     COLLECTION = "collection"
     TEST = "test"
+
 
 class InsoStatus(str, Enum):
     PASS = "PASS"
     FAIL = "FAIL"
     SKIP = "SKIP"
 
+
 class InsoResult(BaseModel):
     id: int
     status: InsoStatus
     description: str
+
 
 class InsoRunReport(BaseModel):
     run_type: RunType = RunType.COLLECTION
@@ -47,6 +51,7 @@ class InsoRunReport(BaseModel):
             return 0.0
         return (self.passed_count / self.total_tests) * 100.0
 
+
 class InsoCollectionOptions(BaseModel):
     working_dir: str
     identifier: Optional[str] = None
@@ -66,6 +71,7 @@ class InsoCollectionOptions(BaseModel):
     no_proxy: Optional[str] = None
     data_folders: Optional[List[str]] = None
     verbose: bool = False
+
 
 class InsoTestOptions(BaseModel):
     working_dir: str
