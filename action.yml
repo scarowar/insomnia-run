@@ -25,55 +25,76 @@ inputs:
     default: "12.2.0"
 
   identifier:
+    description: "Collection name, test suite name, or workspace ID to run."
     required: false
   environment:
+    description: "Insomnia environment name to use."
     required: false
 
   request-name-pattern:
+    description: "Regex pattern to filter requests by name (collection only)."
     required: false
   item:
+    description: "Specific request or folder IDs to run, comma-separated."
     required: false
   globals:
+    description: "Path to global environment file or ID."
     required: false
   delay-request:
+    description: "Delay between requests in milliseconds."
     required: false
   iteration-count:
+    description: "Number of times to iterate through the collection."
     required: false
   iteration-data:
+    description: "Path to CSV or JSON data file for iterations."
     required: false
   env-var:
+    description: "Environment variables in KEY=VALUE format, one per line."
     required: false
 
   test-name-pattern:
+    description: "Regex pattern to filter tests by name (test only)."
     required: false
   keep-file:
+    description: "Keep the generated test file after execution."
     required: false
     default: "false"
 
   bail:
+    description: "Stop execution on first failure."
     required: false
     default: "false"
   request-timeout:
+    description: "Request timeout in milliseconds."
     required: false
   disable-cert-validation:
+    description: "Disable SSL certificate validation."
     required: false
     default: "false"
   https-proxy:
+    description: "HTTPS proxy URL."
     required: false
   http-proxy:
+    description: "HTTP proxy URL."
     required: false
   no-proxy:
+    description: "Comma-separated list of hosts to bypass proxy."
     required: false
   data-folders:
+    description: "Folders that Insomnia can access for file references."
     required: false
   verbose:
+    description: "Enable verbose logging."
     required: false
     default: "false"
 
   pr-comment:
+    description: "Post test results as a PR comment."
     required: false
     default: "true"
   fail-on-error:
+    description: "Fail the workflow if tests fail."
     required: false
     default: "true"
 

@@ -1,14 +1,13 @@
 import re
-from .models import InsoResult, InsoStatus, InsoRunReport
+
+from .models import InsoResult, InsoRunReport, InsoStatus
 
 
 class TapParser:
-    def __init__(self):
-        self.state = "searching"
-
     VERSION = r"^TAP version (\d+)$"
     PLAN = r"^(\d+)\.\.(\d+)$"
     TEST_LINE = r"^(ok|not ok)\s+(\d+)\s+(?:-\s+)?(.*)$"
+    SKIP_DIRECTIVE = r"#\s*SKIP"
 
     def parse(self, output: str) -> InsoRunReport:
         report = InsoRunReport(plan_end=0)
@@ -19,7 +18,6 @@ class TapParser:
 
             match = re.search(self.VERSION, line)
             if match:
-                self.state = "parsing"
                 report.tap_version = int(match.group(1))
                 continue
 
@@ -35,7 +33,13 @@ class TapParser:
                 test_id = int(match.group(2))
                 description = match.group(3)
 
-                status = InsoStatus.PASS if status_str == "ok" else InsoStatus.FAIL
+                # Check for SKIP directive in description
+                if re.search(self.SKIP_DIRECTIVE, description, re.IGNORECASE):
+                    status = InsoStatus.SKIP
+                elif status_str == "ok":
+                    status = InsoStatus.PASS
+                else:
+                    status = InsoStatus.FAIL
 
                 result = InsoResult(id=test_id, status=status, description=description)
                 report.results.append(result)

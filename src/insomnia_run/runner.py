@@ -1,5 +1,13 @@
 import subprocess
-from .models import InsoRunReport, InsoCollectionOptions, InsoTestOptions, RunType
+
+from .models import (
+    InsoCollectionOptions,
+    InsoResult,
+    InsoRunReport,
+    InsoStatus,
+    InsoTestOptions,
+    RunType,
+)
 from .parser import TapParser
 
 
@@ -80,6 +88,19 @@ class InsoRunner:
         if options.keep_file:
             cmd.append("--keepFile")
 
+    @staticmethod
+    def _add_error_result_if_needed(report: InsoRunReport, result) -> None:
+        """Add a synthetic error result if inso CLI failed with no TAP output."""
+        if result.returncode != 0 and report.total_tests == 0:
+            error_msg = result.stderr.strip() or "Unknown error"
+            report.results.append(
+                InsoResult(
+                    id=1,
+                    status=InsoStatus.FAIL,
+                    description=f"Inso CLI Error: {error_msg}",
+                )
+            )
+
     def run_collection(self, options: InsoCollectionOptions) -> InsoRunReport:
         cmd = self._base_cmd(
             RunType.COLLECTION, options.working_dir, options.identifier
@@ -97,17 +118,7 @@ class InsoRunner:
         report.run_type = RunType.COLLECTION
         report.target_name = options.identifier
 
-        if result.returncode != 0 and report.total_tests == 0:
-            from .models import InsoResult, InsoStatus
-
-            error_msg = result.stderr.strip() or "Unknown error"
-            report.results.append(
-                InsoResult(
-                    id=1,
-                    status=InsoStatus.FAIL,
-                    description=f"Inso CLI Error: {error_msg}",
-                )
-            )
+        self._add_error_result_if_needed(report, result)
 
         return report
 
@@ -126,16 +137,6 @@ class InsoRunner:
         report.run_type = RunType.TEST
         report.target_name = options.identifier
 
-        if result.returncode != 0 and report.total_tests == 0:
-            from .models import InsoResult, InsoStatus
-
-            error_msg = result.stderr.strip() or "Unknown error"
-            report.results.append(
-                InsoResult(
-                    id=1,
-                    status=InsoStatus.FAIL,
-                    description=f"Inso CLI Error: {error_msg}",
-                )
-            )
+        self._add_error_result_if_needed(report, result)
 
         return report

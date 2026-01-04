@@ -7,11 +7,11 @@
 
 ## Step 1: Export Your Workspace
 
-**Option A: Git Sync**
+### Option A: Git Sync
 
 Enable Git Sync in Insomnia. Your workspace will be saved as `.insomnia/` directory.
 
-**Option B: Export File**
+### Option B: Export File
 
 Export your workspace as `insomnia-export.yaml` and commit it to your repository.
 

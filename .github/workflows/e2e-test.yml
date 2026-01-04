@@ -146,10 +146,12 @@ jobs:
           pr-comment: "false"
 
       - name: Verify markdown output
+        env:
+          MARKDOWN_OUTPUT: ${{ steps.run.outputs.markdown }}
         run: |
           echo "Markdown output:"
-          echo "${{ steps.run.outputs.markdown }}"
-          if [[ ! "${{ steps.run.outputs.markdown }}" =~ "Insomnia Collection" ]]; then
+          echo "$MARKDOWN_OUTPUT"
+          if [[ ! "$MARKDOWN_OUTPUT" =~ "Insomnia Collection" ]]; then
             echo "Expected markdown to contain 'Insomnia Collection'"
             exit 1
           fi

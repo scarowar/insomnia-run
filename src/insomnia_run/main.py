@@ -1,6 +1,5 @@
 import typer
 from typing import Optional
-from rich.console import Console
 
 from .models import InsoCollectionOptions, InsoTestOptions
 from .runner import InsoRunner
@@ -9,7 +8,6 @@ from .reporter import Reporter
 app = typer.Typer(
     name="insomnia-run", help="CLI runner for Insomnia API tests and collections."
 )
-console = Console()
 
 
 @app.command()

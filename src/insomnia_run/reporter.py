@@ -18,11 +18,14 @@ class Reporter:
 
         lines.append("### Test Summary")
         lines.append("")
-        passed_text = (
-            "(all passed)"
-            if report.failed_count == 0
-            else f"({report.passed_count} passed, {report.failed_count} failed)"
-        )
+        if report.failed_count == 0 and report.skipped_count == 0:
+            passed_text = "(all passed)"
+        elif report.skipped_count > 0:
+            passed_text = f"({report.passed_count} passed, {report.failed_count} failed, {report.skipped_count} skipped)"
+        else:
+            passed_text = (
+                f"({report.passed_count} passed, {report.failed_count} failed)"
+            )
         lines.append(f"- **{report.total_tests} requests executed** {passed_text}")
         if report.target_name:
             lines.append(f"- **Target:** `{report.target_name}`")
@@ -31,7 +34,12 @@ class Reporter:
         lines.append("### Test Results")
         lines.append("")
         for result in report.results:
-            icon = "✅" if result.status == InsoStatus.PASS else "❌"
+            if result.status == InsoStatus.PASS:
+                icon = "✅"
+            elif result.status == InsoStatus.SKIP:
+                icon = "⏭️"
+            else:
+                icon = "❌"
             lines.append(f"- {icon} **{result.description}**")
         lines.append("")
 

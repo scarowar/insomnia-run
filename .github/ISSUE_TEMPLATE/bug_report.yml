@@ -43,8 +43,8 @@ body:
   id: version
   attributes:
     label: "insomnia-run version"
-    description: "Which version of insomnia-run are you using? (e.g., v1.2.3)"
-    placeholder: "v1.2.3"
+    description: "Which version of insomnia-run are you using? (e.g., v0.1.0)"
+    placeholder: "v0.1.0"
   validations:
     required: false
 - type: input
