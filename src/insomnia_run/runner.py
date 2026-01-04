@@ -108,7 +108,20 @@ class InsoRunner:
         self._apply_common_options(cmd, options)
         self._apply_collection_options(cmd, options)
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            report = InsoRunReport(plan_end=0, run_type=RunType.COLLECTION)
+            report.target_name = options.identifier
+            report.raw_output = "Inso CLI timed out after 5 minutes"
+            report.results.append(
+                InsoResult(
+                    id=1,
+                    status=InsoStatus.FAIL,
+                    description="Inso CLI Error: Command timed out after 5 minutes",
+                )
+            )
+            return report
 
         full_output = result.stdout + result.stderr
 
@@ -127,7 +140,20 @@ class InsoRunner:
         self._apply_common_options(cmd, options)
         self._apply_test_options(cmd, options)
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            report = InsoRunReport(plan_end=0, run_type=RunType.TEST)
+            report.target_name = options.identifier
+            report.raw_output = "Inso CLI timed out after 5 minutes"
+            report.results.append(
+                InsoResult(
+                    id=1,
+                    status=InsoStatus.FAIL,
+                    description="Inso CLI Error: Command timed out after 5 minutes",
+                )
+            )
+            return report
 
         full_output = result.stdout + result.stderr
 
