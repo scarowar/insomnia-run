@@ -166,6 +166,11 @@ runs:
       run: |
         set +e
 
+        if [[ "$COMMAND" != "collection" && "$COMMAND" != "test" ]]; then
+          echo "::error::Invalid command '$COMMAND'. Must be 'collection' or 'test'."
+          exit 1
+        fi
+
         if [[ "$COMMAND" == "collection" ]]; then
           CMD=(insomnia-run run-collection)
         else
@@ -173,6 +178,7 @@ runs:
         fi
 
         CMD+=(--working-dir "$WORKING_DIR")
+
         [[ -n "$IDENTIFIER" ]] && CMD+=(--identifier "$IDENTIFIER")
         [[ -n "$ENVIRONMENT" ]] && CMD+=(--env "$ENVIRONMENT")
 
@@ -186,6 +192,7 @@ runs:
           if [[ -n "$ITEM" ]]; then
             IFS=',' read -ra ITEMS <<< "$ITEM"
             for i in "${ITEMS[@]}"; do
+              i="$(echo "$i" | xargs)"
               CMD+=(--item "$i")
             done
           fi
@@ -220,6 +227,7 @@ runs:
         CMD+=(--workflow-url "$WORKFLOW_URL")
 
         echo "::group::Running Insomnia"
+        echo "Executing: ${CMD[*]}"
         MARKDOWN="$("${CMD[@]}")"
         EXIT_CODE=$?
         echo "::endgroup::"

@@ -23,7 +23,9 @@ class InsoRunner:
         return cmd
 
     @staticmethod
-    def _apply_common_options(cmd: list[str], options):
+    def _apply_common_options(
+        cmd: list[str], options: InsoCollectionOptions | InsoTestOptions
+    ):
         if options.environment:
             cmd.extend(["--env", options.environment])
 
