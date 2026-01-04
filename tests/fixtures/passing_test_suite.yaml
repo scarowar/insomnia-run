@@ -1,0 +1,81 @@
+_type: export
+__export_format: 4
+__export_date: 1735000000000
+__export_source: insomnia.desktop.app:v2024.1.0
+
+resources:
+  # The Workspace (The root container)
+  - _id: wrk_test_passing_001
+    _type: workspace
+    name: Todo API - Passing Test Suite
+    description: "Integration test fixture - all unit tests should pass"
+    scope: design
+
+  # Environments
+  - _id: env_test_passing_001
+    _type: environment
+    parentId: wrk_test_passing_001
+    name: Test Environment
+    data: {}
+
+  # Requests (Collection)
+  - _id: req_todo_get_001
+    _type: request
+    parentId: wrk_test_passing_001
+    url: https://jsonplaceholder.typicode.com/todos/1
+    name: GET Todo by ID
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+
+  - _id: req_user_get_001
+    _type: request
+    parentId: wrk_test_passing_001
+    url: https://jsonplaceholder.typicode.com/users/1
+    name: GET User by ID
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+
+  # Test Suites
+  - _id: uts_todo_001
+    _type: unit_test_suite
+    parentId: wrk_test_passing_001
+    name: Todo API Tests
+
+  - _id: uts_user_001
+    _type: unit_test_suite
+    parentId: wrk_test_passing_001
+    name: User API Tests
+
+  # Individual Unit Tests
+  - _id: ut_todo_200_001
+    _type: unit_test
+    parentId: uts_todo_001
+    name: GET /todos/1 returns 200
+    requestId: req_todo_get_001
+    code: |-
+      const response = await insomnia.send();
+      expect(response.status).to.equal(200);
+
+  - _id: ut_todo_json_001
+    _type: unit_test
+    parentId: uts_todo_001
+    name: GET /todos/1 returns valid JSON
+    requestId: req_todo_get_001
+    code: |-
+      const response = await insomnia.send();
+      const data = JSON.parse(response.data);
+      expect(data.id).to.equal(1);
+
+  - _id: ut_user_email_001
+    _type: unit_test
+    parentId: uts_user_001
+    name: GET /users/1 returns user with email
+    requestId: req_user_get_001
+    code: |-
+      const response = await insomnia.send();
+      const user = JSON.parse(response.data);
+      expect(user.email).to.exist;

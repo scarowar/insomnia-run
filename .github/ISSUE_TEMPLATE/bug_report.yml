@@ -1,5 +1,5 @@
 name: "Bug report"
-description: "Report a problem with insomnia-action"
+description: "Report a problem with insomnia-run"
 title: "[Bug] <short description>"
 labels: [ bug ]
 body:
@@ -42,11 +42,37 @@ body:
 - type: input
   id: version
   attributes:
-    label: "Action version"
-    description: "Which version of insomnia-action are you using? (e.g., v1.2.3)"
-    placeholder: "v1.2.3"
+    label: "insomnia-run version"
+    description: "Which version of insomnia-run are you using? (e.g., v0.1.0)"
+    placeholder: "v0.1.0"
   validations:
     required: false
+- type: input
+  id: workflow-run-url
+  attributes:
+    label: Failing workflow run URL (optional)
+    description: Link to the failing GitHub Actions workflow run for additional context.
+    placeholder: https://github.com/your-org/your-repo/actions/runs/123456789
+  validations:
+    required: false
+- type: input
+  id: reproduction-repo
+  attributes:
+    label: Minimal reproduction (repo/branch) (optional)
+    description: Link to a minimal repository or branch that reproduces the issue.
+    placeholder: https://github.com/your-org/reproduction-repo/tree/branch-name
+  validations:
+    required: false
+- type: checkboxes
+  id: safety-checklist
+  attributes:
+    label: Safety checklist
+    description: "Please confirm the following before submitting:"
+    options:
+    - label: I have verified that no secrets, API keys, or sensitive data are included in this report
+      required: true
+    - label: I have sanitized any URLs, usernames, or organization names if necessary
+      required: false
 - type: textarea
   id: config
   attributes:
@@ -57,7 +83,7 @@ body:
       ```yaml
       jobs:
         deploy:
-          uses: scarowar/insomnia-action@v1
+          uses: scarowar/insomnia-run@v0.1.0
           with:
             ...
       ```

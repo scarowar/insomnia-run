@@ -1,0 +1,86 @@
+_type: export
+__export_format: 4
+__export_date: 1735000000000
+__export_source: insomnia.desktop.app:v2024.1.0
+
+resources:
+  # 1. THE WORKSPACE
+  - _id: wrk_mixed_001
+    _type: workspace
+    parentId: null
+    name: Todo API - Mixed Results Suite
+    description: "Integration test fixture - mix of passing and failing tests"
+    scope: design
+
+  # 2. THE ENVIRONMENT
+  - _id: env_mixed_001
+    _type: environment
+    parentId: wrk_mixed_001
+    name: Test Environment
+    data: {}
+
+  # 3. REQUESTS
+  - _id: req_pass_001
+    _type: request
+    parentId: wrk_mixed_001
+    url: https://jsonplaceholder.typicode.com/todos/1
+    name: GET /todos/1 - Passing
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+
+  - _id: req_fail_001
+    _type: request
+    parentId: wrk_mixed_001
+    url: https://jsonplaceholder.typicode.com/todos/1
+    name: GET /todos/1 - Intentional Failure
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+
+  - _id: req_pass_002
+    _type: request
+    parentId: wrk_mixed_001
+    url: https://jsonplaceholder.typicode.com/users/1
+    name: GET /users/1 - Passing
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia-run/tests
+
+  # 4. TEST SUITE
+  - _id: uts_mixed_001
+    _type: unit_test_suite
+    parentId: wrk_mixed_001
+    name: Mixed Results Suite
+
+  # 5. INDIVIDUAL TESTS
+  - _id: ut_mixed_pass_001
+    _type: unit_test
+    parentId: uts_mixed_001
+    name: Status code is 200
+    requestId: req_pass_001
+    code: |-
+      const response = await insomnia.send();
+      expect(response.status).to.equal(200);
+
+  - _id: ut_mixed_fail_001
+    _type: unit_test
+    parentId: uts_mixed_001
+    name: Status code is 404 (intentional failure)
+    requestId: req_fail_001
+    code: |-
+      const response = await insomnia.send();
+      expect(response.status).to.equal(404);
+
+  - _id: ut_mixed_pass_002
+    _type: unit_test
+    parentId: uts_mixed_001
+    name: Response has name field
+    requestId: req_pass_002
+    code: |-
+      const response = await insomnia.send();
+      const user = JSON.parse(response.data);
+      expect(user.name).to.exist;

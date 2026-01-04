@@ -1,0 +1,165 @@
+name: E2E Action Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  test-collection:
+    name: Test Collection Command
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test passing collection
+        uses: ./
+        with:
+          command: collection
+          working-directory: tests/fixtures/passing_suite.yaml
+          environment: Test Environment
+          pr-comment: "false"
+
+      - name: Test collection with all options
+        uses: ./
+        with:
+          command: collection
+          working-directory: tests/fixtures/passing_suite.yaml
+          environment: Test Environment
+          request-timeout: "30000"
+          disable-cert-validation: "true"
+          verbose: "true"
+          pr-comment: "false"
+
+  test-test-command:
+    name: Test Test Command
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test passing test suite
+        uses: ./
+        with:
+          command: test
+          working-directory: tests/fixtures/passing_test_suite.yaml
+          identifier: "Todo API Tests"
+          pr-comment: "false"
+
+  test-failure-handling:
+    name: Test Failure Handling
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test mixed results - test suite (should fail)
+        id: mixed-test
+        uses: ./
+        with:
+          command: test
+          working-directory: tests/fixtures/mixed_test_suite.yaml
+          identifier: "Mixed Results Suite"
+          fail-on-error: "false"
+          pr-comment: "false"
+
+      - name: Verify test suite exit code
+        run: |
+          echo "Exit code: ${{ steps.mixed-test.outputs.exit-code }}"
+          if [ "${{ steps.mixed-test.outputs.exit-code }}" != "1" ]; then
+            echo "Expected exit code 1 for failing test suite"
+            exit 1
+          fi
+
+      - name: Test mixed results - collection (should fail)
+        id: mixed-collection
+        uses: ./
+        with:
+          command: collection
+          working-directory: tests/fixtures/mixed_results_suite.yaml
+          environment: Test Environment
+          fail-on-error: "false"
+          pr-comment: "false"
+
+      - name: Verify collection exit code
+        run: |
+          echo "Exit code: ${{ steps.mixed-collection.outputs.exit-code }}"
+          if [ "${{ steps.mixed-collection.outputs.exit-code }}" != "1" ]; then
+            echo "Expected exit code 1 for failing collection"
+            exit 1
+          fi
+
+  test-env-vars:
+    name: Test Environment Variables
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test with env-var input
+        uses: ./
+        with:
+          command: collection
+          working-directory: tests/fixtures/env_var_test.yaml
+          environment: Test Environment
+          env-var: |
+            API_TOKEN=test_secret_from_env_var
+          pr-comment: "false"
+
+      - name: Test with env block
+        uses: ./
+        with:
+          command: collection
+          working-directory: tests/fixtures/env_var_test.yaml
+          environment: Test Environment
+          pr-comment: "false"
+        env:
+          API_TOKEN: test_secret_from_env_block
+
+  test-outputs:
+    name: Test Action Outputs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run collection
+        id: run
+        uses: ./
+        with:
+          command: collection
+          working-directory: tests/fixtures/passing_suite.yaml
+          environment: Test Environment
+          pr-comment: "false"
+
+      - name: Verify markdown output
+        env:
+          MARKDOWN_OUTPUT: ${{ steps.run.outputs.markdown }}
+        run: |
+          echo "Markdown output:"
+          echo "$MARKDOWN_OUTPUT"
+          if [[ ! "$MARKDOWN_OUTPUT" =~ "Insomnia Collection" ]]; then
+            echo "Expected markdown to contain 'Insomnia Collection'"
+            exit 1
+          fi
+
+      - name: Verify exit code output
+        run: |
+          echo "Exit code: ${{ steps.run.outputs.exit-code }}"
+          if [ "${{ steps.run.outputs.exit-code }}" != "0" ]; then
+            echo "Expected exit code 0 for passing tests"
+            exit 1
+          fi
