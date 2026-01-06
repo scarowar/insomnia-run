@@ -1,3 +1,4 @@
+import importlib.metadata
 import typer
 from typing import Optional
 
@@ -8,6 +9,30 @@ from .reporter import Reporter
 app = typer.Typer(
     name="insomnia-run", help="CLI runner for Insomnia API tests and collections."
 )
+
+
+def _get_version() -> str:
+    try:
+        return importlib.metadata.version("insomnia-run")
+    except importlib.metadata.PackageNotFoundError:
+        return "unknown"
+
+
+@app.callback(invoke_without_command=True)
+def version_callback(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-v",
+        help="Show the insomnia-run version and exit.",
+        is_eager=True,
+    ),
+):
+    """Global options."""
+    if version:
+        typer.echo(f"insomnia-run {_get_version()}")
+        raise typer.Exit()
 
 
 @app.command()
