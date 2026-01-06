@@ -111,16 +111,16 @@ class InsoRunner:
         self._apply_collection_options(cmd, options)
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=options.execution_timeout)
         except subprocess.TimeoutExpired:
             report = InsoRunReport(plan_end=0, run_type=RunType.COLLECTION)
             report.target_name = options.identifier
-            report.raw_output = "Inso CLI timed out after 5 minutes"
+            report.raw_output = f"Inso CLI timed out after {options.execution_timeout} seconds"
             report.results.append(
                 InsoResult(
                     id=1,
                     status=InsoStatus.FAIL,
-                    description="Inso CLI Error: Command timed out after 5 minutes",
+                    description=f"Inso CLI Error: Command timed out after {options.execution_timeout} seconds",
                 )
             )
             return report
@@ -143,16 +143,16 @@ class InsoRunner:
         self._apply_test_options(cmd, options)
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=options.execution_timeout)
         except subprocess.TimeoutExpired:
             report = InsoRunReport(plan_end=0, run_type=RunType.TEST)
             report.target_name = options.identifier
-            report.raw_output = "Inso CLI timed out after 5 minutes"
+            report.raw_output = f"Inso CLI timed out after {options.execution_timeout} seconds"
             report.results.append(
                 InsoResult(
                     id=1,
                     status=InsoStatus.FAIL,
-                    description="Inso CLI Error: Command timed out after 5 minutes",
+                    description=f"Inso CLI Error: Command timed out after {options.execution_timeout} seconds",
                 )
             )
             return report

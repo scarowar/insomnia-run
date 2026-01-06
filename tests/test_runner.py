@@ -186,6 +186,24 @@ ok 1 - Test passed
 
         assert report.run_type == RunType.COLLECTION
 
+    def test_collection_with_execution_timeout(self, runner, mock_subprocess):
+        options = InsoCollectionOptions(
+            working_dir="/path",
+            execution_timeout=123
+        )
+        runner.run_collection(options)
+        mock_subprocess.assert_called_once()
+        _, kwargs = mock_subprocess.call_args
+        assert kwargs["timeout"] == 123
+
+    def test_collection_timeout_error_message(self, runner):
+        from subprocess import TimeoutExpired
+        with patch('insomnia_run.runner.subprocess.run', side_effect=TimeoutExpired(cmd='inso', timeout=77)):
+            options = InsoCollectionOptions(working_dir="/path", execution_timeout=77)
+            report = runner.run_collection(options)
+            assert f"{options.execution_timeout}" in report.raw_output
+            assert any(f"{options.execution_timeout}" in r.description for r in report.results)
+
 
 class TestInsoRunnerTest:
     @pytest.fixture
@@ -311,3 +329,21 @@ class TestInsoRunnerTest:
         report = runner.run_test(options)
 
         assert report.target_name == "Auth Tests"
+
+    def test_test_with_execution_timeout(self, runner, mock_subprocess):
+        options = InsoTestOptions(
+            working_dir="/path",
+            execution_timeout=456
+        )
+        runner.run_test(options)
+        mock_subprocess.assert_called_once()
+        _, kwargs = mock_subprocess.call_args
+        assert kwargs["timeout"] == 456
+
+    def test_test_timeout_error_message(self, runner):
+        from subprocess import TimeoutExpired
+        with patch('insomnia_run.runner.subprocess.run', side_effect=TimeoutExpired(cmd='inso', timeout=88)):
+            options = InsoTestOptions(working_dir="/path", execution_timeout=88)
+            report = runner.run_test(options)
+            assert f"{options.execution_timeout}" in report.raw_output
+            assert any(f"{options.execution_timeout}" in r.description for r in report.results)

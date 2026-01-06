@@ -71,6 +71,7 @@ class InsoCollectionOptions(BaseModel):
     no_proxy: Optional[str] = None
     data_folders: Optional[List[str]] = None
     verbose: bool = False
+    execution_timeout: int = 300
 
 
 class InsoTestOptions(BaseModel):
@@ -87,3 +88,4 @@ class InsoTestOptions(BaseModel):
     no_proxy: Optional[str] = None
     data_folders: Optional[List[str]] = None
     verbose: bool = False
+    execution_timeout: int = 300

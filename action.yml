@@ -7,6 +7,10 @@ branding:
   color: purple
 
 inputs:
+  execution-timeout:
+    description: "Timeout for entire execution in seconds. Default is 300. Increase for large collections or slow APIs."
+    required: false
+    default: "300"
   command:
     description: 'The command to run: "test" or "collection".'
     required: true
@@ -158,6 +162,7 @@ runs:
       id: run-cli
       shell: bash
       env:
+        EXECUTION_TIMEOUT: ${{ inputs.execution-timeout }}
         COMMAND: ${{ inputs.command }}
         WORKING_DIR: ${{ inputs.working-directory }}
         IDENTIFIER: ${{ inputs.identifier }}
@@ -220,6 +225,11 @@ runs:
         fi
 
         CMD+=(--working-dir "$WORKING_DIR")
+
+        # Add execution-timeout if set
+        if [[ -n "$EXECUTION_TIMEOUT" ]]; then
+          CMD+=(--execution-timeout "$EXECUTION_TIMEOUT")
+        fi
 
         [[ -n "$IDENTIFIER" ]] && CMD+=(--identifier "$IDENTIFIER")
         [[ -n "$ENVIRONMENT" ]] && CMD+=(--env "$ENVIRONMENT")
