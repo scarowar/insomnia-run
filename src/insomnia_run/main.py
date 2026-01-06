@@ -65,6 +65,9 @@ def run_collection(  # NOSONAR - CLI command requires many options
         None, "--data-folders", "-f", help="Folders Insomnia can access (repeatable)"
     ),
     verbose: bool = typer.Option(False, "--verbose", help="Show additional logs"),
+    execution_timeout: int = typer.Option(
+        300, "--execution-timeout", help="Execution timeout for the entire process (seconds)"
+    ),
     workflow_url: Optional[str] = typer.Option(
         None, "--workflow-url", help="GitHub workflow URL for report links"
     ),
@@ -101,6 +104,7 @@ def run_collection(  # NOSONAR - CLI command requires many options
         no_proxy=no_proxy,
         data_folders=data_folders,
         verbose=verbose,
+        execution_timeout=execution_timeout,
     )
 
     runner = InsoRunner()
@@ -155,6 +159,9 @@ def run_test(  # NOSONAR - CLI command requires many options
         None, "--data-folders", "-f", help="Folders Insomnia can access"
     ),
     verbose: bool = typer.Option(False, "--verbose", help="Show additional logs"),
+    execution_timeout: int = typer.Option(
+        300, "--execution-timeout", help="Execution timeout for the entire process (seconds)"
+    ),
     workflow_url: Optional[str] = typer.Option(
         None, "--workflow-url", help="GitHub workflow URL for report links"
     ),
@@ -175,6 +182,7 @@ def run_test(  # NOSONAR - CLI command requires many options
         no_proxy=no_proxy,
         data_folders=data_folders,
         verbose=verbose,
+        execution_timeout=execution_timeout,
     )
 
     runner = InsoRunner()
