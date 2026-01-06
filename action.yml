@@ -189,6 +189,25 @@ runs:
       run: |
         set +e
 
+        # Add Python bin directory to PATH to ensure installed scripts are available
+        PYTHON_BIN_DIR="$(python3 -c 'import sys; import os; print(os.path.dirname(sys.executable))' 2>&1)"
+        if [[ $? -ne 0 ]] || [[ -z "$PYTHON_BIN_DIR" ]]; then
+          echo "::error::Failed to determine Python bin directory"
+          echo "::error::Python detection output: $PYTHON_BIN_DIR"
+          exit 1
+        fi
+
+        export PATH="$PYTHON_BIN_DIR:$PATH"
+
+        # Verify insomnia-run is available
+        if ! command -v insomnia-run &> /dev/null; then
+          echo "::error::insomnia-run command not found after installation"
+          echo "::error::Python bin directory: $PYTHON_BIN_DIR"
+          echo "::error::Current PATH: $PATH"
+          echo "::error::This may indicate an installation issue. Please report this at https://github.com/scarowar/insomnia-run/issues"
+          exit 1
+        fi
+
         if [[ "$COMMAND" != "collection" && "$COMMAND" != "test" ]]; then
           echo "::error::Invalid command '$COMMAND'. Must be 'collection' or 'test'."
           exit 1
