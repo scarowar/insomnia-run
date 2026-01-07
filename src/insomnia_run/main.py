@@ -1,13 +1,43 @@
 import typer
+from importlib import metadata
 from typing import Optional
 
 from .models import InsoCollectionOptions, InsoTestOptions
 from .runner import InsoRunner
 from .reporter import Reporter
 
+def version_callback(value: bool):
+    if value:
+        try:
+            version = metadata.version("insomnia-run")
+            typer.echo(f"insomnia-run v{version}")
+        except metadata.PackageNotFoundError:
+            typer.echo("insomnia-run (version unknown)")
+        raise typer.Exit()
+
 app = typer.Typer(
-    name="insomnia-run", help="CLI runner for Insomnia API tests and collections."
+    name="insomnia-run",
+    help="CLI runner for Insomnia API tests and collections.",
+    no_args_is_help=True,
 )
+
+@app.callback(
+    epilog="Use --version to show version information.",
+    no_args_is_help=True,
+)
+def callback(
+    version: bool = typer.Option(
+        None,
+        "--version",
+        callback=version_callback,
+        is_eager=True,
+        help="Show version information",
+    ),
+):
+    """
+    CLI runner for Insomnia API tests and collections.
+    """
+    pass
 
 
 @app.command()
@@ -198,6 +228,7 @@ def run_test(  # NOSONAR - CLI command requires many options
 
 
 def main():
+    """CLI runner for Insomnia API tests and collections."""
     app()
 
 
