@@ -143,3 +143,103 @@ jobs:
 ```
 
 Only use in development environments.
+
+## Create Issue on Failure
+
+Automatically create a GitHub issue when scheduled tests fail:
+
+```yaml
+name: API Monitoring
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: scarowar/insomnia-run@v0.1.0
+        id: tests
+        with:
+          command: collection
+          working-directory: .insomnia
+          pr-comment: "false"
+          fail-on-error: "false"
+
+      - name: Create Issue on Failure
+        if: steps.tests.outputs.exit-code != '0'
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: "API Tests Failing"
+          content-filepath: /dev/stdin
+          labels: bug,automated
+          update-existing: true
+        env:
+          MARKDOWN: ${{ steps.tests.outputs.markdown }}
+```
+
+## Slack Notification
+
+Send test results to Slack:
+
+```yaml
+- uses: scarowar/insomnia-run@v0.1.0
+  id: tests
+  with:
+    command: collection
+    working-directory: .insomnia
+    fail-on-error: "false"
+
+- name: Notify Slack
+  if: always()
+  uses: slackapi/slack-github-action@v2
+  with:
+    webhook: ${{ secrets.SLACK_WEBHOOK }}
+    webhook-type: incoming-webhook
+    payload: |
+      {
+        "text": "${{ steps.tests.outputs.exit-code == '0' && '✅ API Tests Passed' || '❌ API Tests Failed' }}",
+        "blocks": [
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Results>"
+            }
+          }
+        ]
+      }
+```
+
+## Long-Running Collections
+
+For large collections or slow APIs, increase the execution timeout:
+
+```yaml
+- uses: scarowar/insomnia-run@v0.1.0
+  with:
+    command: collection
+    working-directory: .insomnia
+    execution-timeout: "600"  # 10 minutes
+```
+
+## Data-Driven Testing
+
+Run collections with external data files:
+
+```yaml
+- uses: scarowar/insomnia-run@v0.1.0
+  with:
+    command: collection
+    working-directory: .insomnia
+    iteration-data: "tests/data/users.csv"
+    iteration-count: "10"
+```
+
