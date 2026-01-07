@@ -187,16 +187,18 @@ jobs:
           pr-comment: "false"
           fail-on-error: "false"
 
+      - name: Write report to file
+        if: steps.tests.outputs.exit-code != '0'
+        run: echo "${{ steps.tests.outputs.markdown }}" > report.md
+
       - name: Create Issue on Failure
         if: steps.tests.outputs.exit-code != '0'
         uses: peter-evans/create-issue-from-file@v6
         with:
           title: "API Tests Failing"
-          content-filepath: /dev/stdin
+          content-filepath: report.md
           labels: bug,automated
           update-existing: true
-        env:
-          MARKDOWN: ${{ steps.tests.outputs.markdown }}
 ```
 
 ## Email Notification

@@ -51,7 +51,11 @@ Set a timeout for individual requests:
     working-directory: .insomnia
     identifier: "My Test Suite"
     request-timeout: "60000"
+    execution-timeout: "600"
 ```
+
+- `request-timeout`: Timeout for each individual request (milliseconds)
+- `execution-timeout`: Max time for entire test run (seconds, default: 300)
 
 ## With Secrets
 

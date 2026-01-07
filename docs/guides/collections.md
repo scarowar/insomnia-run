@@ -69,7 +69,12 @@ Control request delays and timeouts:
     working-directory: .insomnia
     delay-request: "500"
     request-timeout: "30000"
+    execution-timeout: "600"
 ```
+
+- `request-timeout`: Timeout for each individual request (milliseconds)
+- `delay-request`: Delay between requests (milliseconds)
+- `execution-timeout`: Max time for entire test run (seconds, default: 300)
 
 ## Stop on Failure
 
