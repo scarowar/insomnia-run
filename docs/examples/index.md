@@ -285,4 +285,3 @@ Run collections with external data files:
     iteration-data: "tests/data/users.csv"
     iteration-count: "10"
 ```
-
