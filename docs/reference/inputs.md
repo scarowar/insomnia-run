@@ -60,6 +60,8 @@
 
 ## Using Outputs
 
+Access the exit code and markdown report from subsequent steps:
+
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
   id: tests
@@ -71,6 +73,8 @@
 ```
 
 ## Conditional Steps
+
+Run steps based on test results:
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
