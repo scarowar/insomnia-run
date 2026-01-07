@@ -1,7 +1,8 @@
-<picture>
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 [![All Contributors](https://img.shields.io/badge/all_contributors-2-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
+
+<picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/images/cover-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/images/cover-light.png">
   <img alt="Insomnia Run" src="docs/assets/images/cover-light.png">
