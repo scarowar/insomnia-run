@@ -2,6 +2,8 @@
 
 ## Recommended: env Block
 
+Pass secrets using the `env` block (preferred method):
+
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
   with:
@@ -21,6 +23,8 @@ Access in Insomnia templates:
 
 ## Alternative: env-var Input
 
+Use the `env-var` input for explicit key-value mapping:
+
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
   with:
@@ -39,6 +43,8 @@ Access in Insomnia templates:
 | `env-var` input | Explicit mapping, static values |
 
 ## Multi-Environment
+
+Use different secrets for different environments:
 
 ```yaml
 jobs:

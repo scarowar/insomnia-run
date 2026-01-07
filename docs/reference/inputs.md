@@ -19,6 +19,7 @@
 | `bail` | `false` | Stop on first failure |
 | `verbose` | `false` | Enable debug logging |
 | `inso-version` | `12.2.0` | Inso CLI version |
+| `execution-timeout` | `300` | Max execution time in seconds |
 
 ## Collection Only
 
@@ -31,6 +32,7 @@
 | `iteration-count` | Number of iterations |
 | `iteration-data` | Path to iteration data file |
 | `env-var` | Environment variables, `key=value` per line |
+| `data-folders` | Folders Insomnia can access for file references |
 
 ## Test Only
 
@@ -58,6 +60,8 @@
 
 ## Using Outputs
 
+Access the exit code and markdown report from subsequent steps:
+
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
   id: tests
@@ -69,6 +73,8 @@
 ```
 
 ## Conditional Steps
+
+Run steps based on test results:
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0

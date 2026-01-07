@@ -43,9 +43,14 @@ disable-cert-validation: "true"
 
 ## Timeout Errors
 
-Increase timeout:
+**Per-request timeout:** Increase timeout for individual requests:
 ```yaml
-request-timeout: "60000"
+request-timeout: "60000"  # 60 seconds per request
+```
+
+**Execution timeout:** Increase timeout for the entire test run:
+```yaml
+execution-timeout: "600"  # 10 minutes total
 ```
 
 ## Rate Limiting

@@ -2,6 +2,8 @@
 
 ## Basic Usage
 
+Run all requests in a collection:
+
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
   with:
@@ -10,6 +12,8 @@
 ```
 
 ## With Environment
+
+Target a specific Insomnia environment:
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
@@ -43,6 +47,8 @@ By ID:
 
 ## Iterations
 
+Run the collection multiple times with data from a CSV or JSON file:
+
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
   with:
@@ -54,6 +60,8 @@ By ID:
 
 ## Timing
 
+Control request delays and timeouts:
+
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
   with:
@@ -61,9 +69,16 @@ By ID:
     working-directory: .insomnia
     delay-request: "500"
     request-timeout: "30000"
+    execution-timeout: "600"
 ```
 
+- `request-timeout`: Timeout for each individual request (milliseconds)
+- `delay-request`: Delay between requests (milliseconds)
+- `execution-timeout`: Max time for entire test run (seconds, default: 300)
+
 ## Stop on Failure
+
+Stop execution immediately when a request fails:
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
@@ -74,6 +89,8 @@ By ID:
 ```
 
 ## With Secrets
+
+Pass secrets via environment variables:
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0

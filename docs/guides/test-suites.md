@@ -2,6 +2,8 @@
 
 ## Basic Usage
 
+Run a test suite by name:
+
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
   with:
@@ -14,6 +16,8 @@ The `identifier` is required for test suites.
 
 ## Filter Tests
 
+Run only tests matching a pattern:
+
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
   with:
@@ -24,6 +28,8 @@ The `identifier` is required for test suites.
 ```
 
 ## Stop on Failure
+
+Stop execution immediately when a test fails:
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
@@ -36,6 +42,8 @@ The `identifier` is required for test suites.
 
 ## Timeout
 
+Set a timeout for individual requests:
+
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
   with:
@@ -43,9 +51,15 @@ The `identifier` is required for test suites.
     working-directory: .insomnia
     identifier: "My Test Suite"
     request-timeout: "60000"
+    execution-timeout: "600"
 ```
 
+- `request-timeout`: Timeout for each individual request (milliseconds)
+- `execution-timeout`: Max time for entire test run (seconds, default: 300)
+
 ## With Secrets
+
+Pass secrets via environment variables:
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
