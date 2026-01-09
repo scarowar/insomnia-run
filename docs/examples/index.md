@@ -287,3 +287,33 @@ Run collections with external data files:
     iteration-data: "tests/data/users.csv"
     iteration-count: "10"
 ```
+
+## JSON Output
+
+Run a collection and save the machine-readable JSON report:
+
+```yaml
+- uses: scarowar/insomnia-run@v0.1.0
+  id: run-cli
+  with:
+    command: collection
+    working-directory: .insomnia
+    output-format: json
+
+- name: Save JSON report
+  env:
+    JSON_OUTPUT: ${{ steps.run-cli.outputs.json-output }}
+  run: |
+    printf '%s' "$JSON_OUTPUT" > test-results.json
+  # This will save the JSON report in the current workspace directory
+```
+
+If you want this file accessible across jobs in GitHub Actions, you can also upload it as an artifact:
+
+```yaml
+- name: Upload JSON report
+  uses: actions/upload-artifact@v6
+  with:
+    name: insomnia-json-report
+    path: test-results.json
+```

@@ -51,6 +51,7 @@ A GitHub Action that runs your Insomnia collections and test suites in CI/CD pip
 | `environment` | No | | Insomnia environment to use |
 | `pr-comment` | No | `true` | Post results as PR comment |
 | `fail-on-error` | No | `true` | Fail workflow on test failures |
+| `output-format` | No | | Use `json` to get JSON output in addition to Markdown |
 
 [View all inputs](https://scarowar.github.io/insomnia-run/reference/inputs/)
 
@@ -59,6 +60,7 @@ A GitHub Action that runs your Insomnia collections and test suites in CI/CD pip
 | Output | Description |
 |--------|-------------|
 | `markdown` | Generated test report in Markdown format |
+| `json-output` | Generated JSON report (machine-readable) |
 | `exit-code` | `0` for pass, `1` for fail |
 
 ## Documentation

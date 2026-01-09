@@ -17,6 +17,26 @@ def _get_version() -> str:
     except importlib.metadata.PackageNotFoundError:
         return "unknown"
 
+def _emit_machine_readable_output(report, output_format: Optional[str]) -> None:
+    """
+    Emits the test report in the specified machine-readable format to stderr.
+
+    This helper handles validation of the requested format and ensures
+    consistent output behavior across different CLI commands.
+    """
+    if not output_format:
+        return
+
+    requested_format = output_format.lower()
+
+    if requested_format == "json":
+        json_report = report.model_dump_json(indent=2)
+        typer.echo(json_report, err=True)
+    else:
+        raise typer.BadParameter(
+            f"Unsupported output format: '{output_format}'. "
+            f"Currently supported: json"
+        )
 
 @app.callback(invoke_without_command=True)
 def version_callback(
@@ -96,6 +116,11 @@ def run_collection(  # NOSONAR - CLI command requires many options
     workflow_url: Optional[str] = typer.Option(
         None, "--workflow-url", help="GitHub workflow URL for report links"
     ),
+    output_format: Optional[str] = typer.Option(
+        None,
+        "--output-format",
+        help="The format to use for the report output (e.g., 'json')."
+    ),
 ):
     """Run Insomnia collections and generate a markdown report."""
 
@@ -139,6 +164,7 @@ def run_collection(  # NOSONAR - CLI command requires many options
     markdown = reporter.generate_markdown(report, workflow_url=workflow_url)
 
     print(markdown)
+    _emit_machine_readable_output(report, output_format)
 
     if report.failed_count > 0:
         raise typer.Exit(code=1)
@@ -190,6 +216,11 @@ def run_test(  # NOSONAR - CLI command requires many options
     workflow_url: Optional[str] = typer.Option(
         None, "--workflow-url", help="GitHub workflow URL for report links"
     ),
+    output_format: Optional[str] = typer.Option(
+        None,
+        "--output-format",
+        help="The format to use for the report output (e.g., 'json')."
+    ),
 ):
     """Run Insomnia unit tests and generate a markdown report."""
 
@@ -217,6 +248,7 @@ def run_test(  # NOSONAR - CLI command requires many options
     markdown = reporter.generate_markdown(report, workflow_url=workflow_url)
 
     print(markdown)
+    _emit_machine_readable_output(report, output_format)
 
     if report.failed_count > 0:
         raise typer.Exit(code=1)

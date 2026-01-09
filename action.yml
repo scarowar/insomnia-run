@@ -92,6 +92,9 @@ inputs:
     description: "Enable verbose logging."
     required: false
     default: "false"
+  output-format:
+    description: "The format of the report output (e.g., 'json')."
+    required: false
 
   pr-comment:
     description: "Post test results as a PR comment."
@@ -105,6 +108,8 @@ inputs:
 outputs:
   markdown:
     value: ${{ steps.run-cli.outputs.markdown }}
+  json-output:
+    value: ${{ steps.run-cli.outputs.json-output }}
   exit-code:
     value: ${{ steps.run-cli.outputs.exit-code }}
 
@@ -188,6 +193,7 @@ runs:
         NO_PROXY: ${{ inputs.no-proxy }}
         DATA_FOLDERS: ${{ inputs.data-folders }}
         VERBOSE: ${{ inputs.verbose }}
+        OUTPUT_FORMAT: ${{ inputs.output-format }}
 
         WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
@@ -230,6 +236,8 @@ runs:
         if [[ -n "$EXECUTION_TIMEOUT" ]]; then
           CMD+=(--execution-timeout "$EXECUTION_TIMEOUT")
         fi
+
+        [[ -n "$OUTPUT_FORMAT" ]] && CMD+=(--output-format "$OUTPUT_FORMAT")
 
         [[ -n "$IDENTIFIER" ]] && CMD+=(--identifier "$IDENTIFIER")
         [[ -n "$ENVIRONMENT" ]] && CMD+=(--env "$ENVIRONMENT")
@@ -280,7 +288,19 @@ runs:
 
         echo "::group::Running Insomnia"
         echo "Executing: ${CMD[*]}"
-        MARKDOWN="$("${CMD[@]}")"
+
+        OUTPUT_FORMAT_LOWER=$(echo "$OUTPUT_FORMAT" | tr '[:upper:]' '[:lower:]')
+
+        if [[ "$OUTPUT_FORMAT_LOWER" == "json" ]]; then
+          JSON_TMPFILE=$(mktemp)
+          MARKDOWN="$("${CMD[@]}" 2>"$JSON_TMPFILE")"
+          JSON_OUTPUT=$(cat "$JSON_TMPFILE")
+          rm -f "$JSON_TMPFILE"
+        else
+          MARKDOWN="$("${CMD[@]}" 2>&1)"
+          JSON_OUTPUT=""
+        fi
+
         EXIT_CODE=$?
         echo "::endgroup::"
 
@@ -292,6 +312,15 @@ runs:
           echo "$MARKDOWN"
           echo "$EOF"
         } >> "$GITHUB_OUTPUT"
+
+        if [[ -n "$JSON_OUTPUT" ]]; then
+          EOF_JSON=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          {
+            echo "json-output<<$EOF_JSON"
+            echo "$JSON_OUTPUT"
+            echo "$EOF_JSON"
+          } >> "$GITHUB_OUTPUT"
+        fi
 
         echo "$MARKDOWN" >> "$GITHUB_STEP_SUMMARY"
         exit 0

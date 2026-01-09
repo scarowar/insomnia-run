@@ -20,6 +20,7 @@
 | `verbose` | `false` | Enable debug logging |
 | `inso-version` | `12.2.0` | Inso CLI version |
 | `execution-timeout` | `300` | Max execution time in seconds |
+| `output-format` | — | JSON output in addition to Markdown |
 
 ## Collection Only
 
@@ -56,6 +57,7 @@
 | Output | Description |
 |--------|-------------|
 | `markdown` | Generated Markdown report |
+| `json-output` | Generated JSON report |
 | `exit-code` | `0` = success, `1` = failure |
 
 ## Using Outputs
@@ -70,6 +72,23 @@ Access the exit code and markdown report from subsequent steps:
     working-directory: .insomnia
 
 - run: echo "Exit code: ${{ steps.tests.outputs.exit-code }}"
+```
+
+Access json report from subsequent steps:
+
+```yaml
+- uses: scarowar/insomnia-run@v0.1.0
+  id: tests
+  with:
+    command: collection
+    working-directory: .insomnia
+    output-format: json
+
+- name: Save JSON report
+  env:
+    JSON_OUTPUT: ${{ steps.tests.outputs.json-output }}
+  run: |
+    printf '%s' "$JSON_OUTPUT" > test-results.json
 ```
 
 ## Conditional Steps
