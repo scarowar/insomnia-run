@@ -169,6 +169,7 @@ jobs:
           working-directory: tests/fixtures/passing_suite.yaml
           environment: Test Environment
           pr-comment: "false"
+          output-format: json
 
       - name: Verify markdown output
         env:
@@ -178,6 +179,23 @@ jobs:
           echo "$MARKDOWN_OUTPUT"
           if [[ ! "$MARKDOWN_OUTPUT" =~ "Insomnia Collection" ]]; then
             echo "Expected markdown to contain 'Insomnia Collection'"
+            exit 1
+          fi
+
+      - name: Verify JSON output
+        env:
+          JSON_OUTPUT: ${{ steps.run.outputs.json-output }}
+        run: |
+          echo "JSON output length: ${#JSON_OUTPUT}"
+          # Check that JSON output exists
+          if [[ -z "$JSON_OUTPUT" ]]; then
+            echo "::error::JSON output was expected but found empty!"
+            exit 1
+          fi
+
+          # Validate JSON format
+          if ! printf '%s' "$JSON_OUTPUT" | jq empty; then
+            echo "::error::JSON output is not valid JSON!"
             exit 1
           fi
 
