@@ -60,6 +60,28 @@ Add delay between requests:
 delay-request: "1000"
 ```
 
+## JSON Output Not Appearing
+
+**Problem:** `json-output` is empty
+
+**Fix:**
+- Ensure `output-format: json` is set:
+  ```yaml
+  output-format: json
+  ```
+- Access via `steps.<id>.outputs.json-output`
+
+## Python Version Errors
+
+**Error:** `insomnia-run requires Python 3.10 or higher`
+
+**Fix:**
+- GitHub-hosted runners include Python 3.10+
+- For self-hosted runners, install Python 3.10+:
+  ```bash
+  sudo apt install python3.10
+  ```
+
 ## Exit Codes
 
 | Code | Meaning |
@@ -69,6 +91,7 @@ delay-request: "1000"
 
 ## Debug Mode
 
+Enable verbose logging:
 ```yaml
 verbose: "true"
 ```
@@ -77,3 +100,4 @@ verbose: "true"
 
 - [Open an issue](https://github.com/scarowar/insomnia-run/issues)
 - [Start a discussion](https://github.com/scarowar/insomnia-run/discussions)
+

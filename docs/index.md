@@ -21,8 +21,10 @@ Run Insomnia collections and test suites in GitHub Actions with PR comment repor
 | **Collections** | Run API request collections |
 | **Test Suites** | Execute JavaScript unit tests |
 | **PR Comments** | Auto-post results to pull requests |
+| **JSON Output** | Machine-readable reports for automation |
 | **Secrets** | Secure credential passthrough |
 | **Multi-Environment** | Target dev, staging, production |
+| **Configurable Timeouts** | Handle slow APIs and large collections |
 
 ## PR Comment Examples
 
@@ -42,6 +44,7 @@ Run Insomnia collections and test suites in GitHub Actions with PR comment repor
 | `working-directory` | Yes | Path to `.insomnia` or export file |
 | `identifier` | No | Collection or test suite name |
 | `environment` | No | Insomnia environment to use |
+| `output-format` | No | Use `json` for machine-readable output |
 
 [View all inputs →](reference/inputs.md)
 
@@ -50,6 +53,7 @@ Run Insomnia collections and test suites in GitHub Actions with PR comment repor
 | Output | Description |
 |--------|-------------|
 | `markdown` | Generated test report |
+| `json-output` | JSON report (when `output-format: json`) |
 | `exit-code` | `0` = pass, `1` = fail |
 
 ## Documentation

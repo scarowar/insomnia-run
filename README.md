@@ -21,24 +21,37 @@
 
 ---
 
-A GitHub Action that runs your Insomnia collections and test suites in CI/CD pipelines with automatic PR comment reporting.
+Run your Insomnia API collections and test suites in GitHub Actions with automatic PR comment reporting.
+
+**Why Insomnia Run?** Insomnia is great for designing and testing APIs locally. This action brings those same collections into your CI/CD pipeline—no separate test framework needed.
 
 ## Features
 
 - **GitHub Actions Native**: Drop-in action with simple YAML configuration
 - **Automatic PR Comments**: Post test results directly to pull requests
-- **Markdown Reports**: Clean, readable output for workflow summaries
+- **Markdown & JSON Reports**: Human-readable and machine-readable outputs
 - **Flexible Exit Codes**: Control workflow failure behavior
 - **Environment Support**: Target different Insomnia environments per run
 - **Secure Secrets**: Pass credentials safely via GitHub Secrets
+- **Configurable Timeouts**: Handle slow APIs and large collections
 
 ## Quick Start
 
+**Run a collection:**
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0
   with:
     command: collection
     working-directory: .insomnia
+```
+
+**Run a test suite:**
+```yaml
+- uses: scarowar/insomnia-run@v0.1.0
+  with:
+    command: test
+    working-directory: .insomnia
+    identifier: "My Test Suite"
 ```
 
 ## Inputs

@@ -4,6 +4,7 @@
 
 - A GitHub repository
 - An Insomnia workspace (exported or via Git Sync)
+- Python 3.10+ (pre-installed on GitHub-hosted runners)
 
 ## Step 1: Export Your Workspace
 
@@ -19,7 +20,7 @@ Export your workspace as `insomnia-export.yaml` and commit it to your repository
 
 Create `.github/workflows/api-tests.yml`:
 
-```yaml
+```yaml title=".github/workflows/api-tests.yml"
 name: API Tests
 
 on:
