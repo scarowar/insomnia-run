@@ -4,7 +4,7 @@
 
 Run a collection on every PR and push to main:
 
-```yaml
+```yaml title="collection-tests.yml"
 name: API Tests
 
 on:
@@ -32,7 +32,7 @@ jobs:
 
 Run a specific test suite on pull requests:
 
-```yaml
+```yaml title="unit-tests.yml"
 name: Unit Tests
 
 on:
@@ -112,7 +112,7 @@ Run tests without failing the workflow, then handle results manually:
 
 Run API health checks on a schedule (every 6 hours):
 
-```yaml
+```yaml title="api-monitoring.yml"
 name: API Monitoring
 
 on:
@@ -148,7 +148,8 @@ Route requests through a corporate proxy:
 
 ## Self-Signed Certificates
 
-> **Warning:** Only use in development environments.
+!!! warning "Development Only"
+    Disabling certificate validation is insecure. Only use in development environments.
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.1.0

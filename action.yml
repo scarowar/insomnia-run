@@ -294,14 +294,14 @@ runs:
         if [[ "$OUTPUT_FORMAT_LOWER" == "json" ]]; then
           JSON_TMPFILE=$(mktemp)
           MARKDOWN="$("${CMD[@]}" 2>"$JSON_TMPFILE")"
+          EXIT_CODE=$?
           JSON_OUTPUT=$(cat "$JSON_TMPFILE")
           rm -f "$JSON_TMPFILE"
         else
           MARKDOWN="$("${CMD[@]}" 2>&1)"
+          EXIT_CODE=$?
           JSON_OUTPUT=""
         fi
-
-        EXIT_CODE=$?
         echo "::endgroup::"
 
         echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"

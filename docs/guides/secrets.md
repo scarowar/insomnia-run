@@ -1,5 +1,8 @@
 # Handling Secrets
 
+!!! warning "Security Best Practice"
+    Never hardcode secrets in workflow files. Always use [GitHub Secrets](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions) and reference them via `${{ secrets.SECRET_NAME }}`.
+
 ## Recommended: env Block
 
 Pass secrets using the `env` block (preferred method):
