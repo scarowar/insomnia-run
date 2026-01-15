@@ -26,10 +26,6 @@ Run Insomnia collections and test suites in GitHub Actions with PR comment repor
 | **Multi-Environment** | Target dev, staging, production |
 | **Configurable Timeouts** | Handle slow APIs and large collections |
 
-## Demo
-
-<video src="https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744" controls width="100%"></video>
-
 ## PR Comment Examples
 
 === "Passing Tests"
