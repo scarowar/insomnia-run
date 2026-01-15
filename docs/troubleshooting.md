@@ -100,4 +100,3 @@ verbose: "true"
 
 - [Open an issue](https://github.com/scarowar/insomnia-run/issues)
 - [Start a discussion](https://github.com/scarowar/insomnia-run/discussions)
-
