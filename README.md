@@ -25,6 +25,8 @@ Run your Insomnia API collections and test suites in GitHub Actions with automat
 
 **Why Insomnia Run?** Insomnia is great for designing and testing APIs locally. This action brings those same collections into your CI/CD pipeline—no separate test framework needed.
 
+https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
+
 ## Features
 
 - **GitHub Actions Native**: Drop-in action with simple YAML configuration
