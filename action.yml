@@ -327,7 +327,7 @@ runs:
 
     - name: 💬 Post PR Comment
       if: inputs.pr-comment == 'true' && github.event_name == 'pull_request'
-      uses: peter-evans/create-or-update-comment@v5
+      uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
       with:
         token: ${{ inputs.github-token || github.token }}
         issue-number: ${{ github.event.pull_request.number }}
