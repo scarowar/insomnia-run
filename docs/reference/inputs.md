@@ -110,7 +110,7 @@ Grant `checks: write` when publishing a GitHub test report.
 
 - name: Publish JUnit report
   if: always() && steps.tests.outputs.junit-file != ''
-  uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
+  uses: dorny/test-reporter@a6ddd83ac95ff4586f5d3aceeb314d9a1841db95 # v3.0.0
   with:
     name: Insomnia API Tests
     path: ${{ steps.tests.outputs.junit-file }}
@@ -161,7 +161,7 @@ The workflow token needs `issues: write` for issues and `pull-requests: write` f
 
 ## Enterprise Runners
 
-Insomnia Run uses `inso` from `PATH` when it is already available. If `inso` is missing, the action installs the requested `inso-version`.
+Insomnia Run uses `inso` from `PATH` when it is already available. If `inso` is missing, the action installs the requested `inso-version` from the official Insomnia release assets.
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.2.0

@@ -2,7 +2,11 @@ from unittest.mock import Mock, patch
 import pytest
 from typer import BadParameter
 
-from insomnia_run.main import _emit_machine_readable_output, _write_junit_output
+from insomnia_run.main import (
+    _emit_machine_readable_output,
+    _validate_output_format,
+    _write_junit_output,
+)
 from insomnia_run.models import InsoResult, InsoRunReport, InsoStatus
 from insomnia_run.reporter import Reporter
 
@@ -21,6 +25,12 @@ def test_emit_json_output_success():
 def test_emit_output_unsupported_format():
     with pytest.raises(BadParameter) as excinfo:
         _emit_machine_readable_output(Mock(), "xml")
+    assert "Unsupported output format: 'xml'" in str(excinfo.value)
+
+
+def test_validate_output_unsupported_format():
+    with pytest.raises(BadParameter) as excinfo:
+        _validate_output_format("xml")
     assert "Unsupported output format: 'xml'" in str(excinfo.value)
 
 

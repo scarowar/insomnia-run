@@ -26,7 +26,7 @@ If your workflow depends on a specific Inso version, set it explicitly:
 
 ## Self-Hosted Runners
 
-Insomnia Run uses `inso` from `PATH` when it is already available. If `inso` is not available, the action installs the requested `inso-version`.
+Insomnia Run uses `inso` from `PATH` when it is already available. If `inso` is not available, the action installs the requested `inso-version` from the official Insomnia release assets.
 
 Runners without public internet access should provide:
 
@@ -71,4 +71,10 @@ For manual, scheduled, deployment, or push workflows, set `comment-issue-number`
     comment-issue-number: "123"
 ```
 
-Set `permissions: issues: write` for issue comments and `permissions: pull-requests: write` for pull request comments.
+Set the appropriate permission for comment publishing:
+
+```yaml
+permissions:
+  issues: write         # for issue comments
+  pull-requests: write  # for pull request comments
+```

@@ -5,14 +5,16 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOWS = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+WORKFLOWS = sorted(
+    path
+    for pattern in ("*.yml", "*.yaml")
+    for path in (ROOT / ".github" / "workflows").glob(pattern)
+)
 ACTION_FILES = [ROOT / "action.yml"]
 CODEOWNERS = ROOT / ".github" / "CODEOWNERS"
 PRE_COMMIT_CONFIG = ROOT / ".pre-commit-config.yaml"
 ACTION_REF_RE = re.compile(r"@[0-9a-f]{40}$")
-PR_CONCURRENCY_GROUP = (
-    "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
-)
+PR_CONCURRENCY_GROUP = "${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}"
 
 
 def load_yaml(path: Path):
@@ -223,6 +225,12 @@ def test_sonarqube_waits_for_quality_gate():
     )
 
     assert scan_step["env"]["SONAR_TOKEN"] == "${{ secrets.SONAR_TOKEN }}"
+    assert "-Dsonar.host.url=https://sonarcloud.io" in scan_step["with"]["args"]
+    assert "-Dsonar.organization=scarowar" in scan_step["with"]["args"]
+    assert "-Dsonar.projectKey=scarowar_insomnia-run" in scan_step["with"]["args"]
+    assert (
+        "-Dsonar.python.coverage.reportPaths=coverage.xml" in scan_step["with"]["args"]
+    )
     assert "-Dsonar.qualitygate.wait=true" in scan_step["with"]["args"]
     assert "--cov-report=xml:coverage.xml" in "\n".join(
         step.get("run", "") for step in sonar_steps

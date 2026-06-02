@@ -23,26 +23,27 @@ def test_action_does_not_install_uv_at_runtime():
     assert "astral-sh/setup-uv" not in action
     assert "uv pip install" not in action
     assert "python3 -m venv" in action
-    assert "GITHUB_PATH" not in action
     assert (
         'INSOMNIA_RUN_BIN="${RUNNER_TEMP}/insomnia-run-venv/bin/insomnia-run"' in action
     )
 
 
-def test_action_uses_official_inso_setup_without_manual_download():
+def test_action_installs_inso_from_official_release_assets():
     action = load_action()
     action_text = ACTION_YAML.read_text()
     detect_step = step_by_name(action, "Detect Inso CLI")
-    setup_step = step_by_name(action, "Setup Inso CLI")
+    install_step = step_by_name(action, "Install Inso CLI")
 
     assert "command -v inso" in detect_step["run"]
-    assert setup_step["if"] == "steps.detect-inso.outputs.found != 'true'"
-    assert (
-        setup_step["uses"] == "Kong/setup-inso@33b1006a5c2ae15364fc18146ec900b7db3c675e"
-    )
-    assert setup_step["with"]["inso-version"] == "${{ inputs.inso-version }}"
+    assert install_step["if"] == "steps.detect-inso.outputs.found != 'true'"
+    assert install_step["env"]["INSO_VERSION"] == "${{ inputs.inso-version }}"
     assert "install-inso" not in action["inputs"]
-    assert "curl -sL" not in action_text
+    assert "Kong/setup-inso" not in action_text
+    assert "core%40${INSO_VERSION}" in install_step["run"]
+    assert "inso-${platform}-${INSO_VERSION}.${archive}" in install_step["run"]
+    assert "curl -fsSL --retry 3" in install_step["run"]
+    assert "${RUNNER_TEMP}/insomnia-run-inso/bin" in install_step["run"]
+    assert "GITHUB_PATH" not in action_text
     assert "sudo mv" not in action_text
 
 

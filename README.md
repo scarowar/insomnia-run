@@ -96,7 +96,7 @@ Grant `checks: write` when publishing a GitHub test report.
     working-directory: .insomnia
     fail-on-error: "false"
 
-- uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
+- uses: dorny/test-reporter@a6ddd83ac95ff4586f5d3aceeb314d9a1841db95 # v3.0.0
   if: always() && steps.tests.outputs.junit-file != ''
   with:
     name: Insomnia API Tests

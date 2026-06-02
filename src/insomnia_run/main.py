@@ -11,12 +11,25 @@ app = typer.Typer(
     name="insomnia-run", help="CLI runner for Insomnia API tests and collections."
 )
 
+SUPPORTED_OUTPUT_FORMATS = {"json"}
+
 
 def _get_version() -> str:
     try:
         return importlib.metadata.version("insomnia-run")
     except importlib.metadata.PackageNotFoundError:
         return "unknown"
+
+
+def _validate_output_format(output_format: Optional[str]) -> None:
+    if not output_format:
+        return
+
+    requested_format = output_format.lower()
+    if requested_format not in SUPPORTED_OUTPUT_FORMATS:
+        raise typer.BadParameter(
+            f"Unsupported output format: '{output_format}'. Currently supported: json"
+        )
 
 
 def _emit_machine_readable_output(report, output_format: Optional[str]) -> None:
@@ -29,15 +42,12 @@ def _emit_machine_readable_output(report, output_format: Optional[str]) -> None:
     if not output_format:
         return
 
+    _validate_output_format(output_format)
     requested_format = output_format.lower()
 
     if requested_format == "json":
         json_report = report.model_dump_json(indent=2)
         typer.echo(json_report, err=True)
-    else:
-        raise typer.BadParameter(
-            f"Unsupported output format: '{output_format}'. Currently supported: json"
-        )
 
 
 def _write_junit_output(
@@ -51,6 +61,29 @@ def _write_junit_output(
     output_path = Path(junit_output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(reporter.generate_junit(report), encoding="utf-8")
+
+
+def _finalize_report(
+    reporter: Reporter,
+    report,
+    *,
+    workflow_url: Optional[str],
+    include_raw_output: bool,
+    junit_output: Optional[str],
+    output_format: Optional[str],
+) -> None:
+    markdown = reporter.generate_markdown(
+        report,
+        workflow_url=workflow_url,
+        include_raw_output=include_raw_output,
+    )
+
+    print(markdown)
+    _write_junit_output(reporter, report, junit_output)
+    _emit_machine_readable_output(report, output_format)
+
+    if report.failed_count > 0:
+        raise typer.Exit(code=1)
 
 
 @app.callback(invoke_without_command=True)
@@ -151,6 +184,8 @@ def run_collection(  # NOSONAR - CLI command requires many options
 ):
     """Run Insomnia collections and generate a markdown report."""
 
+    _validate_output_format(output_format)
+
     env_var_dict = None
     if env_var:
         env_var_dict = {}
@@ -188,18 +223,14 @@ def run_collection(  # NOSONAR - CLI command requires many options
     report = runner.run_collection(options)
 
     reporter = Reporter()
-    markdown = reporter.generate_markdown(
+    _finalize_report(
+        reporter,
         report,
         workflow_url=workflow_url,
         include_raw_output=include_raw_output,
+        junit_output=junit_output,
+        output_format=output_format,
     )
-
-    print(markdown)
-    _write_junit_output(reporter, report, junit_output)
-    _emit_machine_readable_output(report, output_format)
-
-    if report.failed_count > 0:
-        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -268,6 +299,8 @@ def run_test(  # NOSONAR - CLI command requires many options
 ):
     """Run Insomnia unit tests and generate a markdown report."""
 
+    _validate_output_format(output_format)
+
     options = InsoTestOptions(
         working_dir=working_dir,
         identifier=identifier,
@@ -289,18 +322,14 @@ def run_test(  # NOSONAR - CLI command requires many options
     report = runner.run_test(options)
 
     reporter = Reporter()
-    markdown = reporter.generate_markdown(
+    _finalize_report(
+        reporter,
         report,
         workflow_url=workflow_url,
         include_raw_output=include_raw_output,
+        junit_output=junit_output,
+        output_format=output_format,
     )
-
-    print(markdown)
-    _write_junit_output(reporter, report, junit_output)
-    _emit_machine_readable_output(report, output_format)
-
-    if report.failed_count > 0:
-        raise typer.Exit(code=1)
 
 
 def main():

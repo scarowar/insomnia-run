@@ -146,19 +146,94 @@ runs:
           echo "found=false" >> "$GITHUB_OUTPUT"
         fi
 
-    - name: Setup Inso CLI
+    - name: Install Inso CLI
       if: steps.detect-inso.outputs.found != 'true'
-      uses: Kong/setup-inso@33b1006a5c2ae15364fc18146ec900b7db3c675e # v2.1.0
-      with:
-        inso-version: ${{ inputs.inso-version }}
+      shell: bash
+      env:
+        INSO_VERSION: ${{ inputs.inso-version }}
+      run: |
+        set -euo pipefail
+
+        if [[ ! "$INSO_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+          echo "::error::Invalid Inso CLI version '$INSO_VERSION'"
+          echo "::error::Use a version published by Kong/insomnia releases"
+          exit 1
+        fi
+
+        if ! command -v curl &> /dev/null; then
+          echo "::error::curl is required to install Inso automatically"
+          echo "::error::Install curl or preinstall Inso on this runner"
+          exit 1
+        fi
+
+        os="$(uname -s)"
+        arch="$(uname -m)"
+        case "$os" in
+          Linux)
+            if [[ "$arch" != "x86_64" && "$arch" != "amd64" ]]; then
+              echo "::error::Automatic Inso installation supports Linux x64 runners"
+              echo "::error::Install Inso on this runner and ensure it is available in PATH"
+              exit 1
+            fi
+            platform="linux-x64"
+            archive="tar.xz"
+            ;;
+          Darwin)
+            platform="macos"
+            archive="zip"
+            ;;
+          *)
+            echo "::error::Automatic Inso installation supports Linux and macOS runners"
+            echo "::error::Install Inso on this runner and ensure it is available in PATH"
+            exit 1
+            ;;
+        esac
+
+        asset="inso-${platform}-${INSO_VERSION}.${archive}"
+        url="https://github.com/Kong/insomnia/releases/download/core%40${INSO_VERSION}/${asset}"
+        extract_dir="${RUNNER_TEMP}/inso-${platform}-${INSO_VERSION}"
+        install_dir="${RUNNER_TEMP}/insomnia-run-inso/bin"
+        archive_path="${RUNNER_TEMP}/${asset}"
+
+        mkdir -p "$extract_dir" "$install_dir"
+        echo "Installing Inso CLI ${INSO_VERSION}"
+        if ! curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 300 --output "$archive_path" "$url"; then
+          echo "::error::Failed to download Inso CLI ${INSO_VERSION}"
+          echo "::error::Expected release asset: $url"
+          exit 1
+        fi
+
+        if [[ "$archive" == "tar.xz" ]]; then
+          tar -xJf "$archive_path" -C "$extract_dir"
+        else
+          if ! command -v unzip &> /dev/null; then
+            echo "::error::unzip is required to install Inso on macOS runners"
+            echo "::error::Install unzip or preinstall Inso on this runner"
+            exit 1
+          fi
+          unzip -q "$archive_path" -d "$extract_dir"
+        fi
+
+        inso_path="$(find "$extract_dir" -type f -name inso -print -quit)"
+        if [[ -z "$inso_path" ]]; then
+          echo "::error::Downloaded Inso archive did not contain an inso binary"
+          exit 1
+        fi
+
+        cp "$inso_path" "${install_dir}/inso"
+        chmod +x "${install_dir}/inso"
+        "${install_dir}/inso" --version
 
     - name: Verify Inso CLI
       shell: bash
       run: |
         set -euo pipefail
+        if [[ -d "${RUNNER_TEMP}/insomnia-run-inso/bin" ]]; then
+          export PATH="${RUNNER_TEMP}/insomnia-run-inso/bin:${PATH}"
+        fi
         if ! command -v inso &> /dev/null; then
           echo "::error::Inso CLI was not found in PATH"
-          echo "::error::Install Inso on the runner or allow Kong/setup-inso to install it"
+          echo "::error::Install Inso on the runner or allow this action to install the requested version"
           exit 1
         fi
         inso --version
@@ -242,6 +317,9 @@ runs:
         set +e
 
         INSOMNIA_RUN_BIN="${RUNNER_TEMP}/insomnia-run-venv/bin/insomnia-run"
+        if [[ -d "${RUNNER_TEMP}/insomnia-run-inso/bin" ]]; then
+          export PATH="${RUNNER_TEMP}/insomnia-run-inso/bin:${PATH}"
+        fi
 
         if [[ ! -x "$INSOMNIA_RUN_BIN" ]]; then
           echo "::error::insomnia-run command not found after installation"
