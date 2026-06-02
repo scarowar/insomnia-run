@@ -1,6 +1,6 @@
 [project]
 name = "insomnia-run"
-version = "0.1.0"
+version = "0.2.0"
 description = "CLI runner for Insomnia API tests and collections."
 readme = "README.md"
 authors = [
@@ -22,7 +22,17 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0.2",
+    "bandit>=1.9.4",
+    "cyclonedx-bom>=7.3.0",
+    "pip-audit>=2.10.0",
+    "mypy>=2.1.0",
+    "pygments>=2.20.0",
+    "pymdown-extensions>=10.21.3",
+    "pre-commit>=4.5.0",
+    "pyyaml>=6.0.3",
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
     "ruff>=0.14.10",
-    "zensical>=0.0.15",
+    "zensical>=0.0.43",
+    "zizmor>=1.25.2",
 ]

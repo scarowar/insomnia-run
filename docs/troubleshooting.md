@@ -20,9 +20,10 @@
 ## PR Comments Not Appearing
 
 **Checklist:**
-- Workflow triggered by `pull_request` event
-- `permissions: pull-requests: write` is set
-- `github-token` provided or using default
+- For pull requests, use the `pull_request` event and set `permissions: pull-requests: write`
+- For manual, deployment, scheduled, or push workflows, set `comment-issue-number`
+- For issue comments, set `permissions: issues: write`
+- `github-token` is provided or the default token has the required permission
 
 ## Secrets Not Working
 
@@ -59,6 +60,24 @@ Add delay between requests:
 ```yaml
 delay-request: "1000"
 ```
+
+## Inso Installation Fails
+
+Insomnia Run uses `inso` from `PATH` when it is available. If the runner cannot download Inso during the workflow, add `inso` to `PATH` in the runner image.
+
+## Inso Configuration Not Applied
+
+**Fix:**
+- Keep the Inso configuration file with the Insomnia project files
+- Confirm the workflow checks out the repository before running Insomnia Run
+- Confirm `working-directory` points at the Insomnia project or export file you expect
+
+## Installation Fails on Self-Hosted Runners
+
+**Fix:**
+- Install Python 3.10 or newer
+- Ensure `python3 -m venv` works on the runner
+- Configure pip to use an internal package mirror when public package index access is blocked
 
 ## JSON Output Not Appearing
 

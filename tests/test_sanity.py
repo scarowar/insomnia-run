@@ -1,2 +1,4 @@
 def test_import_sanity():
-    import insomnia_run
+    module = __import__("insomnia_run")
+
+    assert module is not None

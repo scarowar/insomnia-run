@@ -21,9 +21,9 @@
 
 ---
 
-Run your Insomnia API collections and test suites in GitHub Actions with automatic PR comment reporting.
+Run your Insomnia API collections and test suites in GitHub Actions with PR comments and CI-native reports.
 
-**Why Insomnia Run?** Insomnia is great for designing and testing APIs locally. This action brings those same collections into your CI/CD pipeline—no separate test framework needed.
+**Why Insomnia Run?** Insomnia is great for designing and testing APIs locally. This unofficial action brings those same collections into your CI/CD pipeline without a separate test framework.
 
 https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 
@@ -31,17 +31,18 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 
 - **GitHub Actions Native**: Drop-in action with simple YAML configuration
 - **Automatic PR Comments**: Post test results directly to pull requests
-- **Markdown & JSON Reports**: Human-readable and machine-readable outputs
+- **Explicit Issue Comments**: Send reports to a PR or issue from manual, deployment, or scheduled workflows
+- **Markdown, JSON & JUnit Reports**: Human-readable comments, automation output, and CI test reports
 - **Flexible Exit Codes**: Control workflow failure behavior
 - **Environment Support**: Target different Insomnia environments per run
-- **Secure Secrets**: Pass credentials safely via GitHub Secrets
+- **Hosted and Self-Hosted Runners**: Use the requested Inso version or a preinstalled `inso` binary
 - **Configurable Timeouts**: Handle slow APIs and large collections
 
 ## Quick Start
 
 **Run a collection:**
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -49,7 +50,7 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 
 **Run a test suite:**
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
     working-directory: .insomnia
@@ -65,8 +66,10 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 | `identifier` | No | | Collection/test suite name or ID |
 | `environment` | No | | Insomnia environment to use |
 | `pr-comment` | No | `true` | Post results as PR comment |
+| `comment-issue-number` | No | | Issue or PR number for non-PR workflow comments |
 | `fail-on-error` | No | `true` | Fail workflow on test failures |
 | `output-format` | No | | Use `json` to get JSON output in addition to Markdown |
+| `junit-report` | No | `true` | Generate a JUnit XML report file |
 
 [View all inputs](https://scarowar.github.io/insomnia-run/reference/inputs/)
 
@@ -76,7 +79,33 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 |--------|-------------|
 | `markdown` | Generated test report in Markdown format |
 | `json-output` | Generated JSON report (machine-readable) |
+| `junit-file` | Path to the generated JUnit XML report |
 | `exit-code` | `0` for pass, `1` for fail |
+
+## CI Reports
+
+Use `junit-file` with GitHub test report integrations or artifact upload:
+
+Grant `checks: write` when publishing a GitHub test report.
+
+```yaml
+- uses: scarowar/insomnia-run@v0.2.0
+  id: tests
+  with:
+    command: collection
+    working-directory: .insomnia
+    fail-on-error: "false"
+
+- uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
+  if: always() && steps.tests.outputs.junit-file != ''
+  with:
+    name: Insomnia API Tests
+    path: ${{ steps.tests.outputs.junit-file }}
+    reporter: java-junit
+
+- if: steps.tests.outputs.exit-code != '0'
+  run: exit 1
+```
 
 ## Documentation
 
@@ -87,6 +116,7 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 | [Test Suites](https://scarowar.github.io/insomnia-run/guides/test-suites/) | Run unit tests |
 | [Secrets](https://scarowar.github.io/insomnia-run/guides/secrets/) | Handle credentials |
 | [Examples](https://scarowar.github.io/insomnia-run/examples/) | Workflow snippets |
+| [Migration](https://scarowar.github.io/insomnia-run/migration/) | Upgrade from previous releases |
 | [Troubleshooting](https://scarowar.github.io/insomnia-run/troubleshooting/) | Common issues |
 
 ## License

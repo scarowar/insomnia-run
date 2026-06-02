@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
           working-directory: .insomnia

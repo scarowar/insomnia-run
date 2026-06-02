@@ -1,4 +1,4 @@
-import subprocess
+import subprocess  # nosec B404 - Inso must be executed as a subprocess.
 
 from .models import (
     InsoCollectionOptions,
@@ -12,6 +12,16 @@ from .parser import TapParser
 
 
 class InsoRunner:
+    @staticmethod
+    def _run_command(cmd: list[str], timeout: int):
+        return subprocess.run(  # nosec B603 - arguments are passed without a shell.
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            shell=False,
+        )
+
     @staticmethod
     def _base_cmd(run_type: RunType, working_dir: str, identifier: str | None):
         cmd = ["inso", "run", run_type.value]
@@ -111,11 +121,13 @@ class InsoRunner:
         self._apply_collection_options(cmd, options)
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=options.execution_timeout)
+            result = self._run_command(cmd, options.execution_timeout)
         except subprocess.TimeoutExpired:
             report = InsoRunReport(plan_end=0, run_type=RunType.COLLECTION)
             report.target_name = options.identifier
-            report.raw_output = f"Inso CLI timed out after {options.execution_timeout} seconds"
+            report.raw_output = (
+                f"Inso CLI timed out after {options.execution_timeout} seconds"
+            )
             report.results.append(
                 InsoResult(
                     id=1,
@@ -143,11 +155,13 @@ class InsoRunner:
         self._apply_test_options(cmd, options)
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=options.execution_timeout)
+            result = self._run_command(cmd, options.execution_timeout)
         except subprocess.TimeoutExpired:
             report = InsoRunReport(plan_end=0, run_type=RunType.TEST)
             report.target_name = options.identifier
-            report.raw_output = f"Inso CLI timed out after {options.execution_timeout} seconds"
+            report.raw_output = (
+                f"Inso CLI timed out after {options.execution_timeout} seconds"
+            )
             report.results.append(
                 InsoResult(
                     id=1,

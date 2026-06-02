@@ -7,23 +7,30 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   test-collection:
     name: Test Collection Command
+    if: github.actor != 'dependabot[bot]' && github.actor != 'pre-commit-ci[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -51,17 +58,20 @@ jobs:
 
   test-test-command:
     name: Test Test Command
+    if: github.actor != 'dependabot[bot]' && github.actor != 'pre-commit-ci[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -78,17 +88,20 @@ jobs:
 
   test-failure-handling:
     name: Test Failure Handling
+    if: github.actor != 'dependabot[bot]' && github.actor != 'pre-commit-ci[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -106,9 +119,11 @@ jobs:
           pr-comment: "false"
 
       - name: Verify test suite exit code
+        env:
+          EXIT_CODE: ${{ steps.mixed-test.outputs.exit-code }}
         run: |
-          echo "Exit code: ${{ steps.mixed-test.outputs.exit-code }}"
-          if [ "${{ steps.mixed-test.outputs.exit-code }}" != "1" ]; then
+          echo "Exit code: $EXIT_CODE"
+          if [ "$EXIT_CODE" != "1" ]; then
             echo "Expected exit code 1 for failing test suite"
             exit 1
           fi
@@ -124,26 +139,31 @@ jobs:
           pr-comment: "false"
 
       - name: Verify collection exit code
+        env:
+          EXIT_CODE: ${{ steps.mixed-collection.outputs.exit-code }}
         run: |
-          echo "Exit code: ${{ steps.mixed-collection.outputs.exit-code }}"
-          if [ "${{ steps.mixed-collection.outputs.exit-code }}" != "1" ]; then
+          echo "Exit code: $EXIT_CODE"
+          if [ "$EXIT_CODE" != "1" ]; then
             echo "Expected exit code 1 for failing collection"
             exit 1
           fi
 
   test-env-vars:
     name: Test Environment Variables
+    if: github.actor != 'dependabot[bot]' && github.actor != 'pre-commit-ci[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -172,17 +192,20 @@ jobs:
 
   test-outputs:
     name: Test Action Outputs
+    if: github.actor != 'dependabot[bot]' && github.actor != 'pre-commit-ci[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -227,10 +250,26 @@ jobs:
             exit 1
           fi
 
-      - name: Verify exit code output
+      - name: Verify JUnit output
+        env:
+          JUNIT_FILE: ${{ steps.run.outputs.junit-file }}
         run: |
-          echo "Exit code: ${{ steps.run.outputs.exit-code }}"
-          if [ "${{ steps.run.outputs.exit-code }}" != "0" ]; then
+          echo "JUnit file: $JUNIT_FILE"
+          if [[ -z "$JUNIT_FILE" || ! -f "$JUNIT_FILE" ]]; then
+            echo "::error::JUnit file was expected but not found"
+            exit 1
+          fi
+          if ! grep -q '<testsuite name="Insomnia Collection"' "$JUNIT_FILE"; then
+            echo "::error::JUnit file does not contain the expected test suite"
+            exit 1
+          fi
+
+      - name: Verify exit code output
+        env:
+          EXIT_CODE: ${{ steps.run.outputs.exit-code }}
+        run: |
+          echo "Exit code: $EXIT_CODE"
+          if [ "$EXIT_CODE" != "0" ]; then
             echo "Expected exit code 0 for passing tests"
             exit 1
           fi

@@ -1,6 +1,6 @@
-import pytest
 from insomnia_run.parser import TapParser
 from insomnia_run.models import InsoStatus
+
 
 def test_parse_real_user_collection_output():
     raw_output = """(node:20367) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
@@ -28,6 +28,7 @@ Test: 1 passed, 1 total
     assert result.id == 1
     assert result.status == InsoStatus.PASS
     assert result.description == "Check if status is 200"
+
 
 def test_parse_failure_scenario():
     raw_output = """

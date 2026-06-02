@@ -23,10 +23,14 @@ inputs:
     description: "GitHub token for posting PR comments. Uses GITHUB_TOKEN if not provided."
     required: false
 
+  comment-issue-number:
+    description: "Issue or pull request number to comment on. Required for comments outside pull_request workflows."
+    required: false
+
   inso-version:
     description: "Version of Inso CLI to use."
     required: false
-    default: "12.2.0"
+    default: "12.6.0"
 
   identifier:
     description: "Collection name, test suite name, or workspace ID to run."
@@ -95,6 +99,17 @@ inputs:
   output-format:
     description: "The format of the report output (e.g., 'json')."
     required: false
+  include-raw-output:
+    description: "Include raw Inso output in the generated Markdown report."
+    required: false
+    default: "false"
+  junit-report:
+    description: "Generate a JUnit XML report file."
+    required: false
+    default: "true"
+  junit-output-file:
+    description: "Path for the JUnit XML report. Defaults to a file under RUNNER_TEMP."
+    required: false
 
   pr-comment:
     description: "Post test results as a PR comment."
@@ -110,30 +125,49 @@ outputs:
     value: ${{ steps.run-cli.outputs.markdown }}
   json-output:
     value: ${{ steps.run-cli.outputs.json-output }}
+  junit-file:
+    value: ${{ steps.run-cli.outputs.junit-file }}
   exit-code:
     value: ${{ steps.run-cli.outputs.exit-code }}
 
 runs:
   using: composite
   steps:
-    - name: 🧰 Setup Inso CLI
+    - name: Detect Inso CLI
+      id: detect-inso
       shell: bash
       run: |
-        INSO_VERSION="${{ inputs.inso-version }}"
-        echo "Installing inso version ${INSO_VERSION}..."
-        curl -sL "https://github.com/Kong/insomnia/releases/download/core%40${INSO_VERSION}/inso-linux-x64-${INSO_VERSION}.tar.xz" -o /tmp/inso.tar.xz
-        mkdir -p /tmp/inso
-        tar -xJf /tmp/inso.tar.xz -C /tmp/inso
-        sudo mv /tmp/inso/inso /usr/local/bin/inso
-        sudo chmod +x /usr/local/bin/inso
+        set -euo pipefail
+        if command -v inso &> /dev/null; then
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "Using preinstalled Inso CLI"
+          inso --version
+        else
+          echo "found=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Setup Inso CLI
+      if: steps.detect-inso.outputs.found != 'true'
+      uses: Kong/setup-inso@33b1006a5c2ae15364fc18146ec900b7db3c675e # v2.1.0
+      with:
+        inso-version: ${{ inputs.inso-version }}
+
+    - name: Verify Inso CLI
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v inso &> /dev/null; then
+          echo "::error::Inso CLI was not found in PATH"
+          echo "::error::Install Inso on the runner or allow Kong/setup-inso to install it"
+          exit 1
+        fi
         inso --version
 
-    - name: ✅ Verify Python Requirements
+    - name: Verify Python Requirements
       shell: bash
       run: |
-        set +e
+        set -euo pipefail
 
-        # Check if Python 3 is available
         if ! command -v python3 &> /dev/null; then
           echo "::error::Python 3 is not installed or not in PATH"
           echo "::error::insomnia-run requires Python 3.10 or higher"
@@ -141,7 +175,6 @@ runs:
           exit 1
         fi
 
-        # Check Python version requirement
         python3 - <<'EOF'
         import sys
         if sys.version_info < (3, 10):
@@ -152,18 +185,23 @@ runs:
         print(f"Using Python {sys.version.split()[0]}")
         EOF
 
-        if [[ $? -ne 0 ]]; then
+    - name: Install insomnia-run
+      shell: bash
+      run: |
+        set -euo pipefail
+        VENV_DIR="${RUNNER_TEMP}/insomnia-run-venv"
+        if ! python3 -m venv "$VENV_DIR"; then
+          echo "::error::Failed to create a Python virtual environment"
+          echo "::error::Install the Python venv module on this runner and try again"
+          exit 1
+        fi
+        if ! "${VENV_DIR}/bin/python" -m pip install --disable-pip-version-check "$GITHUB_ACTION_PATH"; then
+          echo "::error::Failed to install insomnia-run"
+          echo "::error::Check Python package index access or configure pip for this runner"
           exit 1
         fi
 
-    - name: 📦 Install uv
-      uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b
-
-    - name: 🔧 Install insomnia-run
-      shell: bash
-      run: uv pip install --system "$GITHUB_ACTION_PATH"
-
-    - name: 🚀 Run Insomnia
+    - name: Run Insomnia
       id: run-cli
       shell: bash
       env:
@@ -194,27 +232,19 @@ runs:
         DATA_FOLDERS: ${{ inputs.data-folders }}
         VERBOSE: ${{ inputs.verbose }}
         OUTPUT_FORMAT: ${{ inputs.output-format }}
+        INCLUDE_RAW_OUTPUT: ${{ inputs.include-raw-output }}
+        JUNIT_REPORT: ${{ inputs.junit-report }}
+        JUNIT_OUTPUT_FILE: ${{ inputs.junit-output-file }}
 
         WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       run: |
         set +e
 
-        # Add Python bin directory to PATH to ensure installed scripts are available
-        PYTHON_BIN_DIR="$(python3 -c 'import sys; import os; print(os.path.dirname(sys.executable))' 2>&1)"
-        if [[ $? -ne 0 ]] || [[ -z "$PYTHON_BIN_DIR" ]]; then
-          echo "::error::Failed to determine Python bin directory"
-          echo "::error::Python detection output: $PYTHON_BIN_DIR"
-          exit 1
-        fi
+        INSOMNIA_RUN_BIN="${RUNNER_TEMP}/insomnia-run-venv/bin/insomnia-run"
 
-        export PATH="$PYTHON_BIN_DIR:$PATH"
-
-        # Verify insomnia-run is available
-        if ! command -v insomnia-run &> /dev/null; then
+        if [[ ! -x "$INSOMNIA_RUN_BIN" ]]; then
           echo "::error::insomnia-run command not found after installation"
-          echo "::error::Python bin directory: $PYTHON_BIN_DIR"
-          echo "::error::Current PATH: $PATH"
           echo "::error::This may indicate an installation issue. Please report this at https://github.com/scarowar/insomnia-run/issues"
           exit 1
         fi
@@ -225,9 +255,9 @@ runs:
         fi
 
         if [[ "$COMMAND" == "collection" ]]; then
-          CMD=(insomnia-run run-collection)
+          CMD=("$INSOMNIA_RUN_BIN" run-collection)
         else
-          CMD=(insomnia-run run-test)
+          CMD=("$INSOMNIA_RUN_BIN" run-test)
         fi
 
         CMD+=(--working-dir "$WORKING_DIR")
@@ -285,9 +315,20 @@ runs:
         fi
 
         CMD+=(--workflow-url "$WORKFLOW_URL")
+        [[ "$INCLUDE_RAW_OUTPUT" == "true" ]] && CMD+=(--include-raw-output)
+
+        JUNIT_FILE=""
+        if [[ "$JUNIT_REPORT" == "true" ]]; then
+          if [[ -n "$JUNIT_OUTPUT_FILE" ]]; then
+            JUNIT_FILE="$JUNIT_OUTPUT_FILE"
+          else
+            JUNIT_FILE="${RUNNER_TEMP}/insomnia-run-junit.xml"
+          fi
+          CMD+=(--junit-output "$JUNIT_FILE")
+        fi
 
         echo "::group::Running Insomnia"
-        echo "Executing: ${CMD[*]}"
+        echo "Executing insomnia-run for command '$COMMAND'"
 
         OUTPUT_FORMAT_LOWER=$(echo "$OUTPUT_FORMAT" | tr '[:upper:]' '[:lower:]')
 
@@ -305,6 +346,11 @@ runs:
         echo "::endgroup::"
 
         echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+        if [[ -n "$JUNIT_FILE" && -f "$JUNIT_FILE" ]]; then
+          echo "junit-file=$JUNIT_FILE" >> "$GITHUB_OUTPUT"
+        else
+          echo "junit-file=" >> "$GITHUB_OUTPUT"
+        fi
 
         EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
         {
@@ -325,15 +371,15 @@ runs:
         echo "$MARKDOWN" >> "$GITHUB_STEP_SUMMARY"
         exit 0
 
-    - name: 💬 Post PR Comment
-      if: inputs.pr-comment == 'true' && github.event_name == 'pull_request'
+    - name: Post PR Comment
+      if: inputs.pr-comment == 'true' && (github.event_name == 'pull_request' || inputs.comment-issue-number != '')
       uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
       with:
         token: ${{ inputs.github-token || github.token }}
-        issue-number: ${{ github.event.pull_request.number }}
+        issue-number: ${{ inputs.comment-issue-number || github.event.pull_request.number }}
         body: ${{ steps.run-cli.outputs.markdown }}
 
-    - name: ❌ Check for Failures
+    - name: Check for Failures
       if: inputs.fail-on-error == 'true' && steps.run-cli.outputs.exit-code != '0'
       shell: bash
       run: |

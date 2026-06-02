@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
           working-directory: .insomnia
@@ -48,7 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: test
           working-directory: .insomnia
@@ -60,7 +60,7 @@ jobs:
 Pass secrets to your Insomnia workspace via environment variables:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -82,7 +82,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
           working-directory: .insomnia
@@ -94,7 +94,7 @@ jobs:
 Run tests without failing the workflow, then handle results manually:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   id: tests
   with:
     command: collection
@@ -106,6 +106,40 @@ Run tests without failing the workflow, then handle results manually:
     if [ "${{ steps.tests.outputs.exit-code }}" != "0" ]; then
       echo "Tests failed"
     fi
+```
+
+## CI Test Report
+
+Publish a JUnit report while keeping the final failure decision explicit:
+
+Grant `checks: write` when publishing a GitHub test report.
+
+```yaml
+- uses: scarowar/insomnia-run@v0.2.0
+  id: tests
+  with:
+    command: collection
+    working-directory: .insomnia
+    fail-on-error: "false"
+
+- name: Publish JUnit report
+  if: always() && steps.tests.outputs.junit-file != ''
+  uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
+  with:
+    name: Insomnia API Tests
+    path: ${{ steps.tests.outputs.junit-file }}
+    reporter: java-junit
+
+- name: Upload JUnit report
+  if: always() && steps.tests.outputs.junit-file != ''
+  uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+  with:
+    name: insomnia-run-junit
+    path: ${{ steps.tests.outputs.junit-file }}
+
+- name: Fail workflow on test failures
+  if: steps.tests.outputs.exit-code != '0'
+  run: exit 1
 ```
 
 ## Scheduled Monitoring
@@ -125,7 +159,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
           working-directory: .insomnia
@@ -137,7 +171,7 @@ jobs:
 Route requests through a corporate proxy:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -152,7 +186,7 @@ Route requests through a corporate proxy:
     Disabling certificate validation is insecure. Only use in development environments.
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -180,7 +214,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         id: tests
         with:
           command: collection
@@ -207,7 +241,7 @@ jobs:
 Send email notification on test failure. This example uses AWS SES, but any SMTP server works (SendGrid, Mailgun, Gmail, etc.):
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   id: tests
   with:
     command: collection
@@ -236,7 +270,7 @@ Send email notification on test failure. This example uses AWS SES, but any SMTP
 Send test results to Slack:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   id: tests
   with:
     command: collection
@@ -269,7 +303,7 @@ Send test results to Slack:
 For large collections or slow APIs, increase the execution timeout:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -281,7 +315,7 @@ For large collections or slow APIs, increase the execution timeout:
 Run collections with external data files:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -294,7 +328,7 @@ Run collections with external data files:
 Run a collection and save the machine-readable JSON report:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   id: run-cli
   with:
     command: collection

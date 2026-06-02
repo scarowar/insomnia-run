@@ -5,7 +5,7 @@
 Run all requests in a collection:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -16,7 +16,7 @@ Run all requests in a collection:
 Target a specific Insomnia environment:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -28,7 +28,7 @@ Target a specific Insomnia environment:
 By pattern:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -38,7 +38,7 @@ By pattern:
 By ID:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -50,7 +50,7 @@ By ID:
 Run the collection multiple times with data from a CSV or JSON file:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -63,7 +63,7 @@ Run the collection multiple times with data from a CSV or JSON file:
 Control request delays and timeouts:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -81,7 +81,7 @@ Control request delays and timeouts:
 Stop execution immediately when a request fails:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -93,7 +93,7 @@ Stop execution immediately when a request fails:
 Pass secrets via environment variables:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia

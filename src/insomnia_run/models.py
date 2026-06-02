@@ -9,7 +9,7 @@ class RunType(str, Enum):
 
 
 class InsoStatus(str, Enum):
-    PASS = "PASS"
+    PASS = "PASS"  # nosec B105 - TAP status value, not a credential.
     FAIL = "FAIL"
     SKIP = "SKIP"
 

@@ -1,4 +1,5 @@
 import importlib.metadata
+from pathlib import Path
 import typer
 from typing import Optional
 
@@ -17,6 +18,7 @@ def _get_version() -> str:
     except importlib.metadata.PackageNotFoundError:
         return "unknown"
 
+
 def _emit_machine_readable_output(report, output_format: Optional[str]) -> None:
     """
     Emits the test report in the specified machine-readable format to stderr.
@@ -34,9 +36,22 @@ def _emit_machine_readable_output(report, output_format: Optional[str]) -> None:
         typer.echo(json_report, err=True)
     else:
         raise typer.BadParameter(
-            f"Unsupported output format: '{output_format}'. "
-            f"Currently supported: json"
+            f"Unsupported output format: '{output_format}'. Currently supported: json"
         )
+
+
+def _write_junit_output(
+    reporter: Reporter,
+    report,
+    junit_output: Optional[str],
+) -> None:
+    if not junit_output:
+        return
+
+    output_path = Path(junit_output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(reporter.generate_junit(report), encoding="utf-8")
+
 
 @app.callback(invoke_without_command=True)
 def version_callback(
@@ -111,7 +126,9 @@ def run_collection(  # NOSONAR - CLI command requires many options
     ),
     verbose: bool = typer.Option(False, "--verbose", help="Show additional logs"),
     execution_timeout: int = typer.Option(
-        300, "--execution-timeout", help="Execution timeout for the entire process (seconds)"
+        300,
+        "--execution-timeout",
+        help="Execution timeout for the entire process (seconds)",
     ),
     workflow_url: Optional[str] = typer.Option(
         None, "--workflow-url", help="GitHub workflow URL for report links"
@@ -119,7 +136,17 @@ def run_collection(  # NOSONAR - CLI command requires many options
     output_format: Optional[str] = typer.Option(
         None,
         "--output-format",
-        help="The format to use for the report output (e.g., 'json')."
+        help="The format to use for the report output (e.g., 'json').",
+    ),
+    include_raw_output: bool = typer.Option(
+        False,
+        "--include-raw-output",
+        help="Include raw Inso output in the Markdown report.",
+    ),
+    junit_output: Optional[str] = typer.Option(
+        None,
+        "--junit-output",
+        help="Write a JUnit XML report to this path.",
     ),
 ):
     """Run Insomnia collections and generate a markdown report."""
@@ -161,9 +188,14 @@ def run_collection(  # NOSONAR - CLI command requires many options
     report = runner.run_collection(options)
 
     reporter = Reporter()
-    markdown = reporter.generate_markdown(report, workflow_url=workflow_url)
+    markdown = reporter.generate_markdown(
+        report,
+        workflow_url=workflow_url,
+        include_raw_output=include_raw_output,
+    )
 
     print(markdown)
+    _write_junit_output(reporter, report, junit_output)
     _emit_machine_readable_output(report, output_format)
 
     if report.failed_count > 0:
@@ -211,7 +243,9 @@ def run_test(  # NOSONAR - CLI command requires many options
     ),
     verbose: bool = typer.Option(False, "--verbose", help="Show additional logs"),
     execution_timeout: int = typer.Option(
-        300, "--execution-timeout", help="Execution timeout for the entire process (seconds)"
+        300,
+        "--execution-timeout",
+        help="Execution timeout for the entire process (seconds)",
     ),
     workflow_url: Optional[str] = typer.Option(
         None, "--workflow-url", help="GitHub workflow URL for report links"
@@ -219,7 +253,17 @@ def run_test(  # NOSONAR - CLI command requires many options
     output_format: Optional[str] = typer.Option(
         None,
         "--output-format",
-        help="The format to use for the report output (e.g., 'json')."
+        help="The format to use for the report output (e.g., 'json').",
+    ),
+    include_raw_output: bool = typer.Option(
+        False,
+        "--include-raw-output",
+        help="Include raw Inso output in the Markdown report.",
+    ),
+    junit_output: Optional[str] = typer.Option(
+        None,
+        "--junit-output",
+        help="Write a JUnit XML report to this path.",
     ),
 ):
     """Run Insomnia unit tests and generate a markdown report."""
@@ -245,9 +289,14 @@ def run_test(  # NOSONAR - CLI command requires many options
     report = runner.run_test(options)
 
     reporter = Reporter()
-    markdown = reporter.generate_markdown(report, workflow_url=workflow_url)
+    markdown = reporter.generate_markdown(
+        report,
+        workflow_url=workflow_url,
+        include_raw_output=include_raw_output,
+    )
 
     print(markdown)
+    _write_junit_output(reporter, report, junit_output)
     _emit_machine_readable_output(report, output_format)
 
     if report.failed_count > 0:

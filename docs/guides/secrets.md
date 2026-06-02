@@ -8,7 +8,7 @@
 Pass secrets using the `env` block (preferred method):
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -26,10 +26,10 @@ Access in Insomnia templates:
 
 ## Alternative: env-var Input
 
-Use the `env-var` input for explicit key-value mapping:
+Use the `env-var` input only when you need explicit key-value overrides for Inso:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -45,6 +45,10 @@ Use the `env-var` input for explicit key-value mapping:
 | `env:` block | Default for secrets |
 | `env-var` input | Explicit mapping, static values |
 
+## Report Output
+
+Markdown reports include parsed test results and a link to the workflow logs. Raw Inso output is hidden from Markdown reports by default. Enable `include-raw-output: "true"` only in trusted workflows where the output is safe to share.
+
 ## Multi-Environment
 
 Use different secrets for different environments:
@@ -54,7 +58,7 @@ jobs:
   staging:
     runs-on: ubuntu-latest
     steps:
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
           working-directory: .insomnia
@@ -65,7 +69,7 @@ jobs:
   production:
     runs-on: ubuntu-latest
     steps:
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
           working-directory: .insomnia
