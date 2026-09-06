@@ -328,7 +328,6 @@ def test_raw_output_fence_is_always_valid_markdown():
 
 
 class TestReporterContract:
-
     def test_markdown_escapes_backticks_and_link_brackets(self):
         report = InsoRunReport(
             plan_end=1,

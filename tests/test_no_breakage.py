@@ -24,7 +24,9 @@ def test_required_inputs_unchanged_no_new_required():
     assert action["inputs"]["working-directory"]["required"] is True
     # No new required inputs may be added — would break every consumer
     required = [k for k, v in action["inputs"].items() if v.get("required") is True]
-    assert required == ["command", "working-directory"], f"new required inputs would break: {required}"
+    assert required == ["command", "working-directory"], (
+        f"new required inputs would break: {required}"
+    )
 
 
 def test_outputs_are_superset_of_v012():
@@ -83,7 +85,9 @@ def test_inso_version_default_is_latest_stable_and_pinned():
     import re
 
     default = action["inputs"]["inso-version"]["default"]
-    assert re.fullmatch(r"\d+\.\d+\.\d+", default), f"inso-version default must be semver, got {default}"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", default), (
+        f"inso-version default must be semver, got {default}"
+    )
     text = ACTION_YAML.read_text()
     assert "EXPECTED_SHA256" in text
     assert "sha256sum" in text

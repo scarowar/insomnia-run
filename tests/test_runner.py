@@ -425,7 +425,6 @@ class TestRunnerCapturePolicies:
 
 
 class TestRedactionCoverage:
-
     @pytest.fixture
     def runner(self):
         return InsoRunner()
