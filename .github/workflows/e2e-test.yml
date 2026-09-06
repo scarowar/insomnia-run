@@ -42,7 +42,7 @@ jobs:
           set -euo pipefail
           python3 tests/mock_api.py --port "$MOCK_PORT" > "${RUNNER_TEMP}/mock-api.log" 2>&1 &
           for _ in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/todos/1" > /dev/null; then
+            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/todos/1" > /dev/null; then  # NOSONAR -- S6506 false positive: local mock http is safe
               echo "Mock API ready on port ${MOCK_PORT}"
               exit 0
             fi
@@ -96,7 +96,7 @@ jobs:
           set -euo pipefail
           python3 tests/mock_api.py --port "$MOCK_PORT" > "${RUNNER_TEMP}/mock-api.log" 2>&1 &
           for _ in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/todos/1" > /dev/null; then
+            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/todos/1" > /dev/null; then  # NOSONAR -- S6506 false positive: local mock http is safe
               echo "Mock API ready on port ${MOCK_PORT}"
               exit 0
             fi
@@ -139,7 +139,7 @@ jobs:
           set -euo pipefail
           python3 tests/mock_api.py --port "$MOCK_PORT" > "${RUNNER_TEMP}/mock-api.log" 2>&1 &
           for _ in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/todos/1" > /dev/null; then
+            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/todos/1" > /dev/null; then  # NOSONAR -- S6506 false positive: local mock http is safe
               echo "Mock API ready on port ${MOCK_PORT}"
               exit 0
             fi
@@ -261,7 +261,7 @@ jobs:
           set -euo pipefail
           python3 tests/mock_api.py --port "$MOCK_PORT" > "${RUNNER_TEMP}/mock-api.log" 2>&1 &
           for _ in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/todos/1" > /dev/null; then
+            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/todos/1" > /dev/null; then  # NOSONAR -- S6506 false positive: local mock http is safe
               echo "Mock API ready on port ${MOCK_PORT}"
               exit 0
             fi
@@ -329,7 +329,7 @@ jobs:
           set -euo pipefail
           python3 tests/mock_api.py --port "$MOCK_PORT" > "${RUNNER_TEMP}/mock-api.log" 2>&1 &
           for _ in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/headers" > /dev/null; then
+            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/headers" > /dev/null; then  # NOSONAR -- S6506 false positive: local mock http is safe
               echo "Mock API ready on port ${MOCK_PORT}"
               exit 0
             fi
@@ -384,7 +384,7 @@ jobs:
           set -euo pipefail
           python3 tests/mock_api.py --port "$MOCK_PORT" > "${RUNNER_TEMP}/mock-api.log" 2>&1 &
           for _ in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/todos/1" > /dev/null; then
+            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/todos/1" > /dev/null; then  # NOSONAR -- S6506 false positive: local mock http is safe
               echo "Mock API ready on port ${MOCK_PORT}"
               exit 0
             fi
@@ -504,7 +504,7 @@ jobs:
           set -euo pipefail
           python3 tests/mock_api.py --port "$MOCK_PORT" > "${RUNNER_TEMP}/mock-api.log" 2>&1 &
           for _ in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/todos/1" > /dev/null; then
+            if curl -fsS "http://127.0.0.1:${MOCK_PORT}/todos/1" > /dev/null; then  # NOSONAR -- S6506 false positive: local mock http is safe
               echo "Mock API ready on port ${MOCK_PORT}"
               exit 0
             fi
