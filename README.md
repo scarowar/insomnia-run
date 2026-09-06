@@ -30,31 +30,107 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 ## Features
 
 - **GitHub Actions Native**: Drop-in action with simple YAML configuration
-- **Automatic PR Comments**: Post test results directly to pull requests
+- **Automatic PR Comments**: One idempotent comment per pull request, updated on every run
+- **JUnit Reports & Artifacts**: Machine-readable JUnit XML plus a workflow artifact with the full report
+- **Failure Annotations**: One `::error::` annotation per failing test (first 10) on the workflow run
 - **Markdown & JSON Reports**: Human-readable and machine-readable outputs
+- **Secure Secrets**: Redaction of `env-var` values, Authorization headers, and tokenized URLs in every report
+- **Rate-Limit Friendly Runtime**: Release assets download straight from the CDN, not the REST API — private/enterprise mirrors make only the authenticated calls they need
 - **Flexible Exit Codes**: Control workflow failure behavior
 - **Environment Support**: Target different Insomnia environments per run
-- **Secure Secrets**: Pass credentials safely via GitHub Secrets
-- **Configurable Timeouts**: Handle slow APIs and large collections
+- **Linux x64**: Runs on GitHub-hosted and self-hosted Linux x86_64 runners (Inso CLI publishes Linux x64 binaries only)
 
 ## Quick Start
 
 **Run a collection:**
+
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
-  with:
-    command: collection
-    working-directory: .insomnia
+name: API Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write   # needed for pr-comment: true (the default)
+
+jobs:
+  api-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: scarowar/insomnia-run@v0.2.0
+        with:
+          command: collection
+          working-directory: .insomnia
 ```
 
 **Run a test suite:**
+
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
-  with:
-    command: test
-    working-directory: .insomnia
-    identifier: "My Test Suite"
+name: Unit Tests
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write   # needed for pr-comment: true (the default)
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: scarowar/insomnia-run@v0.2.0
+        with:
+          command: test
+          working-directory: .insomnia
+          identifier: "My Test Suite"
 ```
+
+Pin the exact release tag as shown. The alias `@v0.2` also works. Only exact
+tags `vX.Y.Z` install the verified wheel. Other references install from
+source and show a warning.
+
+## Permissions
+
+The action defaults to `pr-comment: true`, so pull-request workflows need:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+```
+
+| Feature | Permissions required |
+|---------|----------------------|
+| Running tests (`pr-comment: false`) | `contents: read` only |
+| PR comments (`pr-comment: true`, default) | `contents: read` + `pull-requests: write` |
+| Artifact upload (`upload-report: true`) | Nothing beyond the default — uploads use the runner's runtime token |
+
+PR comments are only posted on `pull_request` events; other events skip the comment step.
+
+## Egress requirements
+
+The action needs outbound HTTPS from the runner to exactly these destinations:
+
+| Destination | Purpose |
+|-------------|---------|
+| `github.com` (release CDN) | Download the Inso CLI tarball. The `13.2.0` tarball is verified against a SHA256 digest pinned in this action; other versions proceed with a warning because Kong publishes no checksum manifest upstream |
+| This action's release assets (your `github.server_url` host) | The `insomnia_run` wheel, `constraints.txt`, and `SHA256SUMS` for exact `vX.Y.Z` pins — all checksum-verified (`sha256sum --check --strict`) before install |
+| `pypi.org` + `files.pythonhosted.org` | Wheel runtime dependencies (`pydantic`, `typer`, and transitive) fetched by pip at install time. Constraints pin the versions but do not vendor them; an ambient `PIP_INDEX_URL` is respected for private mirrors |
+| Your API host | Whatever host(s) the collection's requests target |
+
+Notes:
+
+- On GitHub Enterprise Server / Enterprise Cloud data-residency hosts, the release assets come from your enterprise host instead of `github.com`; private mirrors additionally use authenticated API calls for the assets
+- Refs other than exact `vX.Y.Z` tags install from source and additionally fetch the Python build backend from PyPI
+- PR comments (enabled by default on `pull_request` events) additionally use the GitHub REST API
 
 ## Inputs
 
@@ -64,9 +140,13 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 | `working-directory` | Yes | | Path to `.insomnia` or export file |
 | `identifier` | No | | Collection/test suite name or ID |
 | `environment` | No | | Insomnia environment to use |
-| `pr-comment` | No | `true` | Post results as PR comment |
+| `pr-comment` | No | `true` | Post results as a single tagged PR comment (updated per run, never duplicated) |
+| `comment-tag` | No | `insomnia-run-report` | Tag identifying the PR comment to update |
 | `fail-on-error` | No | `true` | Fail workflow on test failures |
 | `output-format` | No | | Use `json` to get JSON output in addition to Markdown |
+| `junit-output` | No | | Path to write a JUnit XML report (enabled when set) |
+| `upload-report` | No | `false` | Upload the JUnit report, markdown report, and full raw output as a workflow artifact |
+| `inso-version` | No | `13.2.0` | Exact Inso CLI version (semver) |
 
 [View all inputs](https://scarowar.github.io/insomnia-run/reference/inputs/)
 
@@ -75,8 +155,9 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 | Output | Description |
 |--------|-------------|
 | `markdown` | Generated test report in Markdown format |
-| `json-output` | Generated JSON report (machine-readable) |
-| `exit-code` | `0` for pass, `1` for fail |
+| `json-output` | Generated JSON report (machine-readable, when `output-format: json`) |
+| `exit-code` | `0` pass, `1` test failures, `2` configuration/usage error |
+| `junit-path` | Path of the written JUnit XML report (when a report was written) |
 
 ## Documentation
 
@@ -85,8 +166,9 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 | [Getting Started](https://scarowar.github.io/insomnia-run/getting-started/) | First run in 5 minutes |
 | [Collections](https://scarowar.github.io/insomnia-run/guides/collections/) | Run API collections |
 | [Test Suites](https://scarowar.github.io/insomnia-run/guides/test-suites/) | Run unit tests |
-| [Secrets](https://scarowar.github.io/insomnia-run/guides/secrets/) | Handle credentials |
-| [Examples](https://scarowar.github.io/insomnia-run/examples/) | Workflow snippets |
+| [Secrets](https://scarowar.github.io/insomnia-run/guides/secrets/) | Handle credentials and redaction |
+| [Examples](https://scarowar.github.io/insomnia-run/examples/) | Workflow snippets incl. JUnit + artifacts |
+| [Migration](https://scarowar.github.io/insomnia-run/migration/) | Upgrading from v0.1.x to v0.2.0 |
 | [Troubleshooting](https://scarowar.github.io/insomnia-run/troubleshooting/) | Common issues |
 
 ## License

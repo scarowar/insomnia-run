@@ -9,7 +9,7 @@ meta:
   modified: 1735000000000
   description: "Integration test fixture - all tests should pass"
 collection:
-  - url: https://jsonplaceholder.typicode.com/todos/1
+  - url: http://127.0.0.1:8081/todos/1
     name: GET /todos/1
     meta:
       id: req_get_todo_001
@@ -36,7 +36,7 @@ collection:
         store: true
       rebuildPath: true
 
-  - url: https://jsonplaceholder.typicode.com/todos
+  - url: http://127.0.0.1:8081/todos
     name: GET /todos (list)
     meta:
       id: req_get_todos_list
@@ -64,7 +64,7 @@ collection:
         store: true
       rebuildPath: true
 
-  - url: https://jsonplaceholder.typicode.com/users/1
+  - url: http://127.0.0.1:8081/users/1
     name: GET /users/1
     meta:
       id: req_get_user_001

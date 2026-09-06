@@ -5,7 +5,7 @@
 Run a test suite by name:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
     working-directory: .insomnia
@@ -19,7 +19,7 @@ The `identifier` is required for test suites.
 Run only tests matching a pattern:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
     working-directory: .insomnia
@@ -32,7 +32,7 @@ Run only tests matching a pattern:
 Stop execution immediately when a test fails:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
     working-directory: .insomnia
@@ -45,7 +45,7 @@ Stop execution immediately when a test fails:
 Set a timeout for individual requests:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
     working-directory: .insomnia
@@ -59,17 +59,12 @@ Set a timeout for individual requests:
 
 ## With Secrets
 
-Pass secrets via environment variables:
-
-```yaml
-- uses: scarowar/insomnia-run@v0.1.0
-  with:
-    command: test
-    working-directory: .insomnia
-    identifier: "My Test Suite"
-  env:
-    API_KEY: ${{ secrets.API_KEY }}
-```
+The `env-var` input — the supported way to deliver secrets to Insomnia — applies to
+`command: collection` runs only. If a request under test needs a credential, run it
+through a collection with `env-var` instead of committing the secret into the suite's
+environment data. See [Handling Secrets](secrets.md) for the working pattern and the
+redaction rules (Authorization headers and tokenized URLs are redacted in every run,
+including test suites).
 
 ## Test vs Collection
 
@@ -78,3 +73,13 @@ Pass secrets via environment variables:
 | **Purpose** | Run requests | Run JavaScript tests |
 | **Identifier** | Optional | Required |
 | **Assertions** | Status codes | Any response data |
+
+## Reports
+
+Every run produces a markdown summary (posted as a PR comment on pull requests and
+added to the job summary). Additional reporting options:
+
+- `junit-output`: write a JUnit XML report; its path is exposed via the `junit-path` output
+- `upload-report`: upload the JUnit report, markdown report, and full redacted raw output as a workflow artifact
+- Every failing test emits an `::error::` annotation on the workflow run (first 10 failures)
+- Raw output in the markdown report is redacted and truncated at `raw-output-max-bytes` (default 8192)

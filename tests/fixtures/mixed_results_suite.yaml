@@ -1,5 +1,6 @@
 # Test Fixture: Mixed Results (Pass + Fail)
 # Purpose: Validates that the CLI correctly reports failures
+# Target: local mock API (tests/mock_api.py), never an external service
 # Expected: 2 passing tests, 1 failing test
 type: collection.insomnia.rest/5.0
 name: Todo API - Mixed Results Suite
@@ -9,7 +10,7 @@ meta:
   modified: 1735000000000
   description: "Integration test fixture - mix of passing and failing tests"
 collection:
-  - url: https://jsonplaceholder.typicode.com/todos/1
+  - url: http://127.0.0.1:8081/todos/1
     name: GET /todos/1 - Passing
     meta:
       id: req_pass_001
@@ -36,8 +37,8 @@ collection:
         store: true
       rebuildPath: true
 
-  - url: https://jsonplaceholder.typicode.com/todos/1
-    name: GET /todos/1 - Intentional Failure
+  - url: http://127.0.0.1:8081/todos/1
+    name: GET /todos/404 - Intentional Failure
     meta:
       id: req_fail_001
       created: 1735000000002
@@ -63,7 +64,7 @@ collection:
         store: true
       rebuildPath: true
 
-  - url: https://jsonplaceholder.typicode.com/users/1
+  - url: http://127.0.0.1:8081/users/1
     name: GET /users/1 - Passing
     meta:
       id: req_pass_002

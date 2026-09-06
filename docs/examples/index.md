@@ -1,5 +1,9 @@
 # Examples
 
+Third-party actions in these examples are pinned to full commit SHAs (with the release
+version in a comment) so examples stay reproducible. Pin `scarowar/insomnia-run` to the
+exact release tag in every example.
+
 ## Basic Collection
 
 Run a collection on every PR and push to main:
@@ -20,9 +24,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
           working-directory: .insomnia
@@ -46,27 +50,83 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: test
           working-directory: .insomnia
           identifier: "My Test Suite"
 ```
 
+## JUnit Report and Artifact Upload
+
+Write a JUnit XML report, upload it (plus the markdown report and the full redacted raw
+output) as a workflow artifact, and publish it with a test-reporting action. Every
+failing test also emits an `::error::` annotation on the workflow run automatically.
+
+```yaml title="api-tests-with-report.yml"
+name: API Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: scarowar/insomnia-run@v0.2.0
+        id: tests
+        with:
+          command: collection
+          working-directory: .insomnia
+          junit-output: reports/junit.xml
+          upload-report: "true"        # artifact: junit + markdown + full raw output
+
+      - name: Publish JUnit report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: junit-report
+          path: ${{ steps.tests.outputs.junit-path }}
+          if-no-files-found: warn
+
+      - name: Show JUnit path
+        run: echo "JUnit report at ${{ steps.tests.outputs.junit-path }}"
+```
+
+With `upload-report: "true"` (and no `junit-output` override) the action itself uploads
+an artifact named `insomnia-run-report` (configurable via `report-artifact-name`)
+containing `junit.xml`, `report.md`, and `raw-output.txt`. If you set `junit-output` to
+a workspace path as in the example above, the JUnit file is written there instead — the
+artifact then carries `report.md` and `raw-output.txt`, and you upload the JUnit file
+yourself, as the "Publish JUnit report" step does. The upload needs no extra workflow
+permissions.
+
 ## With Secrets
 
-Pass secrets to your Insomnia workspace via environment variables:
+Pass secrets to your Insomnia workspace with the `env-var` input and reference them in
+templates as `{{ _.API_KEY }}`:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
-  env:
-    API_KEY: ${{ secrets.API_KEY }}
+    env-var: |
+      API_KEY=${{ secrets.API_KEY }}
 ```
+
+Secret values are redacted from every report the action produces. A step-level `env:`
+block does not reach Insomnia templates. See [Handling Secrets](../guides/secrets.md)
+for details.
 
 ## Multi-Environment
 
@@ -80,9 +140,9 @@ jobs:
       matrix:
         env: [staging, production]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
           working-directory: .insomnia
@@ -94,7 +154,7 @@ jobs:
 Run tests without failing the workflow, then handle results manually:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   id: tests
   with:
     command: collection
@@ -123,9 +183,9 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
           working-directory: .insomnia
@@ -137,7 +197,7 @@ jobs:
 Route requests through a corporate proxy:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -152,7 +212,7 @@ Route requests through a corporate proxy:
     Disabling certificate validation is insecure. Only use in development environments.
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -178,9 +238,9 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         id: tests
         with:
           command: collection
@@ -190,11 +250,13 @@ jobs:
 
       - name: Write report to file
         if: steps.tests.outputs.exit-code != '0'
-        run: echo "${{ steps.tests.outputs.markdown }}" > report.md
+        env:
+          REPORT_MD: ${{ steps.tests.outputs.markdown }}
+        run: printf '%s' "$REPORT_MD" > report.md
 
       - name: Create Issue on Failure
         if: steps.tests.outputs.exit-code != '0'
-        uses: peter-evans/create-issue-from-file@v6
+        uses: peter-evans/create-issue-from-file@fca9117c27cdc29c6c4db3b86c48e4115a786710 # v6.0.0
         with:
           title: "API Tests Failing"
           content-filepath: report.md
@@ -207,7 +269,7 @@ jobs:
 Send email notification on test failure. This example uses AWS SES, but any SMTP server works (SendGrid, Mailgun, Gmail, etc.):
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   id: tests
   with:
     command: collection
@@ -216,7 +278,7 @@ Send email notification on test failure. This example uses AWS SES, but any SMTP
 
 - name: Send Email on Failure
   if: steps.tests.outputs.exit-code != '0'
-  uses: dawidd6/action-send-mail@v7
+  uses: dawidd6/action-send-mail@62a2d05b79935ad4fb90ce9079928099579c14ac # v9
   with:
     server_address: email-smtp.${{ secrets.AWS_REGION }}.amazonaws.com
     server_port: 587
@@ -236,7 +298,7 @@ Send email notification on test failure. This example uses AWS SES, but any SMTP
 Send test results to Slack:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   id: tests
   with:
     command: collection
@@ -245,7 +307,7 @@ Send test results to Slack:
 
 - name: Notify Slack on Failure
   if: steps.tests.outputs.exit-code != '0'
-  uses: slackapi/slack-github-action@v2
+  uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
   with:
     webhook: ${{ secrets.SLACK_WEBHOOK }}
     webhook-type: incoming-webhook
@@ -269,7 +331,7 @@ Send test results to Slack:
 For large collections or slow APIs, increase the execution timeout:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -281,7 +343,7 @@ For large collections or slow APIs, increase the execution timeout:
 Run collections with external data files:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -294,7 +356,7 @@ Run collections with external data files:
 Run a collection and save the machine-readable JSON report:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   id: run-cli
   with:
     command: collection
@@ -313,7 +375,7 @@ If you want this file accessible across jobs in GitHub Actions, you can also upl
 
 ```yaml
 - name: Upload JSON report
-  uses: actions/upload-artifact@v6
+  uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
   with:
     name: insomnia-json-report
     path: test-results.json

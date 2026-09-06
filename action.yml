@@ -7,10 +7,6 @@ branding:
   color: purple
 
 inputs:
-  execution-timeout:
-    description: "Timeout for entire execution in seconds. Default is 300. Increase for large collections or slow APIs."
-    required: false
-    default: "300"
   command:
     description: 'The command to run: "test" or "collection".'
     required: true
@@ -18,15 +14,6 @@ inputs:
   working-directory:
     description: "Path to Insomnia export file or .insomnia directory."
     required: true
-
-  github-token:
-    description: "GitHub token for posting PR comments. Uses GITHUB_TOKEN if not provided."
-    required: false
-
-  inso-version:
-    description: "Version of Inso CLI to use."
-    required: false
-    default: "12.2.0"
 
   identifier:
     description: "Collection name, test suite name, or workspace ID to run."
@@ -96,14 +83,54 @@ inputs:
     description: "The format of the report output (e.g., 'json')."
     required: false
 
+  execution-timeout:
+    description: "Timeout for entire execution in seconds. Default is 300. Increase for large collections or slow APIs."
+    required: false
+    default: "300"
+
+  inso-version:
+    description: "Exact Inso CLI version to use (semver, e.g. 13.2.0)."
+    required: false
+    default: "13.2.0"
+
+  github-token:
+    description: "GitHub token for PR comments and release-asset downloads on private/enterprise hosts. Uses GITHUB_TOKEN if not provided."
+    required: false
+
   pr-comment:
     description: "Post test results as a PR comment."
     required: false
     default: "true"
+  comment-tag:
+    description: "Tag used to find and update the existing PR comment instead of posting duplicates."
+    required: false
+    default: "insomnia-run-report"
+
   fail-on-error:
     description: "Fail the workflow if tests fail."
     required: false
     default: "true"
+
+  include-raw-output:
+    description: "Embed the (redacted) raw Inso output in the markdown report."
+    required: false
+    default: "true"
+  raw-output-max-bytes:
+    description: "Maximum raw output size embedded in the markdown report."
+    required: false
+    default: "8192"
+  junit-output:
+    description: "Path to write a JUnit XML report (enabled when set)."
+    required: false
+    default: ""
+  upload-report:
+    description: "Upload the JUnit report, markdown report, and full raw output as a workflow artifact."
+    required: false
+    default: "false"
+  report-artifact-name:
+    description: "Artifact name used when upload-report is true."
+    required: false
+    default: "insomnia-run-report"
 
 outputs:
   markdown:
@@ -112,56 +139,199 @@ outputs:
     value: ${{ steps.run-cli.outputs.json-output }}
   exit-code:
     value: ${{ steps.run-cli.outputs.exit-code }}
+  junit-path:
+    value: ${{ steps.run-cli.outputs.junit-path }}
 
 runs:
   using: composite
   steps:
-    - name: 🧰 Setup Inso CLI
+    - name: 🧰 Validate prerequisites and Inso version
       shell: bash
+      env:
+        INSO_VERSION: ${{ inputs.inso-version }}
       run: |
-        INSO_VERSION="${{ inputs.inso-version }}"
-        echo "Installing inso version ${INSO_VERSION}..."
-        curl -sL "https://github.com/Kong/insomnia/releases/download/core%40${INSO_VERSION}/inso-linux-x64-${INSO_VERSION}.tar.xz" -o /tmp/inso.tar.xz
-        mkdir -p /tmp/inso
-        tar -xJf /tmp/inso.tar.xz -C /tmp/inso
-        sudo mv /tmp/inso/inso /usr/local/bin/inso
-        sudo chmod +x /usr/local/bin/inso
-        inso --version
-
-    - name: ✅ Verify Python Requirements
-      shell: bash
-      run: |
-        set +e
-
-        # Check if Python 3 is available
-        if ! command -v python3 &> /dev/null; then
-          echo "::error::Python 3 is not installed or not in PATH"
-          echo "::error::insomnia-run requires Python 3.10 or higher"
-          echo "::error::GitHub-hosted runners have Python pre-installed. If using a self-hosted runner, please install Python 3.10+."
+        set -euo pipefail
+        MISSING=""
+        for tool in python3 curl tar xz jq; do
+          command -v "$tool" >/dev/null 2>&1 || MISSING="$MISSING $tool"
+        done
+        if [[ -n "$MISSING" ]]; then
+          echo "::error::Missing required runner tools:$MISSING. Install them (e.g. apt-get install python3-venv curl tar xz-utils jq) and re-run."
+          exit 1
+        fi
+        # CR/LF stripped so untrusted input cannot inject workflow commands
+        SAFE_VERSION="${INSO_VERSION//[$'\r\n']/}"
+        if [[ ! "$SAFE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::Invalid inso-version '$SAFE_VERSION'. Provide an exact semver (e.g. 13.2.0)."
           exit 1
         fi
 
-        # Check Python version requirement
-        python3 - <<'EOF'
-        import sys
-        if sys.version_info < (3, 10):
-            print("::error::insomnia-run requires Python 3.10 or higher")
-            print(f"::error::Current version: {sys.version}")
-            print("::error::GitHub-hosted runners provide Python 3.10+. Consider using a newer runner image or upgrading Python.")
-            sys.exit(1)
-        print(f"Using Python {sys.version.split()[0]}")
-        EOF
+    - name: 🔍 Detect preinstalled Inso
+      id: detect-inso
+      shell: bash
+      env:
+        INSO_VERSION: ${{ inputs.inso-version }}
+      run: |
+        if command -v inso >/dev/null 2>&1; then
+          RAW_VER="$(inso --version 2>/dev/null || true)"
+          VER_TOKEN="$(printf '%s' "$RAW_VER" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+          if [[ "$VER_TOKEN" == "$INSO_VERSION" && "$RAW_VER" != *"$INSO_VERSION"-* && "$RAW_VER" != *"$INSO_VERSION".* ]]; then
+            echo "needs-setup=false" >> "$GITHUB_OUTPUT"
+            echo "Preinstalled Inso ${INSO_VERSION} found; skipping installation."
+            exit 0
+          fi
+        fi
+        echo "needs-setup=true" >> "$GITHUB_OUTPUT"
 
-        if [[ $? -ne 0 ]]; then
+    - name: 🧰 Install Inso CLI
+      if: steps.detect-inso.outputs.needs-setup == 'true'
+      shell: bash
+      env:
+        INSO_VERSION: ${{ inputs.inso-version }}
+        RUNNER_OS_: ${{ runner.os }}
+      run: | # zizmor: ignore[github-env] (PATH value is runner-controlled)
+        set -euo pipefail
+
+        if [[ "$RUNNER_OS_" != "Linux" ]]; then
+          echo "::error::insomnia-run supports Linux runners (runner OS: ${RUNNER_OS_}). See the docs for alternatives."
           exit 1
         fi
 
-    - name: 📦 Install uv
-      uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b
+        if [[ "$(uname -m)" != "x86_64" ]]; then
+          echo "::error::Unsupported runner architecture: $(uname -m). Kong publishes Inso CLI binaries for Linux x64 only (no arm64 assets upstream); run this action on an x86_64 runner."
+          exit 1
+        fi
 
-    - name: 🔧 Install insomnia-run
+        ASSET="inso-linux-x64-${INSO_VERSION}.tar.xz"
+        URL="https://github.com/Kong/insomnia/releases/download/core%40${INSO_VERSION}/${ASSET}"
+        echo "Downloading ${URL}"
+        if ! curl -sSL --fail --retry 3 --max-time 180 -o "${RUNNER_TEMP}/${ASSET}" "$URL"; then
+          echo "::error::Could not download Inso CLI ${INSO_VERSION} (${ASSET}). Check that the version exists at https://github.com/Kong/insomnia/releases and that the runner has network egress."
+          exit 1
+        fi
+
+        # Pinned digests for versions whose integrity this action release has
+        # verified. Unmapped versions proceed with a warning (Kong publishes
+        # no checksum manifest upstream).
+        case "${INSO_VERSION}" in
+          13.2.0) EXPECTED_SHA256="b72c723bdbc5dc721cf364e7e654930471993391468651f9e45b93a00eb4c0ab" ;;
+          13.1.0) EXPECTED_SHA256="f41f0cc4a751aaf82df093b172b07672e61133fd675e4cf55a83ede2a579d4b1" ;;
+          *) EXPECTED_SHA256="" ;;
+        esac
+        ACTUAL_SHA256="$(sha256sum "${RUNNER_TEMP}/${ASSET}" | cut -d' ' -f1)"
+        if [[ -n "$EXPECTED_SHA256" && "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]]; then
+          echo "::error::Inso tarball checksum mismatch for ${INSO_VERSION}: expected ${EXPECTED_SHA256}, got ${ACTUAL_SHA256}. Do not retry blindly; investigate."
+          exit 1
+        fi
+        if [[ -z "$EXPECTED_SHA256" ]]; then
+          echo "::warning::No pinned checksum for Inso ${INSO_VERSION} in this action version; proceeding without upstream integrity verification (got ${ACTUAL_SHA256})."
+        fi
+
+        mkdir -p "${RUNNER_TEMP}/inso"
+        tar -xJf "${RUNNER_TEMP}/${ASSET}" -C "${RUNNER_TEMP}/inso"
+        BIN_DIR="${RUNNER_TEMP}/inso"
+        chmod +x "${BIN_DIR}/inso"
+        echo "${BIN_DIR}" >> "$GITHUB_PATH"
+
+    - name: ✅ Verify Inso CLI
       shell: bash
-      run: uv pip install --system "$GITHUB_ACTION_PATH"
+      env:
+        INSO_VERSION: ${{ inputs.inso-version }}
+      run: |
+        set -euo pipefail
+        echo "INSO_TELEMETRY_DISABLED=1" >> "$GITHUB_ENV"
+        if ! command -v inso >/dev/null 2>&1; then
+          echo "::error::Inso CLI is not available on PATH after installation. Please report this at https://github.com/scarowar/insomnia-run/issues"
+          exit 1
+        fi
+        RAW_VER="$(inso --version 2>/dev/null || echo 'unknown')"
+        VER_TOKEN="$(printf '%s' "$RAW_VER" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+        if [[ "$VER_TOKEN" != "$INSO_VERSION" || "$RAW_VER" == *"$INSO_VERSION"-* || "$RAW_VER" == *"$INSO_VERSION".* ]]; then
+          echo "::error::Inso CLI version mismatch: expected ${INSO_VERSION}, got '${RAW_VER}'."
+          exit 1
+        fi
+
+    - name: 📦 Install insomnia-run runtime
+      id: runtime
+      shell: bash # zizmor: ignore[github-env] (PATH value is runner-controlled)
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token || github.token }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        ACTION_REPOSITORY: ${{ github.action_repository }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        ACTION_REF: ${{ github.action_ref }}
+      run: | # zizmor: ignore[github-env] (PATH value is runner-controlled)
+        set -euo pipefail
+
+        VENV="${RUNNER_TEMP}/insomnia-run-venv"
+        python3 -m venv --clear "$VENV"
+        echo "${VENV}/bin" >> "$GITHUB_PATH"
+
+        if [[ "$ACTION_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          TAG="$ACTION_REF"
+          VERSION="${TAG#v}"
+          WHEEL="insomnia_run-${VERSION}-py3-none-any.whl"
+          BASE="${GITHUB_SERVER_URL}/${ACTION_REPOSITORY}/releases/download/${TAG}"
+          STAGE="${RUNNER_TEMP}/insomnia-run-assets"
+          mkdir -p "$STAGE"
+
+          download() {
+            # $1 = asset name; try anonymous CDN first, then authenticated API fallback
+            # whenever a token is available (fixes private internal mirrors on github.com).
+            local asset="$1" dest="$2"
+            if curl -sSL --fail --retry 3 --max-time 300 -o "$dest" "${BASE}/${asset}"; then
+              return 0
+            fi
+            if [[ -z "$GITHUB_TOKEN" ]]; then
+              return 1
+            fi
+            local asset_url
+            asset_url="$(curl -sSL --fail --retry 3 --max-time 120 \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              "${GITHUB_API_URL}/repos/${ACTION_REPOSITORY}/releases/tags/${TAG}" \
+              | jq -r ".assets[] | select(.name==\"${asset}\") | .url")"
+            [[ -n "$asset_url" && "$asset_url" != "null" ]] || return 1
+            # Two-step download so Authorization is not forwarded to S3/CDN redirect target
+            REDIR="$(curl -sS -D - -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/octet-stream" -o /dev/null "$asset_url" 2>/dev/null | tr -d '\r' | awk '/^location:/I{print $2}' | tail -1 | tr -d '\n\r ')"
+            if [[ -n "$REDIR" ]]; then
+              curl -sSL --fail --retry 3 --max-time 300 -o "$dest" "$REDIR"
+            else
+              curl -sSL --fail --retry 3 --max-time 300 \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                -H "Accept: application/octet-stream" \
+                -o "$dest" "$asset_url"
+            fi
+          }
+
+          RELEASE_JSON="$(curl -sS --fail --retry 3 --max-time 120 \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            "${GITHUB_API_URL}/repos/${ACTION_REPOSITORY}/releases/tags/${TAG}")" || {
+            echo "::error::Could not read release ${TAG} (missing or token lacks contents:read on ${ACTION_REPOSITORY}). If the action repo is mirrored privately, pass a github-token with contents:read on the mirror repo."
+            exit 1
+          }
+          for asset in "$WHEEL" "SHA256SUMS" "constraints.txt"; do
+            ASSET_ID="$(printf '%s' "$RELEASE_JSON" | jq -r ".assets[] | select(.name==\"${asset}\") | .id")"
+            if [[ -z "$ASSET_ID" || "$ASSET_ID" == "null" ]]; then
+              echo "::error::Release asset '${asset}' not found on release ${TAG} (checked assets: $(printf '%s' "$RELEASE_JSON" | jq -r '.assets[].name' | tr '\n' ' ')). The release workflow attaches the wheel, SHA256SUMS, and constraints.txt automatically; re-run the release."
+              exit 1
+            fi
+            if ! download "$asset" "${STAGE}/${asset}"; then
+              echo "::error::Could not download '${asset}' from release ${TAG} (asset id ${ASSET_ID}). Check runner egress and the token scope, then retry."
+              exit 1
+            fi
+          done
+
+          (cd "$STAGE" && sha256sum --check --strict SHA256SUMS) || {
+            echo "::error::Checksum verification failed for release ${TAG} assets. Do not retry blindly; investigate."
+            exit 1
+          }
+
+          "${VENV}/bin/python" -m pip install --quiet --disable-pip-version-check \
+            --constraint "${STAGE}/constraints.txt" "${STAGE}/${WHEEL}"
+        else
+          echo "::warning::insomnia-run is not pinned to an exact vX.Y.Z release (ref: ${ACTION_REF}). Installing from the action source instead; reports may differ from any released version. Pin an exact tag in production."
+          "${VENV}/bin/python" -m pip install --quiet --disable-pip-version-check "$GITHUB_ACTION_PATH"
+        fi
 
     - name: 🚀 Run Insomnia
       id: run-cli
@@ -188,40 +358,39 @@ runs:
         REQUEST_TIMEOUT: ${{ inputs.request-timeout }}
         DISABLE_CERT_VALIDATION: ${{ inputs.disable-cert-validation }}
 
-        HTTPS_PROXY: ${{ inputs.https-proxy }}
-        HTTP_PROXY: ${{ inputs.http-proxy }}
-        NO_PROXY: ${{ inputs.no-proxy }}
+        INPUT_HTTPS_PROXY: ${{ inputs.https-proxy }}
+        INPUT_HTTP_PROXY: ${{ inputs.http-proxy }}
+        INPUT_NO_PROXY: ${{ inputs.no-proxy }}
         DATA_FOLDERS: ${{ inputs.data-folders }}
         VERBOSE: ${{ inputs.verbose }}
         OUTPUT_FORMAT: ${{ inputs.output-format }}
+
+        INCLUDE_RAW_OUTPUT: ${{ inputs.include-raw-output }}
+        RAW_OUTPUT_MAX_BYTES: ${{ inputs.raw-output-max-bytes }}
+        JUNIT_OUTPUT: ${{ inputs.junit-output }}
+        UPLOAD_REPORT: ${{ inputs.upload-report }}
 
         WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       run: |
         set +e
 
-        # Add Python bin directory to PATH to ensure installed scripts are available
-        PYTHON_BIN_DIR="$(python3 -c 'import sys; import os; print(os.path.dirname(sys.executable))' 2>&1)"
-        if [[ $? -ne 0 ]] || [[ -z "$PYTHON_BIN_DIR" ]]; then
-          echo "::error::Failed to determine Python bin directory"
-          echo "::error::Python detection output: $PYTHON_BIN_DIR"
+        SAFE_COMMAND="${COMMAND//[$'\r\n']/}"
+        if [[ "$SAFE_COMMAND" != "collection" && "$SAFE_COMMAND" != "test" ]]; then
+          echo "::error::Invalid command '${SAFE_COMMAND}'. Must be 'collection' or 'test'."
           exit 1
         fi
 
-        export PATH="$PYTHON_BIN_DIR:$PATH"
-
-        # Verify insomnia-run is available
-        if ! command -v insomnia-run &> /dev/null; then
-          echo "::error::insomnia-run command not found after installation"
-          echo "::error::Python bin directory: $PYTHON_BIN_DIR"
-          echo "::error::Current PATH: $PATH"
-          echo "::error::This may indicate an installation issue. Please report this at https://github.com/scarowar/insomnia-run/issues"
-          exit 1
-        fi
-
-        if [[ "$COMMAND" != "collection" && "$COMMAND" != "test" ]]; then
-          echo "::error::Invalid command '$COMMAND'. Must be 'collection' or 'test'."
-          exit 1
+        if [[ "$UPLOAD_REPORT" == "true" ]]; then
+          STAGE="${RUNNER_TEMP}/insomnia-run-report"
+          mkdir -p "$STAGE"
+          JUNIT_PATH="${JUNIT_OUTPUT:-${STAGE}/junit.xml}"
+          RAW_FILE="${STAGE}/raw-output.txt"
+          REPORT_MD="${STAGE}/report.md"
+        else
+          JUNIT_PATH="$JUNIT_OUTPUT"
+          RAW_FILE=""
+          REPORT_MD=""
         fi
 
         if [[ "$COMMAND" == "collection" ]]; then
@@ -231,13 +400,14 @@ runs:
         fi
 
         CMD+=(--working-dir "$WORKING_DIR")
-
-        # Add execution-timeout if set
-        if [[ -n "$EXECUTION_TIMEOUT" ]]; then
-          CMD+=(--execution-timeout "$EXECUTION_TIMEOUT")
-        fi
+        CMD+=(--execution-timeout "$EXECUTION_TIMEOUT")
+        [[ "$INCLUDE_RAW_OUTPUT" == "true" ]] && CMD+=(--include-raw-output)
+        [[ "$INCLUDE_RAW_OUTPUT" != "true" ]] && CMD+=(--no-include-raw-output)
+        CMD+=(--raw-output-max-bytes "$RAW_OUTPUT_MAX_BYTES")
 
         [[ -n "$OUTPUT_FORMAT" ]] && CMD+=(--output-format "$OUTPUT_FORMAT")
+        [[ -n "$JUNIT_PATH" ]] && CMD+=(--junit-output "$JUNIT_PATH")
+        [[ -n "$RAW_FILE" ]] && CMD+=(--raw-output-file "$RAW_FILE")
 
         [[ -n "$IDENTIFIER" ]] && CMD+=(--identifier "$IDENTIFIER")
         [[ -n "$ENVIRONMENT" ]] && CMD+=(--env "$ENVIRONMENT")
@@ -252,8 +422,8 @@ runs:
           if [[ -n "$ITEM" ]]; then
             IFS=',' read -ra ITEMS <<< "$ITEM"
             for i in "${ITEMS[@]}"; do
-              i="$(echo "$i" | xargs)"
-              CMD+=(--item "$i")
+              i="${i//[[:space:]]/}"
+              [[ -n "$i" ]] && CMD+=(--item "$i")
             done
           fi
 
@@ -272,33 +442,44 @@ runs:
         [[ "$BAIL" == "true" ]] && CMD+=(--bail)
         [[ -n "$REQUEST_TIMEOUT" ]] && CMD+=(--request-timeout "$REQUEST_TIMEOUT")
         [[ "$DISABLE_CERT_VALIDATION" == "true" ]] && CMD+=(--disable-cert-validation)
-        [[ -n "$HTTPS_PROXY" ]] && CMD+=(--https-proxy "$HTTPS_PROXY")
-        [[ -n "$HTTP_PROXY" ]] && CMD+=(--http-proxy "$HTTP_PROXY")
-        [[ -n "$NO_PROXY" ]] && CMD+=(--no-proxy "$NO_PROXY")
-        [[ "$VERBOSE" == "true" ]] && CMD+=(--verbose)
+        [[ -n "$INPUT_HTTPS_PROXY" ]] && CMD+=(--https-proxy "$INPUT_HTTPS_PROXY")
+        [[ -n "$INPUT_HTTP_PROXY" ]] && CMD+=(--http-proxy "$INPUT_HTTP_PROXY")
+        [[ -n "$INPUT_NO_PROXY" ]] && CMD+=(--no-proxy "$INPUT_NO_PROXY")
 
         if [[ -n "$DATA_FOLDERS" ]]; then
           IFS=',' read -ra FOLDERS <<< "$DATA_FOLDERS"
           for f in "${FOLDERS[@]}"; do
-            CMD+=(--data-folders "$f")
+            f="${f//[[:space:]]/}"
+            [[ -n "$f" ]] && CMD+=(--data-folders "$f")
           done
         fi
+
+        [[ "$VERBOSE" == "true" ]] && CMD+=(--verbose)
 
         CMD+=(--workflow-url "$WORKFLOW_URL")
 
         echo "::group::Running Insomnia"
-        echo "Executing: ${CMD[*]}"
-
         OUTPUT_FORMAT_LOWER=$(echo "$OUTPUT_FORMAT" | tr '[:upper:]' '[:lower:]')
 
         if [[ "$OUTPUT_FORMAT_LOWER" == "json" ]]; then
-          JSON_TMPFILE=$(mktemp)
-          MARKDOWN="$("${CMD[@]}" 2>"$JSON_TMPFILE")"
+          STDERR_FILE=$(mktemp)
+          MARKDOWN="$("${CMD[@]}" 2>"$STDERR_FILE")"
           EXIT_CODE=$?
-          JSON_OUTPUT=$(cat "$JSON_TMPFILE")
-          rm -f "$JSON_TMPFILE"
+          grep '^::error title=' "$STDERR_FILE" >&2 || true
+          JSON_TMP="$(grep -v '^::error title=' "$STDERR_FILE" || true)"
+          if [[ -n "$JSON_TMP" ]]; then
+            if printf '%s' "$JSON_TMP" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
+              JSON_OUTPUT="$JSON_TMP"
+            else
+              echo "::warning::CLI stderr was not valid JSON; json-output will be empty." >&2
+              JSON_OUTPUT=""
+            fi
+          else
+            JSON_OUTPUT=""
+          fi
+          rm -f "$STDERR_FILE"
         else
-          MARKDOWN="$("${CMD[@]}" 2>&1)"
+          MARKDOWN="$("${CMD[@]}")"
           EXIT_CODE=$?
           JSON_OUTPUT=""
         fi
@@ -306,36 +487,66 @@ runs:
 
         echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
 
-        EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-        {
-          echo "markdown<<$EOF"
-          echo "$MARKDOWN"
-          echo "$EOF"
-        } >> "$GITHUB_OUTPUT"
+        if [[ -n "$JUNIT_PATH" && -f "$JUNIT_PATH" ]]; then
+          echo "junit-path=$JUNIT_PATH" >> "$GITHUB_OUTPUT"
+        fi
+
+        write_output() {
+          local name="$1" value="$2" delim
+          delim=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          {
+            echo "${name}<<${delim}"
+            echo "$value"
+            echo "$delim"
+          } >> "$GITHUB_OUTPUT"
+        }
+
+        write_output markdown "$MARKDOWN"
 
         if [[ -n "$JSON_OUTPUT" ]]; then
-          EOF_JSON=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
-          {
-            echo "json-output<<$EOF_JSON"
-            echo "$JSON_OUTPUT"
-            echo "$EOF_JSON"
-          } >> "$GITHUB_OUTPUT"
+          write_output json-output "$JSON_OUTPUT"
         fi
 
         echo "$MARKDOWN" >> "$GITHUB_STEP_SUMMARY"
+        if [[ -n "$REPORT_MD" ]]; then
+          printf '%s\n' "$MARKDOWN" > "$REPORT_MD"
+        fi
         exit 0
+
+    - name: 📦 Upload report artifact
+      if: inputs.upload-report == 'true'
+      # upload-artifact v4 is unavailable on some GHES versions; a failure
+      # here degrades to a warning instead of breaking the run.
+      continue-on-error: true
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: ${{ inputs.report-artifact-name }}
+        path: ${{ runner.temp }}/insomnia-run-report/**
+        if-no-files-found: warn
 
     - name: 💬 Post PR Comment
       if: inputs.pr-comment == 'true' && github.event_name == 'pull_request'
+      # A failed comment (secondary rate limit, permissions) surfaces as a
+      # warning annotation but never breaks the run.
+      continue-on-error: true
       uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
       with:
         token: ${{ inputs.github-token || github.token }}
         issue-number: ${{ github.event.pull_request.number }}
         body: ${{ steps.run-cli.outputs.markdown }}
+        comment-tag: ${{ inputs.comment-tag }}
 
     - name: ❌ Check for Failures
-      if: inputs.fail-on-error == 'true' && steps.run-cli.outputs.exit-code != '0'
+      if: >-
+        ${{ steps.run-cli.outputs.exit-code != '0' &&
+          (inputs.fail-on-error == 'true' || steps.run-cli.outputs.exit-code == '2' || steps.run-cli.outputs.exit-code > '1') }}
       shell: bash
+      env:
+        EXIT_CODE: ${{ steps.run-cli.outputs.exit-code }}
       run: |
-        echo "::error::Tests failed. See the report above for details."
+        if [[ "$EXIT_CODE" == "2" ]] || [[ "$EXIT_CODE" -gt 1 ]]; then
+          echo "::error::insomnia-run failed with a configuration or runtime error (exit code ${EXIT_CODE}). This is not a test failure — check the step log above for the specific message."
+        else
+          echo "::error::Insomnia run failed (exit code ${EXIT_CODE}). See the report above for details."
+        fi
         exit 1

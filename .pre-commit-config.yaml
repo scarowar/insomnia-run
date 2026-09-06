@@ -20,22 +20,16 @@ repos:
   hooks:
   - id: ruff-check
     args: [ --fix ]
-    files: scripts/generate_report.py
+    files: ^(src|tests)/
   - id: ruff-format
-    files: scripts/generate_report.py
-
-- repo: https://github.com/psf/black-pre-commit-mirror
-  rev: 26.1.0
-  hooks:
-  - id: black
-    language_version: python3.12
-    files: scripts/generate_report.py
+    files: ^(src|tests)/
 
 - repo: https://github.com/PyCQA/bandit
   rev: 1.9.3
   hooks:
   - id: bandit
-    files: scripts/generate_report.py
+    args: [ --severity-level, medium ]
+    files: ^(src|tests)/
 
 - repo: https://github.com/rhysd/actionlint
   rev: v1.7.10
@@ -47,10 +41,12 @@ repos:
   hooks:
   - id: gitlint
 
-- repo: https://github.com/jazzband/pip-tools
-  rev: v7.5.2
-  hooks:
-  - id: pip-compile
-    name: pip-compile requirements.in
-    args: [ --generate-hashes, requirements.in ]
-    files: ^requirements\.(in|txt)$
+ci:
+  autoupdate_schedule: weekly
+  autofix_commit_msg: "style: apply pre-commit fixes"
+  autoupdate_commit_msg: "chore: update pre-commit hooks"
+  skip:
+  - gitleaks
+  - bandit
+  - actionlint
+  - gitlint

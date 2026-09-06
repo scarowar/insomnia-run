@@ -1,0 +1,7 @@
+# zizmor configuration: https://docs.zizmor.sh/configuration/
+rules:
+  self-repository:
+    ignore:
+      # The e2e workflow intentionally exercises the action from the current
+      # checkout via `uses: ./` — exactly what this audit warns about.
+      - e2e-test.yml

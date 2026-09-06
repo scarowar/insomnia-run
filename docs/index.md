@@ -8,7 +8,7 @@ Run Insomnia collections and test suites in GitHub Actions with PR comment repor
 ## Usage
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: .insomnia
@@ -20,9 +20,11 @@ Run Insomnia collections and test suites in GitHub Actions with PR comment repor
 |---------|-------------|
 | **Collections** | Run API request collections |
 | **Test Suites** | Execute JavaScript unit tests |
-| **PR Comments** | Auto-post results to pull requests |
+| **PR Comments** | One idempotent comment per pull request, updated on every run |
+| **JUnit & Artifacts** | JUnit XML reports, uploadable as workflow artifacts |
+| **Annotations** | One `::error::` annotation per failing test (first 10) |
 | **JSON Output** | Machine-readable reports for automation |
-| **Secrets** | Secure credential passthrough |
+| **Secrets** | Secure credential passthrough with automatic redaction in reports |
 | **Multi-Environment** | Target dev, staging, production |
 | **Configurable Timeouts** | Handle slow APIs and large collections |
 
@@ -54,7 +56,8 @@ Run Insomnia collections and test suites in GitHub Actions with PR comment repor
 |--------|-------------|
 | `markdown` | Generated test report |
 | `json-output` | JSON report (when `output-format: json`) |
-| `exit-code` | `0` = pass, `1` = fail |
+| `exit-code` | `0` = pass, `1` = test failures, `2` = configuration/usage error |
+| `junit-path` | Path of the written JUnit XML report |
 
 ## Documentation
 
@@ -63,7 +66,8 @@ Run Insomnia collections and test suites in GitHub Actions with PR comment repor
 | [Getting Started](getting-started/index.md) | First run in 5 minutes |
 | [Collections](guides/collections.md) | Run API collections |
 | [Test Suites](guides/test-suites.md) | Run unit tests |
-| [Secrets](guides/secrets.md) | Handle credentials |
+| [Secrets](guides/secrets.md) | Handle credentials and redaction |
 | [Reference](reference/inputs.md) | All inputs & outputs |
-| [Examples](examples/index.md) | Workflow snippets |
+| [Examples](examples/index.md) | Workflow snippets incl. JUnit + artifacts |
+| [Migration](migration.md) | Upgrading from v0.1.x to v0.2.0 |
 | [Troubleshooting](troubleshooting.md) | Common issues |

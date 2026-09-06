@@ -9,7 +9,7 @@ meta:
   modified: 1735000000000
   description: "Test fixture for environment variable passthrough"
 collection:
-  - url: https://httpbin.org/headers
+  - url: http://127.0.0.1:8081/headers
     name: Check Headers with Auth
     meta:
       id: req_auth_check_001

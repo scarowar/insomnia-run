@@ -2,7 +2,6 @@ from typer.testing import CliRunner
 
 from insomnia_run.main import app
 
-
 runner = CliRunner()
 
 

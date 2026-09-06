@@ -1,11 +1,13 @@
 import pytest
+from pydantic import ValidationError
+
 from insomnia_run.models import (
-    RunType,
-    InsoStatus,
+    InsoCollectionOptions,
     InsoResult,
     InsoRunReport,
-    InsoCollectionOptions,
+    InsoStatus,
     InsoTestOptions,
+    RunType,
 )
 
 
@@ -155,3 +157,44 @@ class TestInsoTestOptions:
         )
         assert options.test_name_pattern == ".*login.*"
         assert options.keep_file is True
+
+
+class TestInsoResultMessage:
+    def test_message_defaults_to_none(self):
+        result = InsoResult(id=1, status=InsoStatus.FAIL, description="request failed")
+        assert result.message is None
+
+    def test_message_carries_failure_detail(self):
+        result = InsoResult(
+            id=2,
+            status=InsoStatus.FAIL,
+            description="GET /users",
+            message="AssertionError: expected status 200, got 500",
+        )
+        assert result.message == "AssertionError: expected status 200, got 500"
+
+
+class TestInsoRunReportDiagnostics:
+    def test_diagnostics_default_empty(self):
+        report = InsoRunReport(plan_end=0)
+        assert report.diagnostics == []
+
+    def test_diagnostics_hold_footer_errors(self):
+        report = InsoRunReport(
+            plan_end=2,
+            diagnostics=["error: Request failed | ACTUAL: 500 | EXPECTED: 200"],
+        )
+        assert report.diagnostics == ["error: Request failed | ACTUAL: 500 | EXPECTED: 200"]
+
+
+class TestExecutionTimeoutValidation:
+    @pytest.mark.parametrize("model", [InsoCollectionOptions, InsoTestOptions])
+    def test_execution_timeout_defaults_to_300(self, model):
+        assert model(working_dir="/w").execution_timeout == 300
+
+    @pytest.mark.parametrize("model", [InsoCollectionOptions, InsoTestOptions])
+    def test_execution_timeout_must_be_positive(self, model):
+        with pytest.raises(ValidationError):
+            model(working_dir="/w", execution_timeout=0)
+        with pytest.raises(ValidationError):
+            model(working_dir="/w", execution_timeout=-5)
