@@ -6,21 +6,35 @@ on:
   pull_request:
     branches: [main, develop]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    name: Unit Tests
-    runs-on: ubuntu-latest
+    name: Unit Tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
     strategy:
+      fail-fast: false
       matrix:
+        os: ["ubuntu-latest", "ubuntu-22.04"]
         python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -28,28 +42,37 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@803947b9bd8e9f986429fa0c5a41c367cd732b41
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.11.6"
+          enable-cache: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --locked --no-build --no-binary-package insomnia-run
 
       - name: Run tests
-        run: uv run pytest -v --tb=short
+        run: uv run --frozen pytest -v --tb=short --cov=insomnia_run --cov-report=term --cov-fail-under=85  # NOSONAR -- S8541 false positive: uv run needs to build local project, --no-build would break (see https://github.com/astral-sh/uv/issues/10778)
 
       - name: Run type checking
-        run: uv run mypy src/insomnia_run --ignore-missing-imports
-        continue-on-error: true
+        run: uv run --frozen mypy src/insomnia_run  # NOSONAR -- S8541 false positive: uv run needs to build local project, --no-build would break (see https://github.com/astral-sh/uv/issues/10778)
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -57,15 +80,21 @@ jobs:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@803947b9bd8e9f986429fa0c5a41c367cd732b41
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.11.6"
+          enable-cache: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --dev --locked --no-build --no-binary-package insomnia-run
+
+      - name: Check lockfile sync
+        run: uv lock --check
 
       - name: Run ruff check
-        run: uv run ruff check src/
-        continue-on-error: true
+        run: uv run --frozen ruff check src tests  # NOSONAR -- S8541 false positive: uv run needs to build local project, --no-build would break (see https://github.com/astral-sh/uv/issues/10778)
 
       - name: Run ruff format check
-        run: uv run ruff format --check src/
-        continue-on-error: true
+        run: uv run --frozen ruff format --check src tests  # NOSONAR -- S8541 false positive: uv run needs to build local project, --no-build would break (see https://github.com/astral-sh/uv/issues/10778)

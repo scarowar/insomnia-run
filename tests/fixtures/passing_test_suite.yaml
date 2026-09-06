@@ -22,7 +22,7 @@ resources:
   - _id: req_todo_get_001
     _type: request
     parentId: wrk_test_passing_001
-    url: https://jsonplaceholder.typicode.com/todos/1
+    url: http://127.0.0.1:8081/todos/1
     name: GET Todo by ID
     method: GET
     headers:
@@ -32,7 +32,7 @@ resources:
   - _id: req_user_get_001
     _type: request
     parentId: wrk_test_passing_001
-    url: https://jsonplaceholder.typicode.com/users/1
+    url: http://127.0.0.1:8081/users/1
     name: GET User by ID
     method: GET
     headers:

@@ -23,7 +23,7 @@ resources:
   - _id: req_pass_001
     _type: request
     parentId: wrk_mixed_001
-    url: https://jsonplaceholder.typicode.com/todos/1
+    url: http://127.0.0.1:8081/todos/1
     name: GET /todos/1 - Passing
     method: GET
     headers:
@@ -33,8 +33,8 @@ resources:
   - _id: req_fail_001
     _type: request
     parentId: wrk_mixed_001
-    url: https://jsonplaceholder.typicode.com/todos/1
-    name: GET /todos/1 - Intentional Failure
+    url: http://127.0.0.1:8081/todos/1
+    name: GET /todos/404 - Intentional Failure
     method: GET
     headers:
       - name: User-Agent
@@ -43,7 +43,7 @@ resources:
   - _id: req_pass_002
     _type: request
     parentId: wrk_mixed_001
-    url: https://jsonplaceholder.typicode.com/users/1
+    url: http://127.0.0.1:8081/users/1
     name: GET /users/1 - Passing
     method: GET
     headers:

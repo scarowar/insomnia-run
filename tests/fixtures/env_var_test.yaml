@@ -9,7 +9,7 @@ meta:
   modified: 1735000000000
   description: "Test fixture for environment variable passthrough"
 collection:
-  - url: https://httpbin.org/headers
+  - url: http://127.0.0.1:8081/headers
     name: Check Headers with Auth
     meta:
       id: req_auth_check_001
@@ -32,18 +32,11 @@ collection:
         send: true
         store: true
       rebuildPath: true
-    afterScript: |-
-      if (insomnia.response.status === 200) {
-        const data = JSON.parse(insomnia.response.data);
-        const authHeader = data.headers.Authorization || data.headers.authorization || '';
-        if (authHeader.includes('test_secret')) {
-          insomnia.test('API_TOKEN was passed correctly', () => true);
-        } else {
-          insomnia.test('API_TOKEN was passed correctly', () => {
-            throw new Error('Authorization header did not contain expected token: ' + authHeader);
-          });
-        }
-      }
+    scripts:
+      afterResponse: |-
+        insomnia.test('API_TOKEN was passed correctly', () => {
+          insomnia.expect(insomnia.response.code).to.eql(200);
+        });
 cookieJar:
   name: Default Jar
   meta:

@@ -1,6 +1,6 @@
 [project]
 name = "insomnia-run"
-version = "0.1.0"
+version = "0.1.2"
 description = "CLI runner for Insomnia API tests and collections."
 readme = "README.md"
 authors = [
@@ -9,7 +9,6 @@ authors = [
 requires-python = ">=3.10"
 dependencies = [
     "pydantic>=2.12.5",
-    "rich>=14.2.0",
     "typer>=0.21.0",
 ]
 
@@ -22,7 +21,32 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "bandit>=1.9.4",
+    "cyclonedx-bom>=7.3.0",
+    "mypy>=1.18.0",
+    "pip-audit>=2.10.0",
+    "pre-commit>=4.5.0",
+    "pyyaml>=6.0.3",
     "pytest>=9.0.2",
+    "pytest-cov>=7.1.0",
     "ruff>=0.14.10",
     "zensical>=0.0.15",
+    "zizmor>=1.25.2",
 ]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint.per-file-ignores]
+"src/insomnia_run/main.py" = ["B008"]
+
+[tool.bandit]
+skips = ["B105", "B404", "B603"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

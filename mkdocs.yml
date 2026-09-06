@@ -19,6 +19,7 @@ nav:
     - Handling Secrets: guides/secrets.md
   - Reference: reference/inputs.md
   - Examples: examples/index.md
+  - Migration: migration.md
   - Troubleshooting: troubleshooting.md
 
 # Theme configuration

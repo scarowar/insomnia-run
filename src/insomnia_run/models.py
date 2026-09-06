@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -18,16 +18,18 @@ class InsoResult(BaseModel):
     id: int
     status: InsoStatus
     description: str
+    message: str | None = None
 
 
 class InsoRunReport(BaseModel):
     run_type: RunType = RunType.COLLECTION
-    target_name: Optional[str] = None
-    raw_output: Optional[str] = None
+    target_name: str | None = None
+    raw_output: str | None = None
     tap_version: int = 13
     plan_start: int = 1
     plan_end: int
-    results: List[InsoResult] = Field(default_factory=list)
+    results: list[InsoResult] = Field(default_factory=list)
+    diagnostics: list[str] = Field(default_factory=list)
 
     @property
     def passed_count(self) -> int:
@@ -52,40 +54,31 @@ class InsoRunReport(BaseModel):
         return (self.passed_count / self.total_tests) * 100.0
 
 
-class InsoCollectionOptions(BaseModel):
+class _CommonOptions(BaseModel):
     working_dir: str
-    identifier: Optional[str] = None
-    environment: Optional[str] = None
-    request_name_pattern: Optional[str] = None
-    item: Optional[List[str]] = None
-    globals: Optional[str] = None
-    delay_request: Optional[int] = None
-    request_timeout: Optional[int] = None
-    env_var: Optional[dict[str, str]] = None
-    iteration_count: Optional[int] = None
-    iteration_data: Optional[str] = None
+    identifier: str | None = None
+    environment: str | None = None
+    request_timeout: int | None = Field(default=None, gt=0)
     bail: bool = False
     disable_cert_validation: bool = False
-    https_proxy: Optional[str] = None
-    http_proxy: Optional[str] = None
-    no_proxy: Optional[str] = None
-    data_folders: Optional[List[str]] = None
+    https_proxy: str | None = None
+    http_proxy: str | None = None
+    no_proxy: str | None = None
+    data_folders: list[str] | None = None
     verbose: bool = False
-    execution_timeout: int = 300
+    execution_timeout: int = Field(default=300, gt=0)
 
 
-class InsoTestOptions(BaseModel):
-    working_dir: str
-    identifier: Optional[str] = None
-    environment: Optional[str] = None
-    test_name_pattern: Optional[str] = None
-    bail: bool = False
+class InsoCollectionOptions(_CommonOptions):
+    request_name_pattern: str | None = None
+    item: list[str] | None = None
+    globals: str | None = None
+    delay_request: int | None = Field(default=None, gt=0)
+    env_var: dict[str, str] | None = None
+    iteration_count: int | None = Field(default=None, gt=0)
+    iteration_data: str | None = None
+
+
+class InsoTestOptions(_CommonOptions):
+    test_name_pattern: str | None = None
     keep_file: bool = False
-    request_timeout: Optional[int] = None
-    disable_cert_validation: bool = False
-    https_proxy: Optional[str] = None
-    http_proxy: Optional[str] = None
-    no_proxy: Optional[str] = None
-    data_folders: Optional[List[str]] = None
-    verbose: bool = False
-    execution_timeout: int = 300
