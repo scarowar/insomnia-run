@@ -279,13 +279,13 @@ jobs:
         env:
           GITHUB_ACTIONS: "true"
           INSO_TELEMETRY_DISABLED: "1"
-        run: |
+        run: |  # NOSONAR -- S8541 false positive: uv run for local project needs build
           set +e
           uv run --frozen insomnia-run run-test \
             -w tests/fixtures/mixed_test_suite.yaml \
             --identifier "Mixed Results Suite" \
             > /dev/null 2> "${RUNNER_TEMP}/cli-stderr.txt"
-          echo "exit=$?" >> "$GITHUB_OUTPUT"  # NOSONAR -- S8541 false positive: local project needs build
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
 
       - name: Assert ::error annotations were emitted
         env:
