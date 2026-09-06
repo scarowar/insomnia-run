@@ -218,10 +218,10 @@ def test_security_workflow_runs_deterministic_scanners():
     job = workflow["jobs"]["deterministic-security"]
     steps_text = "\n".join(step.get("run", "") for step in job["steps"])
 
-    assert "uv run pip-audit --strict" in steps_text
-    assert "uv run bandit -c pyproject.toml -r src/insomnia_run" in steps_text
-    assert "uv run zizmor --offline ." in steps_text
-    assert "uv run cyclonedx-py environment .venv" in steps_text
+    assert "pip-audit --strict" in steps_text
+    assert "bandit -c pyproject.toml -r src/insomnia_run" in steps_text
+    assert "zizmor --offline ." in steps_text
+    assert "cyclonedx-py environment .venv" in steps_text
 
     upload = next(
         step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@")
