@@ -44,11 +44,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
-        run: uv sync --frozen --all-groups
+        run: uv sync --frozen --all-groups --locked --no-build
 
       - name: Generate coverage report
         run: >
-          uv run pytest tests/
+          uv run --frozen --no-build pytest tests/
           --cov=src/insomnia_run
           --cov-report=xml:coverage.xml
           --cov-report=term-missing

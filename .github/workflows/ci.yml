@@ -50,13 +50,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
-        run: uv sync --dev --frozen
+        run: uv sync --dev --frozen --locked --no-build
 
       - name: Run tests
-        run: uv run pytest -v --tb=short --cov=insomnia_run --cov-report=term --cov-fail-under=85
+        run: uv run --frozen --no-build pytest -v --tb=short --cov=insomnia_run --cov-report=term --cov-fail-under=85
 
       - name: Run type checking
-        run: uv run mypy src/insomnia_run
+        run: uv run --frozen --no-build mypy src/insomnia_run
 
   lint:
     name: Lint
@@ -88,13 +88,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
-        run: uv sync --dev --frozen
+        run: uv sync --dev --frozen --locked --no-build
 
       - name: Check lockfile sync
         run: uv lock --check
 
       - name: Run ruff check
-        run: uv run ruff check src tests
+        run: uv run --frozen --no-build ruff check src tests
 
       - name: Run ruff format check
-        run: uv run ruff format --check src tests
+        run: uv run --frozen --no-build ruff format --check src tests

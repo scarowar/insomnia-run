@@ -272,7 +272,7 @@ jobs:
           exit 1
 
       - name: Install insomnia-run from source
-        run: uv sync --no-dev --frozen
+        run: uv sync --no-dev --frozen --locked --no-build
 
       - name: Run failing suite directly and capture stderr
         id: run

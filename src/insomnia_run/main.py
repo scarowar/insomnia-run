@@ -154,7 +154,7 @@ def version_callback(
 
 
 @app.command()
-def run_collection(  # NOSONAR - CLI command requires many options
+def run_collection(
     working_dir: str = typer.Option(
         ...,
         "--working-dir",
@@ -289,7 +289,7 @@ def run_collection(  # NOSONAR - CLI command requires many options
 
 
 @app.command()
-def run_test(  # NOSONAR - CLI command requires many options
+def run_test(
     working_dir: str = typer.Option(
         ...,
         "--working-dir",
