@@ -53,10 +53,10 @@ jobs:
         run: uv sync --dev --locked --no-build --no-binary-package insomnia-run
 
       - name: Run tests
-        run: uv run --frozen pytest -v --tb=short --cov=insomnia_run --cov-report=term --cov-fail-under=85
+        run: uv run --frozen --no-build pytest -v --tb=short --cov=insomnia_run --cov-report=term --cov-fail-under=85
 
       - name: Run type checking
-        run: uv run --frozen mypy src/insomnia_run
+        run: uv run --frozen --no-build mypy src/insomnia_run
 
   lint:
     name: Lint
@@ -94,7 +94,7 @@ jobs:
         run: uv lock --check
 
       - name: Run ruff check
-        run: uv run --frozen ruff check src tests
+        run: uv run --frozen --no-build ruff check src tests
 
       - name: Run ruff format check
-        run: uv run --frozen ruff format --check src tests
+        run: uv run --frozen --no-build ruff format --check src tests

@@ -53,7 +53,7 @@ jobs:
         run: uv sync --dev --locked --no-build --no-binary-package insomnia-run
 
       - name: Build documentation
-        run: uv run --frozen zensical build
+        run: uv run --frozen --no-build zensical build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
