@@ -50,7 +50,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
-        run: uv sync --dev --locked --no-build
+        run: uv sync --dev --locked --no-build --no-binary-package insomnia-run
 
       - name: Run tests
         run: uv run --frozen --no-build pytest -v --tb=short --cov=insomnia_run --cov-report=term --cov-fail-under=85
@@ -88,7 +88,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
-        run: uv sync --dev --locked --no-build
+        run: uv sync --dev --locked --no-build --no-binary-package insomnia-run
 
       - name: Check lockfile sync
         run: uv lock --check
