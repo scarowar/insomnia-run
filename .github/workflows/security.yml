@@ -54,10 +54,10 @@ jobs:
           uv run --frozen pip-audit --strict -r "${RUNNER_TEMP}/pip-audit-requirements.txt"
 
       - name: Scan Python security issues
-        run: uv run --frozen bandit -c pyproject.toml -r src/insomnia_run
+        run: uv run --frozen bandit -c pyproject.toml -r src/insomnia_run  # NOSONAR -- S8541 false positive: uv run needs to build local project, --no-build would break (see https://github.com/astral-sh/uv/issues/10778)
 
       - name: Scan workflows with zizmor
-        run: uv run --frozen zizmor --offline .
+        run: uv run --frozen zizmor --offline .  # NOSONAR -- S8541 false positive: uv run needs to build local project, --no-build would break (see https://github.com/astral-sh/uv/issues/10778)
 
       - name: Run secret and workflow linters
         run: |
