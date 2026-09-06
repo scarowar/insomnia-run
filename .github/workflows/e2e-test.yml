@@ -281,11 +281,11 @@ jobs:
           INSO_TELEMETRY_DISABLED: "1"
         run: |
           set +e
-          uv run --frozen insomnia-run  # NOSONAR -- S8541 false positive: runs local project, needs build run-test \
+          uv run --frozen insomnia-run run-test \
             -w tests/fixtures/mixed_test_suite.yaml \
             --identifier "Mixed Results Suite" \
             > /dev/null 2> "${RUNNER_TEMP}/cli-stderr.txt"
-          echo "exit=$?" >> "$GITHUB_OUTPUT"
+          echo "exit=$?" >> "$GITHUB_OUTPUT"  # NOSONAR -- S8541 false positive: local project needs build
 
       - name: Assert ::error annotations were emitted
         env:
