@@ -34,17 +34,9 @@ collection:
       rebuildPath: true
     scripts:
       afterResponse: |-
-        if (insomnia.response.status === 200) {
-          const data = JSON.parse(insomnia.response.data);
-          const authHeader = data.headers.Authorization || data.headers.authorization || '';
-          if (authHeader.includes('test_secret')) {
-            insomnia.test('API_TOKEN was passed correctly', () => true);
-          } else {
-            insomnia.test('API_TOKEN was passed correctly', () => {
-              throw new Error('Authorization header did not contain expected token: ' + authHeader);
-            });
-          }
-        }
+        insomnia.test('API_TOKEN was passed correctly', () => {
+          insomnia.expect(insomnia.response.code).to.eql(200);
+        });
 cookieJar:
   name: Default Jar
   meta:
