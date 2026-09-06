@@ -281,7 +281,7 @@ jobs:
           INSO_TELEMETRY_DISABLED: "1"
         run: |
           set +e
-          uv run --frozen insomnia-run run-test \
+          uv run --frozen --no-build --no-binary-package insomnia-run run-test \
             -w tests/fixtures/mixed_test_suite.yaml \
             --identifier "Mixed Results Suite" \
             > /dev/null 2> "${RUNNER_TEMP}/cli-stderr.txt"
