@@ -50,7 +50,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
-        run: uv sync --dev --frozen --locked --no-build
+        run: uv sync --dev --locked --no-build
 
       - name: Build documentation
         run: uv run --frozen --no-build zensical build

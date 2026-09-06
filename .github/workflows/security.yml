@@ -46,7 +46,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
-        run: uv sync --frozen --all-groups --locked --no-build
+        run: uv sync --all-groups --locked --no-build
 
       - name: Audit Python dependencies
         run: |

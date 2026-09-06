@@ -69,7 +69,7 @@ jobs:
         run: uv build --wheel --no-build-isolation
 
       - name: Export runtime constraints from uv.lock
-        run: uv export --frozen --locked --no-build --no-dev --no-emit-project --no-hashes --format requirements.txt -o dist/constraints.txt
+        run: uv export --locked --no-build --no-dev --no-emit-project --no-hashes --format requirements.txt -o dist/constraints.txt
 
       - name: Generate SHA256SUMS
         run: |
