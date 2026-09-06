@@ -60,6 +60,7 @@ class TestEarlyValidation:
 
 class TestJunitOutput:
     def test_junit_output_writes_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
         from insomnia_run import main as main_module
         from insomnia_run.models import InsoResult, InsoRunReport, InsoStatus
 
@@ -86,6 +87,7 @@ class TestJunitOutput:
         assert junit_path.read_text().startswith("<?xml")
 
     def test_junit_output_unwritable_path_is_loud(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
         from insomnia_run import main as main_module
         from insomnia_run.models import InsoRunReport
 
@@ -138,6 +140,7 @@ class TestAnnotationsAndRawFile:
         assert lines == [("::error title=d::m", True)]
 
     def test_raw_output_file_writes_full_redacted_output(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
         from insomnia_run import main as main_module
         from insomnia_run.models import InsoRunReport
 
@@ -154,6 +157,7 @@ class TestAnnotationsAndRawFile:
 
 class TestCliOutputHandling:
     def test_junit_output_creates_parent_directories(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
         from insomnia_run import main as main_module
         from insomnia_run.models import InsoRunReport
 
@@ -170,6 +174,7 @@ class TestCliOutputHandling:
         assert target.exists()
 
     def test_junit_output_failure_when_parent_is_a_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
         from insomnia_run import main as main_module
         from insomnia_run.models import InsoRunReport
 
@@ -205,6 +210,7 @@ class TestCliOutputHandling:
         assert "Invalid env-var format" in result.output
 
     def test_run_test_junit_output(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
         from insomnia_run import main as main_module
         from insomnia_run.models import InsoRunReport
 
@@ -218,6 +224,7 @@ class TestCliOutputHandling:
         assert "<?xml" in target.read_text()
 
     def test_raw_output_file_not_created_when_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
         from insomnia_run import main as main_module
         from insomnia_run.models import InsoRunReport
 
