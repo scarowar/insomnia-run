@@ -48,7 +48,7 @@ jobs:
 
       - name: Generate coverage report
         run: >
-          uv run --frozen pytest tests/
+          uv run --frozen --no-build --no-binary-package insomnia-run pytest tests/
           --cov=src/insomnia_run
           --cov-report=xml:coverage.xml
           --cov-report=term-missing
