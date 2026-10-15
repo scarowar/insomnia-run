@@ -1,7 +1,5 @@
 # Troubleshooting
 
-v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these examples, replace `scarowar/insomnia-run@v0.2.0` with `scarowar/insomnia-run@<reviewed-full-pr-head-sha>`, using the reviewed full PR-head commit SHA (40 hexadecimal characters).
-
 ## Collection/Test Not Found
 
 **Error:** `No collection/test suite found`

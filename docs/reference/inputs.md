@@ -1,7 +1,5 @@
 # Action Inputs
 
-v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these examples, replace `scarowar/insomnia-run@v0.2.0` with `scarowar/insomnia-run@<reviewed-full-pr-head-sha>`, using the reviewed full PR-head commit SHA (40 hexadecimal characters).
-
 ## Required
 
 | Input | Description |
@@ -207,10 +205,8 @@ GitHub Enterprise Server installations must also make the pinned dependency acti
 
 Built-in report uploads use `actions/upload-artifact` for GitHub.com. On GitHub Enterprise Server, use the report outputs with an uploader supported by your installation. Artifact uploads occur before `fail-on-error` is applied. Set distinct `artifact-name` values for matrix jobs and multiple invocations; uploads with the same name conflict.
 
-For the unreleased v0.2.0 candidate, replace the placeholder below with the reviewed full PR-head commit SHA:
-
 ```yaml
-- uses: scarowar/insomnia-run@<reviewed-full-pr-head-sha>
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
     working-directory: insomnia-export.yaml

@@ -27,6 +27,7 @@ nav:
 # Theme configuration
 theme:
   name: material
+  custom_dir: overrides
   logo: assets/terminal.png
   favicon: assets/terminal.png
   palette:

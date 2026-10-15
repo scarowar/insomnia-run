@@ -1,6 +1,8 @@
 import os
 import signal
-import subprocess  # nosec B404 - Inso must be executed as a subprocess.
+
+# Inso must be executed as a subprocess.
+import subprocess  # nosec B404
 
 from .models import (
     InsoCollectionOptions,
@@ -20,7 +22,8 @@ class InsoRunner:
             raise NotImplementedError(
                 "InsoRunner requires POSIX process groups (Linux/macOS); Windows is unsupported."
             )
-        with subprocess.Popen(  # nosec B603 - arguments are passed without a shell.
+        # Arguments are passed without a shell.
+        with subprocess.Popen(  # nosec B603
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

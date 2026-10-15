@@ -77,4 +77,4 @@ Automatic installation uses the official Linux x64 `.tar.xz` and macOS `.zip` as
 - The configuration guide describes more reusable defaults than 13.3.1 imports. Use explicit action inputs.
 - [The collection reporter](https://github.com/Kong/insomnia/blob/abbf55892e16adafea6eb1d6c12af2fa85d32dc9/packages/insomnia-inso/src/reporter/index.ts) emits no TAP for assertion-free requests; absence alone is not evidence of collection failure.
 
-The 13.3.1 update includes quoted-CSV parsing and Liquid-rendering fixes. Iteration data and rendering remain upstream responsibilities; this wrapper does not duplicate those engines. Recheck release notes, both command help screens, option mapping, real-binary compatibility, platform assets, and digests for every default-version update.
+The 13.3.1 update includes quoted-CSV parsing and Liquid-rendering fixes. Iteration data and rendering remain upstream responsibilities; this wrapper does not duplicate those engines.

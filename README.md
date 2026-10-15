@@ -21,26 +21,24 @@
 
 ---
 
-Run your Insomnia API collections and test suites in GitHub Actions with PR comments and CI-native reports.
-
-**Why Insomnia Run?** Insomnia is great for designing and testing APIs locally. This unofficial action brings those same collections into your CI/CD pipeline without a separate test framework.
+Insomnia Run is an unofficial GitHub Action that wraps the Inso CLI to run Insomnia API collections and test suites with PR comments and CI-native reports.
 
 https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 
 ## Features
 
-- **GitHub Actions Native**: Drop-in action with simple YAML configuration
-- **Automatic PR Comments**: Post test results directly to pull requests
-- **Explicit Issue Comments**: Send reports to a PR or issue from manual, deployment, or scheduled workflows
-- **Markdown, JSON & JUnit Reports**: Human-readable comments, automation output, and CI test reports
-- **Flexible Exit Codes**: Control workflow failure behavior
-- **Environment Support**: Target different Insomnia environments per run
-- **Hosted and Self-Hosted Runners**: Use the requested Inso version or a preinstalled `inso` binary
-- **Configurable Timeouts**: Handle slow APIs and large collections
+- GitHub Actions: Configure collection and test runs with YAML
+- Automatic PR Comments: Post test results directly to pull requests
+- Explicit Issue Comments: Send reports to a PR or issue from manual, deployment, or scheduled workflows
+- Markdown, JSON & JUnit Reports: Human-readable comments, automation output, and CI test reports
+- Failure Handling: Control whether test failures fail the workflow
+- Environment Support: Target different Insomnia environments per run
+- Hosted and Self-Hosted Runners: Use the requested Inso version or a preinstalled `inso` binary
+- Configurable Timeouts: Handle slow APIs and large collections
 
 ## Quick Start
 
-v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these examples, replace `scarowar/insomnia-run@v0.2.0` with `scarowar/insomnia-run@<reviewed-full-pr-head-sha>`, using the reviewed full PR-head commit SHA (40 hexadecimal characters).
+This documentation describes v0.2.0, which is unreleased. Until the tag is available, use a full commit SHA instead of `@v0.2.0` in the examples.
 
 Examples use `insomnia-export.yaml`. For legacy Git Sync data under `.insomnia/Workspace/`, use the parent repository root (`working-directory: .`), not `.insomnia`. See [input paths](docs/reference/inputs.md#input-paths).
 
@@ -75,7 +73,7 @@ Examples use `insomnia-export.yaml`. For legacy Git Sync data under `.insomnia/W
 | `output-format` | No | | Use `json` to get JSON output in addition to Markdown |
 | `junit-report` | No | `true` | Generate a JUnit XML report file |
 
-The unreleased v0.2.0 candidate adds verified Inso archive caching (`cache-inso`, enabled by default) and optional report uploads (`upload-artifact`, disabled by default). See the [migration guide](docs/migration.md) for candidate behavior and runner requirements.
+Verified Inso archive caching (`cache-inso`) is enabled by default. Report uploads (`upload-artifact`) are disabled by default. See the [migration guide](docs/migration.md) for upgrade details and runner requirements.
 
 [View all inputs](https://scarowar.github.io/insomnia-run/reference/inputs/)
 
@@ -119,7 +117,7 @@ Grant `checks: write` when publishing a GitHub test report.
 
 | Guide | Description |
 |-------|-------------|
-| [Getting Started](https://scarowar.github.io/insomnia-run/getting-started/) | First run in 5 minutes |
+| [Getting Started](https://scarowar.github.io/insomnia-run/getting-started/) | Set up a test workflow |
 | [Collections](https://scarowar.github.io/insomnia-run/guides/collections/) | Run API collections |
 | [Test Suites](https://scarowar.github.io/insomnia-run/guides/test-suites/) | Run unit tests |
 | [Secrets](https://scarowar.github.io/insomnia-run/guides/secrets/) | Handle credentials |

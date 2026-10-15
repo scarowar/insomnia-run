@@ -190,6 +190,7 @@ def test_docs_deploy_runs_only_for_docs_surface_changes():
 
     assert ".github/workflows/docs.yml" in paths
     assert "docs/**" in paths
+    assert "overrides/**" in paths
     assert "mkdocs.yml" in paths
     assert "pyproject.toml" in paths
     assert "uv.lock" in paths

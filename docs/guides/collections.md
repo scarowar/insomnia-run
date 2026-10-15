@@ -1,7 +1,5 @@
 # Running Collections
 
-v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these examples, replace `scarowar/insomnia-run@v0.2.0` with `scarowar/insomnia-run@<reviewed-full-pr-head-sha>`, using the reviewed full PR-head commit SHA (40 hexadecimal characters).
-
 ## Basic Usage
 
 Run all requests in a YAML export. For legacy Git Sync, use the parent repository root instead; see [input paths](../reference/inputs.md#input-paths).

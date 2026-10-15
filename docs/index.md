@@ -5,8 +5,6 @@
 
 Run Insomnia collections and test suites in GitHub Actions with PR comments and CI-native reports.
 
-v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these examples, replace `scarowar/insomnia-run@v0.2.0` with `scarowar/insomnia-run@<reviewed-full-pr-head-sha>`, using the reviewed full PR-head commit SHA (40 hexadecimal characters).
-
 ## Usage
 
 ```yaml
@@ -20,24 +18,14 @@ v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these 
 
 | Feature | Description |
 |---------|-------------|
-| **Collections** | Run API request collections |
-| **Test Suites** | Execute JavaScript unit tests |
-| **PR Comments** | Auto-post results to pull requests |
-| **JSON Output** | Machine-readable reports for automation |
-| **JUnit Reports** | CI test report files for downstream tools |
-| **Secrets** | Secure credential passthrough |
-| **Multi-Environment** | Target dev, staging, production |
-| **Configurable Timeouts** | Handle slow APIs and large collections |
-
-## PR Comment Examples
-
-=== "Passing Tests"
-
-    ![Collection passing](assets/images/collection-pass.png)
-
-=== "Failing Tests"
-
-    ![Test failing](assets/images/test-fail.png)
+| Collections | Run API request collections |
+| Test Suites | Execute JavaScript unit tests |
+| PR Comments | Auto-post results to pull requests |
+| JSON Output | Machine-readable reports for automation |
+| JUnit Reports | CI test report files for downstream tools |
+| [Secrets](guides/secrets.md) | Set collection environment overrides |
+| Multi-Environment | Target dev, staging, production |
+| Configurable Timeouts | Handle slow APIs and large collections |
 
 ## Inputs
 
@@ -67,7 +55,7 @@ v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these 
 
 | Page | Description |
 |------|-------------|
-| [Getting Started](getting-started/index.md) | First run in 5 minutes |
+| [Getting Started](getting-started/index.md) | Set up a test workflow |
 | [Collections](guides/collections.md) | Run API collections |
 | [Test Suites](guides/test-suites.md) | Run unit tests |
 | [Secrets](guides/secrets.md) | Handle credentials |

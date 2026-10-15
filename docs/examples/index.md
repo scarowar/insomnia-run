@@ -1,7 +1,5 @@
 # Examples
 
-v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these examples, replace `scarowar/insomnia-run@v0.2.0` with `scarowar/insomnia-run@<reviewed-full-pr-head-sha>`, using the reviewed full PR-head commit SHA (40 hexadecimal characters).
-
 Examples use an explicit YAML export path. For legacy Git Sync, pass the parent repository root instead; see [input paths](../reference/inputs.md#input-paths).
 
 ## Basic Collection
@@ -24,7 +22,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - uses: scarowar/insomnia-run@v0.2.0
         with:
@@ -50,7 +50,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - uses: scarowar/insomnia-run@v0.2.0
         with:
@@ -84,7 +86,9 @@ jobs:
       matrix:
         env: [staging, production]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - uses: scarowar/insomnia-run@v0.2.0
         with:
@@ -161,7 +165,9 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - uses: scarowar/insomnia-run@v0.2.0
         with:
@@ -216,7 +222,9 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - uses: scarowar/insomnia-run@v0.2.0
         id: tests
@@ -235,7 +243,7 @@ jobs:
 
       - name: Create Issue on Failure
         if: steps.tests.outputs.exit-code != '0'
-        uses: peter-evans/create-issue-from-file@v6
+        uses: peter-evans/create-issue-from-file@fca9117c27cdc29c6c4db3b86c48e4115a786710 # v6.0.0
         with:
           title: "API Tests Failing"
           content-filepath: report.md
@@ -257,7 +265,7 @@ Send email notification on test failure. This example uses AWS SES, but any SMTP
 
 - name: Send Email on Failure
   if: steps.tests.outputs.exit-code != '0'
-  uses: dawidd6/action-send-mail@v7
+  uses: dawidd6/action-send-mail@6e71c855c9a091d80a519621b9fd3e8d252ca40c # v7
   with:
     server_address: email-smtp.${{ secrets.AWS_REGION }}.amazonaws.com
     server_port: 587
@@ -286,7 +294,7 @@ Send test results to Slack:
 
 - name: Notify Slack on Failure
   if: steps.tests.outputs.exit-code != '0'
-  uses: slackapi/slack-github-action@v2
+  uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
   with:
     webhook: ${{ secrets.SLACK_WEBHOOK }}
     webhook-type: incoming-webhook
@@ -347,14 +355,13 @@ Run a collection and save the machine-readable JSON report:
     JSON_OUTPUT: ${{ steps.run-cli.outputs.json-output }}
   run: |
     printf '%s' "$JSON_OUTPUT" > test-results.json
-  # This will save the JSON report in the current workspace directory
 ```
 
-If you want this file accessible across jobs in GitHub Actions, you can also upload it as an artifact:
+Upload the report for use in another job:
 
 ```yaml
 - name: Upload JSON report
-  uses: actions/upload-artifact@v6
+  uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
   with:
     name: insomnia-json-report
     path: test-results.json

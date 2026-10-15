@@ -516,7 +516,6 @@ runs:
 
         CMD+=(--working-dir "$WORKING_DIR")
 
-        # Add execution-timeout if set
         if [[ -n "$EXECUTION_TIMEOUT" ]]; then
           CMD+=(--execution-timeout "$EXECUTION_TIMEOUT")
         fi

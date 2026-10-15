@@ -1,5 +1,7 @@
 import re
-from xml.etree import ElementTree  # nosec B405 - only creates and serializes XML.
+
+# XML is generated, not parsed.
+from xml.etree import ElementTree  # nosec B405
 
 from .models import InsoRunReport, InsoStatus, RunType
 

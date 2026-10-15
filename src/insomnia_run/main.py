@@ -37,12 +37,7 @@ def _validate_output_format(output_format: Optional[str]) -> None:
 def _emit_machine_readable_output(
     report, output_format: Optional[str], *, include_raw_output: bool = False
 ) -> None:
-    """
-    Emits the test report in the specified machine-readable format to stderr.
-
-    This helper handles validation of the requested format and ensures
-    consistent output behavior across different CLI commands.
-    """
+    """Emit JSON to stderr, leaving stdout for Markdown."""
     if not output_format:
         return
 
