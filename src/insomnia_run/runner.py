@@ -31,6 +31,7 @@ class InsoRunner:
             errors="replace",
             start_new_session=True,
             shell=False,
+            env={**os.environ, "INSO_TELEMETRY_DISABLED": "1"},
         ) as process:
             try:
                 stdout, stderr = process.communicate(timeout=timeout)

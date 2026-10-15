@@ -230,7 +230,14 @@ def run_collection(  # NOSONAR - CLI command requires many options
     )
 
     runner = InsoRunner()
-    report = runner.run_collection(options)
+    try:
+        report = runner.run_collection(options)
+    except OSError as error:
+        typer.echo(
+            "Unable to execute Inso CLI. Check installation and executable permissions.",
+            err=True,
+        )
+        raise typer.Exit(code=2) from error
 
     reporter = Reporter()
     _finalize_report(
@@ -333,7 +340,14 @@ def run_test(  # NOSONAR - CLI command requires many options
     )
 
     runner = InsoRunner()
-    report = runner.run_test(options)
+    try:
+        report = runner.run_test(options)
+    except OSError as error:
+        typer.echo(
+            "Unable to execute Inso CLI. Check installation and executable permissions.",
+            err=True,
+        )
+        raise typer.Exit(code=2) from error
 
     reporter = Reporter()
     _finalize_report(

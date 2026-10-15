@@ -1,7 +1,10 @@
 import pytest
 from contextlib import contextmanager
+import json
+import os
 import signal
 from subprocess import TimeoutExpired
+import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 from insomnia_run.runner import InsoRunner
@@ -15,6 +18,44 @@ def inso_output(stdout, stderr="", returncode=0):
         process.communicate.return_value = (stdout, stderr)
         process.returncode = returncode
         yield popen
+
+
+@pytest.mark.parametrize(
+    "method,options_type",
+    [("run_collection", InsoCollectionOptions), ("run_test", InsoTestOptions)],
+)
+@pytest.mark.parametrize("parent_setting", [None, "", "0", "parent-value", "1"])
+def test_real_inso_child_disables_telemetry_without_changing_parent(
+    tmp_path, monkeypatch, method, options_type, parent_setting
+):
+    inso = tmp_path / "inso"
+    inso.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os\n"
+        "print(json.dumps({\n"
+        "    'telemetry': os.environ.get('INSO_TELEMETRY_DISABLED'),\n"
+        "    'inherited': os.environ.get('INHERITED_CHILD_SENTINEL'),\n"
+        "}))\n"
+        "print('1..1\\nok 1 - passes')\n"
+    )
+    inso.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setenv("INHERITED_CHILD_SENTINEL", "keep-this-value")
+    if parent_setting is None:
+        monkeypatch.delenv("INSO_TELEMETRY_DISABLED", raising=False)
+    else:
+        monkeypatch.setenv("INSO_TELEMETRY_DISABLED", parent_setting)
+    parent_environment = dict(os.environ)
+
+    report = getattr(InsoRunner(), method)(options_type(working_dir="fixture"))
+
+    assert report.passed_count == 1
+    assert report.failed_count == 0
+    assert json.loads(report.raw_output.splitlines()[0]) == {
+        "telemetry": "1",
+        "inherited": "keep-this-value",
+    }
+    assert dict(os.environ) == parent_environment
 
 
 def test_interruption_terminates_the_inso_process_group():

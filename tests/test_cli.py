@@ -12,6 +12,70 @@ from insomnia_run.main import app
 from insomnia_run.models import InsoResult, InsoRunReport, InsoStatus
 
 
+@pytest.mark.parametrize("command", ["run-collection", "run-test"])
+@pytest.mark.parametrize("failure", ["missing", "permission", "format"])
+@pytest.mark.parametrize("reporting", ["markdown", "json", "junit", "json-junit"])
+def test_cli_startup_failure_is_fatal_without_publishing_reports(
+    tmp_path, command, failure, reporting
+):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    if failure != "missing":
+        inso = fake_bin / "inso"
+        inso.write_text("not an executable\n")
+        inso.chmod(0o644 if failure == "permission" else 0o755)
+
+    secret = "STARTUP_PRIVACY_SENTINEL_74193"
+    junit = tmp_path / "report.xml"
+    junit.write_text("previous report")
+    args = [
+        command,
+        "-w",
+        f"fixture-{secret}",
+        "--identifier",
+        secret,
+        "--include-raw-output",
+    ]
+    if "json" in reporting:
+        args.extend(["--output-format", "json"])
+    if "junit" in reporting:
+        args.extend(["--junit-output", str(junit)])
+
+    result = subprocess.run(
+        [sys.executable, "-m", "insomnia_run.main", *args],
+        env={**os.environ, "PATH": str(fake_bin)},
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "Unable to execute Inso CLI" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert secret not in result.stderr
+    assert len(result.stderr) < 200
+    assert junit.read_text() == "previous report"
+
+
+@pytest.mark.parametrize("command", ["run-collection", "run-test"])
+@pytest.mark.parametrize("error_type", [FileNotFoundError, PermissionError, OSError])
+def test_cli_startup_diagnostic_does_not_echo_os_error_details(command, error_type):
+    secret = "OS_ERROR_PRIVACY_SENTINEL_82194"
+    with patch(
+        "insomnia_run.runner.subprocess.Popen",
+        side_effect=error_type(secret * 1000),
+    ):
+        result = CliRunner().invoke(app, [command, "-w", "fixture"])
+
+    assert result.exit_code == 2
+    assert result.stdout == ""
+    assert "Unable to execute Inso CLI" in result.stderr
+    assert secret not in result.stderr
+    assert len(result.stderr) < 200
+
+
 @pytest.mark.parametrize(
     "command,method",
     [
