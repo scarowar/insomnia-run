@@ -27,6 +27,9 @@ def xml_safe(value):
 @example(description="NUL\x00ANSI\x1b[31m", target="suite\ufffe")
 @example(description="line\r\nwith\ttabs", target="suite\nname")
 @example(description="surrogate\ud800", target="suite\udfff")
+@example(
+    description="\t\n\r\ud7ff\ue000\ufffd\U00010000\U0010ffff", target="boundaries"
+)
 @given(description=st.text(max_size=300), target=st.text(min_size=1, max_size=100))
 def test_junit_is_valid_and_preserves_unicode(description, target):
     report = InsoRunReport(

@@ -13,7 +13,7 @@ class Reporter:
     def _xml_text(value: str) -> str:
         # XML 1.0 forbids some characters that are valid in Python strings.
         return re.sub(
-            r"[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD\U00010000-\U0010FFFF]",
+            r"[\x00-\x08\x0B\x0C\x0E-\x1F\uD800-\uDFFF\uFFFE\uFFFF]",
             "\ufffd",
             value,
         )
