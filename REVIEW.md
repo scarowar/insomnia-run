@@ -84,6 +84,17 @@ Fresh reviewer contexts separately examined security/reliability, runtime correc
 
 Both follow-up reviewers rechecked these fixes and reported no remaining actionable findings in scope. They also inspected the new compatibility matrix and existing-E2E-job wiring; independent runtime review covered the corrected empty behavior and bounded cleanup. Reviews are separate model contexts, not different-model or human approval claims.
 
+## Round 3: Hosted Analysis
+
+All 19 required checks passed on `9cf2e106a8b1294b0e058d4ecf45176c34d72254`, but querying Sonar's issue API revealed two findings despite its green quality gate. A green gate is not substituted for issue triage.
+
+| ID | Severity | Finding | Disposition and Evidence |
+| --- | --- | --- | --- |
+| R3-01 | P2 | Sonar `python:S3776` reported cognitive complexity 36 in the newly hardened TAP parser (scanner severity CRITICAL). | Refactored the coupled nonlocal counters into a private stream-state object with explicit transitions; the public parser dispatches lines and classifies results. No protocol behavior changed. Existing tests pass unchanged and 20,000 deterministic mixed valid/malformed streams produce identical public reports to the pre-refactor implementation. |
+| R3-02 | P3 | Sonar `python:S8993` flagged dynamic lookup of the known compatibility runtime fixture (scanner severity MAJOR). | Use an explicit fixture parameter and autouse controlled-tool setup to make ordering intentional; assert the parent PATH still matches the controlled competitor. The exact-binary regression passes. |
+
+Two independent follow-up contexts reviewed these narrow refactors and found no new defects or unnecessary abstraction. Additional checks covered concurrent parser calls, report independence, and reuse after exceptions. Sonar reanalysis and the complete hosted matrix are required for the follow-up commit as well.
+
 ## Design Dispositions
 
 - KISS: retain the existing runner/parser/reporter ownership; do not add a generic execution framework or dependency for these narrow boundaries.
@@ -94,12 +105,12 @@ Both follow-up reviewers rechecked these fixes and reported no remaining actiona
 
 ## Verification
 
-- Final local Python 3.12 full suite: 300 passed, 15 opt-in compatibility skips, 98.8% source coverage. Python 3.15: 297 passed, 16 skips, 98.78% coverage before the final literal-filter cases were added. Its additional scanner skips are expected because that environment intentionally installs only the test group; the security environment separately runs all three real scanner regressions without skips.
+- Final local Python 3.12 full suite after Round 3: 300 passed, 15 opt-in compatibility skips, 98.83% source coverage. Python 3.15: 297 passed, 16 skips, 98.78% coverage before the final literal-filter cases were added. Its additional scanner skips are expected because that environment intentionally installs only the test group; the security environment separately runs all three real scanner regressions without skips.
 - All 15 real Inso 13.3.1 cases passed across targeted runs: passing/failing collection and test reports, iterations, missing-workspace failure, assertion-free collections, environment override round-trip, all three help inventories, and literal-versus-regex-looking filters. Hosted CI runs the complete suite together from the installed candidate wheel.
 - Actual action installation succeeded with `UV_OFFLINE=true` and the prepopulated locked-package/build-backend cache. The installed production wheel then ran through the actual composite-action shell and verified Inso: three passing results and fresh Markdown, JSON, and JUnit files.
-- Ruff, mypy, strict documentation build, actionlint, Bandit, dependency audit, Zizmor, and hook checks passed; formatter auto-fixes were rechecked separately. Hosted checks for the committed candidate remain pending.
+- Ruff, mypy, strict documentation build, actionlint, Bandit, dependency audit, Zizmor, and hook checks passed; formatter auto-fixes were rechecked separately. Hosted validation of `9cf2e10` passed all 19 required checks, Python 3.10-3.15, seven E2E jobs, all 15 real-binary compatibility cases from the installed wheel, and all three actual-scanner regressions. Final-SHA follow-up results are recorded on the draft PR rather than inferred from an earlier run.
 
-Residual limits: native macOS execution and remote artifact/comment delivery require hosted evidence; the local environment cannot stand in for those services. Process-group cleanup cannot terminate descendants that deliberately create another session. Default raw-output omission is not a universal secret redactor. ClusterFuzzLite remains owner-deferred. No settings or protection bypasses were changed.
+Hosted artifacts from Linux, macOS Intel, and Apple Silicon were downloaded without extraction and inspected: fresh Markdown and valid JUnit each contain three passing results, with raw logs absent. The expected-failure artifact also contains the correct three results and one failure, confirming delivery before the final action failure. Remote PR-comment delivery is not exercised by these read-only local checks. Process-group cleanup cannot terminate descendants that deliberately create another session. Default raw-output omission is not a universal secret redactor. ClusterFuzzLite remains owner-deferred. No settings or protection bypasses were changed.
 
 ## Exit Criteria
 

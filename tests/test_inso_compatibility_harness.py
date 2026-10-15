@@ -13,7 +13,7 @@ import test_inso_compatibility as compatibility
 runtime = compatibility.runtime
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="module", autouse=True)
 def controlled_tools(tmp_path_factory):
     root = tmp_path_factory.mktemp("compatibility-tools")
     selected = root / "selected tools" / "inso-13.3.1"
@@ -36,16 +36,13 @@ def controlled_tools(tmp_path_factory):
             "ThreadingHTTPServer",
             lambda address, handler: ThreadingHTTPServer((address[0], 0), handler),
         )
-        yield
+        yield str(competing.parent)
 
 
-def test_runtime_uses_exact_binary_with_another_inso_on_path(controlled_tools, request):
-    original_path = os.environ["PATH"]
-    environment = request.getfixturevalue("runtime")
-
+def test_runtime_uses_exact_binary_with_another_inso_on_path(controlled_tools, runtime):
     result = subprocess.run(
         ["inso", "--version"],
-        env=environment,
+        env=runtime,
         capture_output=True,
         text=True,
         timeout=10,
@@ -54,4 +51,4 @@ def test_runtime_uses_exact_binary_with_another_inso_on_path(controlled_tools, r
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "selected binary"
-    assert os.environ["PATH"] == original_path
+    assert os.environ["PATH"] == controlled_tools
