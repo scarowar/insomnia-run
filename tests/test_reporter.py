@@ -1,4 +1,5 @@
 import pytest
+from markdown_it import MarkdownIt
 from xml.etree import ElementTree
 
 from insomnia_run.reporter import Reporter
@@ -27,10 +28,10 @@ class TestReporterMarkdownGeneration:
         )
         markdown = reporter.generate_markdown(report)
 
-        assert "## ✅ Insomnia Collection Passed: My Collection" in markdown
+        assert "## ✅ Insomnia Collection Passed: ` My Collection `" in markdown
         assert "**2 test results** (all passed)" in markdown
-        assert "- ✅ **Test 1**" in markdown
-        assert "- ✅ **Test 2**" in markdown
+        assert "- ✅ **` Test 1 `**" in markdown
+        assert "- ✅ **` Test 2 `**" in markdown
 
     def test_failing_collection_report(self, reporter):
         report = InsoRunReport(
@@ -44,10 +45,10 @@ class TestReporterMarkdownGeneration:
         )
         markdown = reporter.generate_markdown(report)
 
-        assert "## ❌ Insomnia Collection Failed: My Collection" in markdown
+        assert "## ❌ Insomnia Collection Failed: ` My Collection `" in markdown
         assert "(1 passed, 1 failed)" in markdown
-        assert "- ✅ **Test 1**" in markdown
-        assert "- ❌ **Test 2**" in markdown
+        assert "- ✅ **` Test 1 `**" in markdown
+        assert "- ❌ **` Test 2 `**" in markdown
 
     def test_test_suite_report(self, reporter):
         report = InsoRunReport(
@@ -60,7 +61,7 @@ class TestReporterMarkdownGeneration:
         )
         markdown = reporter.generate_markdown(report)
 
-        assert "## ✅ Insomnia Test Suite Passed: My Test Suite" in markdown
+        assert "## ✅ Insomnia Test Suite Passed: ` My Test Suite `" in markdown
 
     def test_workflow_url_link(self, reporter):
         report = InsoRunReport(plan_end=0)
@@ -115,7 +116,7 @@ class TestReporterMarkdownGeneration:
         report = InsoRunReport(plan_end=0, target_name="API Collection")
         markdown = reporter.generate_markdown(report)
 
-        assert "**Target:** `API Collection`" in markdown
+        assert "**Target:** ` API Collection `" in markdown
 
     def test_empty_results(self, reporter):
         report = InsoRunReport(plan_end=0)
@@ -143,8 +144,8 @@ class TestReporterEdgeCases:
         )
         markdown = reporter.generate_markdown(report)
 
-        # Should not be escaped (it's markdown, not HTML)
-        assert "Test with <special> & 'chars'" in markdown
+        dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+        assert dom.find(".//li/strong/code").text == "Test with <special> & 'chars'"
 
     def test_long_target_name(self, reporter):
         report = InsoRunReport(
@@ -191,6 +192,251 @@ def test_summary_counts_results_without_claiming_request_execution():
 
     assert "2 test results" in markdown
     assert "requests executed" not in markdown
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "[click](https://example.invalid) ![image](https://example.invalid/x)",
+        "**forged** _emphasis_ `code` \\*escaped* | column |",
+        "<img src=x onerror=alert(1)> &lt;script&gt; & text",
+        "test\r\n\n# forged heading\n\n- forged result\tend",
+        "@ghost #131 www.example.invalid",
+        "`",
+        "``two``",
+        "`edges` and `` mixed ` delimiters ``",
+        "ends with \\",
+    ],
+)
+def test_result_descriptions_render_as_literal_inline_text(description):
+    report = InsoRunReport(
+        plan_end=1,
+        target_name=description,
+        results=[InsoResult(id=1, status=InsoStatus.FAIL, description=description)],
+    )
+
+    markdown = Reporter().generate_markdown(report)
+    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+
+    expected = " ".join(description.split())
+    assert dom.find(".//li/strong/code").text == expected
+    assert dom.find("./h2/code").text == expected
+    assert dom.find("./ul/li/code").text == expected
+    assert dom.findall(".//a") == dom.findall(".//img") == []
+    assert dom.findall(".//h1") == []
+
+
+@pytest.mark.parametrize(
+    "target_name",
+    [
+        "<b>suite</b>\n\n# [forged](https://example.invalid)",
+        "Suite ###",
+        "@ghost #131 www.example.invalid",
+        "`Suite`",
+    ],
+)
+def test_target_name_renders_as_literal_inline_text(target_name):
+    report = InsoRunReport(plan_end=0, target_name=target_name)
+
+    markdown = Reporter().generate_markdown(report)
+    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+
+    expected = " ".join(target_name.split())
+    assert dom.find("./h2/code").text == expected
+    assert dom.find("./ul/li/code").text == expected
+    assert dom.findall(".//a") == dom.findall(".//b") == []
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("a" * 511 + "*tail", "a" * 160 + " ... (truncated)"),
+        ("a" * 510 + "<tail", "a" * 160 + " ... (truncated)"),
+        *[
+            ("a" * 159 + char + "tail", "a" * 159 + char + " ... (truncated)")
+            for char in ("*", "\\", "<", "&", "`")
+        ],
+        ("\u754c" * 54, "\u754c" * 53 + " ... (truncated)"),
+        ("a" * 160, "a" * 160),
+    ],
+    ids=[
+        "old-escape-cut",
+        "old-entity-cut",
+        "star",
+        "backslash",
+        "html",
+        "entity",
+        "backtick",
+        "utf8-boundary",
+        "exact-budget",
+    ],
+)
+def test_name_truncation_preserves_original_text_before_code_formatting(name, expected):
+    report = InsoRunReport(
+        plan_end=1,
+        target_name=name,
+        results=[InsoResult(id=1, status=InsoStatus.PASS, description=name)],
+    )
+
+    markdown = Reporter().generate_markdown(report)
+    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+
+    assert dom.find(".//li/strong/code").text == expected
+    assert dom.find("./h2/code").text == expected
+    assert dom.find("./ul/li/code").text == expected
+    assert dom.findall(".//a") == []
+
+
+@pytest.mark.parametrize(
+    "workflow_url",
+    [
+        "javascript:alert(1)",
+        "https://example.invalid/)\n\n# forged",
+        "https://example.invalid/><img src=x>",
+        "https://[invalid",
+        "https://example.invalid/" + "x" * 60000,
+    ],
+    ids=["scheme", "newline", "html", "invalid-host", "oversized"],
+)
+def test_invalid_or_oversized_workflow_urls_use_static_fallback(workflow_url):
+    markdown = Reporter().generate_markdown(
+        InsoRunReport(plan_end=0), workflow_url=workflow_url
+    )
+
+    assert "See the workflow run for execution details." in markdown
+    assert "[workflow run]" not in markdown
+    assert workflow_url not in markdown
+    assert len(markdown.encode("utf-8")) < 60000
+
+
+def test_workflow_url_cannot_break_out_of_its_link_destination():
+    markdown = Reporter().generate_markdown(
+        InsoRunReport(plan_end=0),
+        workflow_url="https://example.invalid/)![image](https://example.invalid/x)",
+    )
+
+    html = MarkdownIt("commonmark", {"html": True}).render(markdown)
+
+    assert html.count("<a href=") == 1
+    assert ">workflow run</a>" in html
+    assert "<img" not in html
+
+
+@pytest.mark.parametrize(
+    "raw_output",
+    ["before\n```\n# forged\n```\nafter", "`````\n</details>\n```"],
+)
+def test_raw_output_cannot_close_its_code_fence(raw_output):
+    report = InsoRunReport(plan_end=0, raw_output=raw_output)
+
+    markdown = Reporter().generate_markdown(report, include_raw_output=True)
+    tokens = MarkdownIt("commonmark", {"html": True}).parse(markdown)
+    fences = [token for token in tokens if token.type == "fence"]
+
+    assert len(fences) == 1
+    assert fences[0].content == raw_output + "\n"
+    assert markdown.endswith("</details>")
+
+
+@pytest.mark.parametrize("size", [8191, 8192, 8193])
+def test_raw_output_byte_budget_boundary(size):
+    report = InsoRunReport(plan_end=0, raw_output="x" * size)
+
+    markdown = Reporter().generate_markdown(report, include_raw_output=True)
+    fence = next(
+        token for token in MarkdownIt().parse(markdown) if token.type == "fence"
+    )
+
+    assert fence.content.removesuffix("\n") == "x" * min(size, 8192)
+    assert ("Raw output truncated" in markdown) == (size > 8192)
+
+
+def test_raw_output_truncation_preserves_complete_utf8_characters():
+    report = InsoRunReport(plan_end=0, raw_output="\u754c" * 3000)
+
+    markdown = Reporter().generate_markdown(report, include_raw_output=True)
+    fence = next(
+        token for token in MarkdownIt().parse(markdown) if token.type == "fence"
+    )
+
+    assert fence.content == "\u754c" * 2730 + "\n"
+    assert "Raw output truncated at 8192 bytes" in markdown
+
+
+@pytest.mark.parametrize("count", [50, 51, 300])
+def test_markdown_limits_displayed_results_without_changing_counts(count):
+    report = InsoRunReport(
+        plan_end=count,
+        results=[
+            InsoResult(id=index, status=InsoStatus.PASS, description=f"result-{index}")
+            for index in range(1, count + 1)
+        ],
+    )
+
+    markdown = Reporter().generate_markdown(report)
+
+    assert f"**{count} test results** (all passed)" in markdown
+    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    assert [node.text for node in dom.findall(".//li/strong/code")] == [
+        f"result-{index}" for index in range(1, 51)
+    ]
+    assert ("more results omitted" in markdown) == (count > 50)
+    if count > 50:
+        assert f"{count - 50} more results omitted" in markdown
+
+
+@pytest.mark.parametrize(
+    "raw_output", ["\U0001f600" * 3000, "`" * 10000], ids=["unicode", "backticks"]
+)
+@pytest.mark.parametrize(
+    "description",
+    ["[<>&*`\\\U0001f600]" * 2000, "`" * 2000],
+    ids=["mixed", "backticks"],
+)
+def test_hostile_long_reports_fit_comments_without_losing_full_details(
+    raw_output, description
+):
+    report = InsoRunReport(
+        plan_end=300,
+        target_name=description,
+        raw_output=raw_output,
+        results=[
+            InsoResult(
+                id=index + 1,
+                status=list(InsoStatus)[index // 100],
+                description=f"result-{index}: {description}",
+            )
+            for index in range(300)
+        ],
+    )
+    reporter = Reporter()
+    original_json = report.model_dump_json()
+    original_junit = reporter.generate_junit(report)
+
+    markdown = reporter.generate_markdown(
+        report,
+        include_raw_output=True,
+        workflow_url="https://example.invalid/" + "x" * 2000,
+    )
+
+    assert len(markdown.encode("utf-8")) < 60000
+    assert "**300 test results** (100 passed, 100 failed, 100 skipped)" in markdown
+    assert "Insomnia Collection Failed" in markdown
+    assert "250 more results omitted" in markdown
+    result_lines = [
+        line for line in markdown.splitlines() if line.startswith("- \u2705 **")
+    ]
+    assert len(result_lines) == 50
+    assert all(len(line.encode("utf-8")) < 600 for line in result_lines)
+    assert all("(truncated)" in line for line in result_lines)
+    assert "Raw output truncated at 8192 bytes" in markdown
+    assert markdown.count("(truncated)") == 52
+    assert report.model_dump_json() == original_json
+    assert reporter.generate_junit(report) == original_junit
+    suite = ElementTree.fromstring(original_junit)
+    assert len(suite.findall("testcase")) == 300
+    assert suite.findall("testcase")[-1].attrib["name"] == f"result-299: {description}"
+    assert suite.find("testcase").attrib["classname"] == description
 
 
 class TestReporterJUnitGeneration:

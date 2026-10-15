@@ -1,9 +1,46 @@
 import re
+from urllib.parse import urlsplit
 
 # XML is generated, not parsed.
 from xml.etree import ElementTree  # nosec B405
 
 from .models import InsoRunReport, InsoStatus, RunType
+
+
+_MAX_RENDERED_RESULTS = 50
+# Leave room for raw output, its worst-case fences, and the duplicated target.
+_MAX_NAME_BYTES = 160
+_MAX_RAW_OUTPUT_BYTES = 8192
+
+
+def _inline_code(value: str) -> str:
+    text = " ".join(value.split())
+    encoded = text.encode("utf-8")
+    if len(encoded) > _MAX_NAME_BYTES:
+        text = (
+            encoded[:_MAX_NAME_BYTES].decode("utf-8", errors="ignore")
+            + " ... (truncated)"
+        )
+    delimiter = "`" * (
+        1 + max((len(match[0]) for match in re.finditer(r"`+", text)), default=0)
+    )
+    return f"{delimiter} {text} {delimiter}"
+
+
+def _workflow_link(workflow_url: str | None) -> str:
+    if (
+        not workflow_url
+        or len(workflow_url.encode("utf-8")) > 2048
+        or re.search(r"[\s<>\\\x00-\x1f\x7f]", workflow_url)
+    ):
+        return "workflow run"
+    try:
+        url = urlsplit(workflow_url)
+        if url.scheme in {"http", "https"} and url.hostname:
+            return f"[workflow run](<{workflow_url}>)"
+    except ValueError:
+        return "workflow run"
+    return "workflow run"
 
 
 class Reporter:
@@ -37,7 +74,8 @@ class Reporter:
             status, icon = "Skipped", "⏭️"
         else:
             status, icon = "Passed", "✅"
-        target = f": {report.target_name}" if report.target_name else ""
+        target_name = _inline_code(report.target_name) if report.target_name else ""
+        target = f": {target_name}" if target_name else ""
         lines.extend(
             [
                 f"## {icon} Insomnia {run_label} {status}{target}",
@@ -59,23 +97,23 @@ class Reporter:
         result_label = "test result" if report.total_tests == 1 else "test results"
         lines.append(f"- **{report.total_tests} {result_label}** {passed_text}")
         if report.target_name:
-            lines.append(f"- **Target:** `{report.target_name}`")
+            lines.append(f"- **Target:** {target_name}")
         lines.extend(["", "### Test Results", ""])
-        for result in report.results:
+        for result in report.results[:_MAX_RENDERED_RESULTS]:
             if result.status == InsoStatus.PASS:
                 icon = "✅"
             elif result.status == InsoStatus.SKIP:
                 icon = "⏭️"
             else:
                 icon = "❌"
-            lines.append(f"- {icon} **{result.description}**")
-        lines.extend(["", "### Additional Information", ""])
-        if workflow_url:
+            lines.append(f"- {icon} **{_inline_code(result.description)}**")
+        omitted = report.total_tests - _MAX_RENDERED_RESULTS
+        if omitted > 0:
             lines.append(
-                f"See the [workflow run]({workflow_url}) for execution details."
+                f"- {omitted} more results omitted; full details remain in JSON and JUnit reports."
             )
-        else:
-            lines.append("See the workflow run for execution details.")
+        lines.extend(["", "### Additional Information", ""])
+        lines.append(f"See the {_workflow_link(workflow_url)} for execution details.")
         if not include_raw_output:
             lines.append(
                 "Raw Inso diagnostics are omitted. Enable `include-raw-output` "
@@ -85,16 +123,32 @@ class Reporter:
         lines.append("")
 
         if include_raw_output and report.raw_output:
+            encoded = report.raw_output.strip().encode("utf-8")
+            raw_output = encoded[:_MAX_RAW_OUTPUT_BYTES].decode(
+                "utf-8", errors="ignore"
+            )
+            fence = "`" * max(
+                3,
+                1
+                + max(
+                    (len(match[0]) for match in re.finditer(r"`+", raw_output)),
+                    default=0,
+                ),
+            )
             lines.extend(
                 [
                     "<details><summary>View raw output</summary>",
                     "",
-                    "```",
-                    report.raw_output.strip(),
-                    "```",
-                    "</details>",
+                    fence,
+                    raw_output,
+                    fence,
                 ]
             )
+            if len(encoded) > _MAX_RAW_OUTPUT_BYTES:
+                lines.extend(
+                    ["", f"Raw output truncated at {_MAX_RAW_OUTPUT_BYTES} bytes."]
+                )
+            lines.append("</details>")
 
         return "\n".join(lines)
 
