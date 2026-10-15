@@ -24,7 +24,7 @@ Paths are relative to the workflow step's current directory unless absolute path
 | `github-token` | — | Token for PR comments and authenticated public GitHub tool downloads |
 | `comment-issue-number` | — | Issue or PR number for comments outside `pull_request` workflows |
 | `pr-comment` | `true` | Post results to a PR or explicit issue |
-| `fail-on-error` | `true` | Fail workflow on test failure |
+| `fail-on-error` | `true` | Fail workflow on test failure; CLI configuration errors always fail |
 | `bail` | `false` | Stop on first failure |
 | `verbose` | `false` | Capture additional Inso diagnostics; requires `include-raw-output` to expose them in reports |
 | `inso-version` | `13.3.1` | Exact Inso CLI version |
@@ -85,6 +85,8 @@ data-folders: "./fixtures,./uploads"
 
 Report counts are **test results**, which can include assertions, skips, and synthetic execution failures, not HTTP requests. Empty runs retain exit code `0`, but show **No Assertions Executed** with the summary **No assertions executed**; this is not successful test validation. Runs with only skipped results are labeled **Skipped**. Invalid CLI options can produce a nonzero exit code without a test report.
 
+Markdown displays at most 50 results and bounds long names to fit GitHub comments. Truncation is marked; summary counts, JSON results, and JUnit cases remain complete. Raw diagnostics in Markdown are limited to 8,192 UTF-8 bytes even when enabled. Requested JSON retains the full raw output, so its disclosure risk is unchanged. Use report artifacts for large machine-readable reports rather than relying on GitHub's limited step-output size.
+
 Raw Inso diagnostics are captured, not streamed to workflow logs. `verbose` alone does not expose them. Explicitly enable `include-raw-output: "true"` to include them in Markdown and requested JSON reports; raw output may contain secrets and is then shared through job summaries, enabled comments, and uploaded report artifacts. See [Debug Mode](../troubleshooting.md#debug-mode) before opting in.
 
 ## Using Outputs
@@ -141,7 +143,7 @@ Grant `checks: write` when publishing a GitHub test report.
 
 - name: Upload JUnit report
   if: always() && steps.tests.outputs.junit-file != ''
-  uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
   with:
     name: insomnia-run-junit
     path: ${{ steps.tests.outputs.junit-file }}
@@ -195,7 +197,7 @@ Automatic installation supports Linux x64 and macOS Intel runners. On Apple Sili
     working-directory: insomnia-export.yaml
 ```
 
-The action requires Python 3.10 or newer and uses that interpreter without downloading another Python. Provision exactly `uv 0.11.11` to skip its installer. A different preinstalled uv version triggers setup of the pinned version. Self-hosted runners must support Node.js 24 actions.
+The action requires Python 3.10 or newer and uses that interpreter without downloading another Python. Provision exactly `uv 0.11.11` to skip its installer. A different preinstalled uv version triggers setup of the pinned version. Self-hosted runners require Actions Runner 2.327.1 or newer for the pinned Node.js 24 actions.
 
 The default Inso version and previous defaults have bundled digests and do not query the GitHub release API. Other versions require access to `api.github.com` for their official SHA-256 digest. GitHub Enterprise Server tokens are never sent to public GitHub download APIs.
 

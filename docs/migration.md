@@ -12,6 +12,10 @@ Verified Inso archives are cached by default. Set `cache-inso: "false"` to disab
 
 For production workflows, pin the action to a release commit SHA.
 
+`fail-on-error: "false"` permits test failures (CLI exit code `1`), not configuration errors or other CLI exit codes. Installation and report-publication errors still fail the action.
+
+Markdown renders names as literal text and limits displayed results and raw diagnostics. Summary counts and machine-readable results are not truncated; see [report limits](reference/inputs.md#action-outputs).
+
 ## Inso Version
 
 If your workflow depends on a specific Inso version, set it explicitly:
@@ -25,6 +29,8 @@ If your workflow depends on a specific Inso version, set it explicitly:
 ```
 
 ## Self-Hosted Runners
+
+Update Actions Runner to at least 2.327.1 for the pinned Node.js 24 dependencies.
 
 Insomnia Run uses `inso` from `PATH` when its version matches the requested `inso-version`. Otherwise, it installs and verifies the requested official release archive.
 

@@ -59,7 +59,19 @@ execution-timeout: "600"  # 10 minutes total
 
 ## Rate Limiting
 
-Add delay between requests:
+### GitHub Tool Downloads
+
+The action pins uv to `0.11.11` and reuses a matching preinstalled executable. Pinning avoids latest-version discovery, but a cold setup can still download a manifest and binary. On GitHub.com, `github-token` defaults to the workflow's token; no personal access token is required for public tool downloads.
+
+The default Inso release has bundled checksums, so installation does not query the releases API for its digest. Custom versions without bundled checksums require release metadata. Verified archive caching reduces binary downloads, not every GitHub request.
+
+Inso metadata requests stop on HTTP errors without automatic retries. For `429` or a rate-limited `403`, wait for GitHub's reset window before rerunning. A `403` can also indicate insufficient authorization; check the token and permissions rather than repeatedly retrying. A `404` can indicate an unavailable release. See [GitHub's rate-limit guidance](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+
+Outside GitHub.com, the action does not forward enterprise tokens to public GitHub download endpoints. If public downloads are unavailable, provision the exact uv and verified Inso versions on the runner; see [self-hosted installation](#installation-fails-on-self-hosted-runners).
+
+### API Requests in Your Collections
+
+To reduce the request rate to the API under test, add a collection delay. This does not affect GitHub's download or API limits:
 ```yaml
 delay-request: "1000"
 ```

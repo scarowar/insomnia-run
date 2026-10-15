@@ -12,6 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Install the action package with a pinned `uv` toolchain and frozen lockfile.
 - Pass GitHub authentication to `setup-uv` and disable cache writes for untrusted comment-triggered runs.
 - Refresh locked development dependencies to patched versions.
+- Maintain the uv lockfile with Dependabot's native uv updater.
 - Use Pydantic 2.14.1 for current Python support, with a test matrix covering Python 3.10 through 3.15.
 - Hide raw Inso output from Markdown and JSON reports unless explicitly enabled.
 - Separate getting started, collections, test suites, secrets, examples, reference, migration, and troubleshooting documentation.
@@ -36,6 +37,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Prevent custom JUnit filenames from injecting workflow outputs or republishing stale reports.
 - Preserve the current invocation's selected preinstalled Inso after an earlier installation.
 - Require valid requested JSON output and scan committed content in CI rather than an empty staging area.
+- Stop retrying failed Inso release-metadata requests immediately, including rate-limit and authorization errors.
+- Keep CLI configuration errors fatal when test failures are allowed with `fail-on-error: "false"`.
+- Render Markdown names as literal text, use collision-safe raw-output fences, and limit displayed results and raw diagnostics to fit GitHub comments without truncating JSON or JUnit results.
 - Keep JUnit reports valid when test names contain XML-forbidden characters, and preserve legal attribute whitespace.
 - Preserve nonzero Inso exits as report failures, including diagnostics emitted on stdout or after partial TAP output.
 - Create Inso's package cache directory before invoking the CLI on clean runners.
