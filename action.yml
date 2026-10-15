@@ -20,7 +20,7 @@ inputs:
     required: true
 
   github-token:
-    description: "GitHub token for posting PR comments. Uses GITHUB_TOKEN if not provided."
+    description: "Token for PR comments and authenticated public GitHub tool downloads. Defaults to github.token."
     required: false
 
   comment-issue-number:
@@ -30,7 +30,25 @@ inputs:
   inso-version:
     description: "Version of Inso CLI to use."
     required: false
-    default: "12.6.0"
+    default: "13.3.1"
+
+  cache-inso:
+    description: "Cache verified Inso release archives between workflow runs."
+    required: false
+    default: "true"
+
+  upload-artifact:
+    description: "Upload Markdown, JSON (when requested), and JUnit (when enabled) reports. GitHub.com only."
+    required: false
+    default: "false"
+  artifact-name:
+    description: "Name for uploaded reports. Set a unique name for each action invocation in matrix jobs."
+    required: false
+    default: "insomnia-run-reports"
+  artifact-retention-days:
+    description: "Report artifact retention in days, within the repository policy."
+    required: false
+    default: "14"
 
   identifier:
     description: "Collection name, test suite name, or workspace ID to run."
@@ -100,7 +118,7 @@ inputs:
     description: "The format of the report output (e.g., 'json')."
     required: false
   include-raw-output:
-    description: "Include raw Inso output in the generated Markdown report."
+    description: "Include raw Inso output in Markdown and JSON reports. May expose sensitive logs."
     required: false
     default: "false"
   junit-report:
@@ -133,26 +151,82 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Detect Inso CLI
-      id: detect-inso
+    - name: Verify Python Requirements
       shell: bash
       run: |
         set -euo pipefail
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          echo "::error::Insomnia Run currently supports Linux and macOS runners. Windows is not supported."
+          exit 1
+        fi
+        if ! command -v python3 &> /dev/null; then
+          echo "::error::insomnia-run requires Python 3.10 or higher in PATH"
+          exit 1
+        fi
+        python3 - <<'EOF'
+        import sys
+        if sys.version_info < (3, 10):
+            print("::error::insomnia-run requires Python 3.10 or higher")
+            sys.exit(1)
+        print(f"Using Python {sys.version.split()[0]}")
+        EOF
+
+    - name: Validate Inso Version
+      shell: bash
+      env:
+        INSO_VERSION: ${{ inputs.inso-version }}
+      run: |
+        set -euo pipefail
+        if [[ ! "$INSO_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+          echo "::error::Invalid Inso CLI version '${INSO_VERSION}'"
+          echo "::error::Use a version published by Kong/insomnia releases"
+          exit 1
+        fi
+
+    - name: Detect Inso CLI
+      id: detect-inso
+      shell: bash
+      env:
+        INSO_VERSION: ${{ inputs.inso-version }}
+      run: |
+        set -euo pipefail
+        mkdir -p "${HOME}/.cache/pkg"
         if command -v inso &> /dev/null; then
-          echo "found=true" >> "$GITHUB_OUTPUT"
-          echo "Using preinstalled Inso CLI"
-          inso --version
+          if version_output="$(inso --version 2>&1)" && [[ "$version_output" =~ ([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?) ]]; then
+            installed_version="${BASH_REMATCH[1]}"
+            if [[ "$installed_version" == "$INSO_VERSION" ]]; then
+              echo "found=true" >> "$GITHUB_OUTPUT"
+              echo "Using preinstalled Inso CLI ${installed_version}"
+            else
+              echo "found=false" >> "$GITHUB_OUTPUT"
+              echo "Preinstalled Inso CLI does not match requested version ${INSO_VERSION}"
+            fi
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "Preinstalled Inso CLI version could not be determined"
+          fi
         else
           echo "found=false" >> "$GITHUB_OUTPUT"
         fi
+
+    - name: Restore Inso archive
+      id: inso-cache
+      if: inputs.cache-inso == 'true' && steps.detect-inso.outputs.found != 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/insomnia-run-download/${{ inputs.inso-version }}
+        key: insomnia-run-inso-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.inso-version }}
 
     - name: Install Inso CLI
       if: steps.detect-inso.outputs.found != 'true'
       shell: bash
       env:
         INSO_VERSION: ${{ inputs.inso-version }}
+        ACTION_PATH: ${{ github.action_path }}
+        INSO_DOWNLOAD_TOKEN: ${{ github.server_url == 'https://github.com' && (inputs.github-token || github.token) || '' }}
       run: |
         set -euo pipefail
+        mkdir -p "${HOME}/.cache/pkg"
 
         if [[ ! "$INSO_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
           echo "::error::Invalid Inso CLI version '$INSO_VERSION'"
@@ -179,6 +253,11 @@ runs:
             archive="tar.xz"
             ;;
           Darwin)
+            if [[ "$arch" == "arm64" ]] && ! /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null; then
+              echo "::error::The official Inso macOS binary requires Rosetta on Apple Silicon."
+              echo "::error::Provision Rosetta or preinstall a compatible Inso binary before running this action."
+              exit 1
+            fi
             platform="macos"
             archive="zip"
             ;;
@@ -191,17 +270,42 @@ runs:
 
         asset="inso-${platform}-${INSO_VERSION}.${archive}"
         url="https://github.com/Kong/insomnia/releases/download/core%40${INSO_VERSION}/${asset}"
-        extract_dir="${RUNNER_TEMP}/inso-${platform}-${INSO_VERSION}"
+        extract_dir="$(mktemp -d "${RUNNER_TEMP}/inso-extract.XXXXXX")"
         install_dir="${RUNNER_TEMP}/insomnia-run-inso/bin"
-        archive_path="${RUNNER_TEMP}/${asset}"
+        download_dir="${RUNNER_TEMP}/insomnia-run-download/${INSO_VERSION}"
+        archive_path="${download_dir}/${asset}"
+        integrity_script="${ACTION_PATH}/scripts/inso_checksum.py"
+        integrity_args=("$asset")
 
-        mkdir -p "$extract_dir" "$install_dir"
-        echo "Installing Inso CLI ${INSO_VERSION}"
-        if ! curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 300 --output "$archive_path" "$url"; then
-          echo "::error::Failed to download Inso CLI ${INSO_VERSION}"
-          echo "::error::Expected release asset: $url"
-          exit 1
+        mkdir -p "$install_dir" "$download_dir"
+        # Bundled digests avoid GitHub API requests for the default and previous defaults.
+        checksum="$(python3 "$integrity_script" "$asset")"
+        if [[ -z "$checksum" ]]; then
+          metadata="${RUNNER_TEMP}/insomnia-run-release.json"
+          auth_args=()
+          if [[ -n "$INSO_DOWNLOAD_TOKEN" ]]; then
+            auth_args=(-H "Authorization: Bearer ${INSO_DOWNLOAD_TOKEN}")
+          fi
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 60 \
+            "${auth_args[@]}" --output "$metadata" \
+            "https://api.github.com/repos/Kong/insomnia/releases/tags/core%40${INSO_VERSION}"
+          integrity_args+=(--metadata "$metadata")
+          python3 "$integrity_script" "${integrity_args[@]}" >/dev/null
         fi
+
+        echo "Installing Inso CLI ${INSO_VERSION}"
+        if [[ -f "$archive_path" ]] && ! python3 "$integrity_script" "${integrity_args[@]}" --archive "$archive_path"; then
+          echo "::warning::Cached Inso archive failed verification; downloading a fresh copy."
+          rm -f "$archive_path"
+        fi
+        if [[ ! -f "$archive_path" ]]; then
+          if ! curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 300 --output "$archive_path" "$url"; then
+            echo "::error::Failed to download Inso CLI ${INSO_VERSION}"
+            echo "::error::Expected release asset: $url"
+            exit 1
+          fi
+        fi
+        python3 "$integrity_script" "${integrity_args[@]}" --archive "$archive_path"
 
         if [[ "$archive" == "tar.xz" ]]; then
           tar -xJf "$archive_path" -C "$extract_dir"
@@ -226,8 +330,11 @@ runs:
 
     - name: Verify Inso CLI
       shell: bash
+      env:
+        INSO_VERSION: ${{ inputs.inso-version }}
       run: |
         set -euo pipefail
+        mkdir -p "${HOME}/.cache/pkg"
         if [[ -d "${RUNNER_TEMP}/insomnia-run-inso/bin" ]]; then
           export PATH="${RUNNER_TEMP}/insomnia-run-inso/bin:${PATH}"
         fi
@@ -236,43 +343,81 @@ runs:
           echo "::error::Install Inso on the runner or allow this action to install the requested version"
           exit 1
         fi
-        inso --version
+        if ! version_output="$(inso --version 2>&1)"; then
+          echo "::error::Inso CLI could not start. Verify platform compatibility and runner prerequisites."
+          exit 1
+        fi
+        if [[ "$version_output" =~ ([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?) ]]; then
+          installed_version="${BASH_REMATCH[1]}"
+        else
+          installed_version=""
+        fi
+        if [[ "$installed_version" != "$INSO_VERSION" ]]; then
+          echo "::error::Inso CLI version mismatch"
+          echo "::error::Requested: ${INSO_VERSION}"
+          echo "::error::Installed: ${installed_version:-unknown}"
+          exit 1
+        fi
+        echo "$version_output"
 
-    - name: Verify Python Requirements
+    - name: Save verified Inso archive
+      if: inputs.cache-inso == 'true' && steps.detect-inso.outputs.found != 'true' && steps.inso-cache.outputs.cache-hit != 'true' && github.event_name != 'issue_comment' && github.event_name != 'pull_request_target'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/insomnia-run-download/${{ inputs.inso-version }}
+        key: insomnia-run-inso-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.inso-version }}
+
+    - name: Check uv
+      id: check-uv
       shell: bash
+      env:
+        INSOMNIA_RUN_UV_VERSION: "0.11.11"
       run: |
         set -euo pipefail
 
-        if ! command -v python3 &> /dev/null; then
-          echo "::error::Python 3 is not installed or not in PATH"
-          echo "::error::insomnia-run requires Python 3.10 or higher"
-          echo "::error::GitHub-hosted runners have Python pre-installed. If using a self-hosted runner, please install Python 3.10+."
-          exit 1
+        needs_setup="true"
+        if command -v uv >/dev/null 2>&1; then
+          installed_version="$(uv --version | awk '{print $2}')"
+          if [[ "$installed_version" == "$INSOMNIA_RUN_UV_VERSION" ]]; then
+            needs_setup="false"
+            echo "Using preinstalled uv ${installed_version}"
+          else
+            echo "Preinstalled uv ${installed_version} does not match required ${INSOMNIA_RUN_UV_VERSION}"
+          fi
+        else
+          echo "uv is not installed; installing ${INSOMNIA_RUN_UV_VERSION}"
         fi
 
-        python3 - <<'EOF'
-        import sys
-        if sys.version_info < (3, 10):
-            print("::error::insomnia-run requires Python 3.10 or higher")
-            print(f"::error::Current version: {sys.version}")
-            print("::error::GitHub-hosted runners provide Python 3.10+. Consider using a newer runner image or upgrading Python.")
-            sys.exit(1)
-        print(f"Using Python {sys.version.split()[0]}")
-        EOF
+        echo "needs-setup=${needs_setup}" >> "$GITHUB_OUTPUT"
+
+    - name: Setup uv
+      if: steps.check-uv.outputs.needs-setup == 'true'
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      with:
+        version: "0.11.11"
+        working-directory: ${{ github.action_path }}
+        github-token: ${{ github.server_url == 'https://github.com' && (inputs.github-token || github.token) || '' }}
+        # Actions cache writes are denied for untrusted comment-triggered runs.
+        # Restores remain enabled so dependency downloads can still be reused.
+        save-cache: ${{ github.event_name != 'issue_comment' && github.event_name != 'pull_request_target' }}
 
     - name: Install insomnia-run
       shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INSOMNIA_RUN_VENV: ${{ runner.temp }}/insomnia-run-venv
       run: |
         set -euo pipefail
-        VENV_DIR="${RUNNER_TEMP}/insomnia-run-venv"
-        if ! python3 -m venv "$VENV_DIR"; then
-          echo "::error::Failed to create a Python virtual environment"
-          echo "::error::Install the Python venv module on this runner and try again"
+
+        python_path="$(python3 -c 'import sys; print(sys.executable)')"
+        if ! uv venv --no-project --no-python-downloads --python "$python_path" --clear "${INSOMNIA_RUN_VENV}"; then
+          echo "::error::Failed to create the insomnia-run virtual environment"
           exit 1
         fi
-        if ! "${VENV_DIR}/bin/python" -m pip install --disable-pip-version-check "$GITHUB_ACTION_PATH"; then
-          echo "::error::Failed to install insomnia-run"
-          echo "::error::Check Python package index access or configure pip for this runner"
+        if ! UV_PROJECT_ENVIRONMENT="${INSOMNIA_RUN_VENV}" \
+          uv sync --frozen --no-dev --project "${ACTION_PATH}" --python "$python_path" --no-python-downloads; then
+          echo "::error::Failed to install insomnia-run from its locked dependencies"
+          echo "::error::Check package index access or configure uv for this runner"
           exit 1
         fi
 
@@ -301,21 +446,25 @@ runs:
         REQUEST_TIMEOUT: ${{ inputs.request-timeout }}
         DISABLE_CERT_VALIDATION: ${{ inputs.disable-cert-validation }}
 
-        HTTPS_PROXY: ${{ inputs.https-proxy }}
-        HTTP_PROXY: ${{ inputs.http-proxy }}
-        NO_PROXY: ${{ inputs.no-proxy }}
+        INPUT_HTTPS_PROXY: ${{ inputs.https-proxy }}
+        INPUT_HTTP_PROXY: ${{ inputs.http-proxy }}
+        INPUT_NO_PROXY: ${{ inputs.no-proxy }}
         DATA_FOLDERS: ${{ inputs.data-folders }}
         VERBOSE: ${{ inputs.verbose }}
         OUTPUT_FORMAT: ${{ inputs.output-format }}
         INCLUDE_RAW_OUTPUT: ${{ inputs.include-raw-output }}
         JUNIT_REPORT: ${{ inputs.junit-report }}
         JUNIT_OUTPUT_FILE: ${{ inputs.junit-output-file }}
+        UPLOAD_ARTIFACT: ${{ inputs.upload-artifact }}
+        ARTIFACT_RETENTION_DAYS: ${{ inputs.artifact-retention-days }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
 
         WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       run: |
-        set +e
+        set -euo pipefail
 
+        mkdir -p "${HOME}/.cache/pkg"
         INSOMNIA_RUN_BIN="${RUNNER_TEMP}/insomnia-run-venv/bin/insomnia-run"
         if [[ -d "${RUNNER_TEMP}/insomnia-run-inso/bin" ]]; then
           export PATH="${RUNNER_TEMP}/insomnia-run-inso/bin:${PATH}"
@@ -331,6 +480,18 @@ runs:
           echo "::error::Invalid command '$COMMAND'. Must be 'collection' or 'test'."
           exit 1
         fi
+
+        if [[ "$UPLOAD_ARTIFACT" == "true" ]]; then
+          if [[ "$GITHUB_SERVER_URL" != "https://github.com" ]]; then
+            echo "::error::Built-in report artifact uploads require GitHub.com. Use the report outputs with your GHES artifact uploader."
+            exit 1
+          fi
+          if [[ ! "$ARTIFACT_RETENTION_DAYS" =~ ^[0-9]+$ ]] || (( 10#$ARTIFACT_RETENTION_DAYS < 1 || 10#$ARTIFACT_RETENTION_DAYS > 400 )); then
+            echo "::error::artifact-retention-days must be between 1 and 400, within the repository retention policy."
+            exit 1
+          fi
+        fi
+        REPORT_DIR="$(mktemp -d "${RUNNER_TEMP}/insomnia-run-reports.XXXXXX")"
 
         if [[ "$COMMAND" == "collection" ]]; then
           CMD=("$INSOMNIA_RUN_BIN" run-collection)
@@ -380,9 +541,9 @@ runs:
         [[ "$BAIL" == "true" ]] && CMD+=(--bail)
         [[ -n "$REQUEST_TIMEOUT" ]] && CMD+=(--request-timeout "$REQUEST_TIMEOUT")
         [[ "$DISABLE_CERT_VALIDATION" == "true" ]] && CMD+=(--disable-cert-validation)
-        [[ -n "$HTTPS_PROXY" ]] && CMD+=(--https-proxy "$HTTPS_PROXY")
-        [[ -n "$HTTP_PROXY" ]] && CMD+=(--http-proxy "$HTTP_PROXY")
-        [[ -n "$NO_PROXY" ]] && CMD+=(--no-proxy "$NO_PROXY")
+        [[ -n "$INPUT_HTTPS_PROXY" ]] && CMD+=(--https-proxy "$INPUT_HTTPS_PROXY")
+        [[ -n "$INPUT_HTTP_PROXY" ]] && CMD+=(--http-proxy "$INPUT_HTTP_PROXY")
+        [[ -n "$INPUT_NO_PROXY" ]] && CMD+=(--no-proxy "$INPUT_NO_PROXY")
         [[ "$VERBOSE" == "true" ]] && CMD+=(--verbose)
 
         if [[ -n "$DATA_FOLDERS" ]]; then
@@ -400,7 +561,7 @@ runs:
           if [[ -n "$JUNIT_OUTPUT_FILE" ]]; then
             JUNIT_FILE="$JUNIT_OUTPUT_FILE"
           else
-            JUNIT_FILE="${RUNNER_TEMP}/insomnia-run-junit.xml"
+            JUNIT_FILE="${REPORT_DIR}/junit.xml"
           fi
           CMD+=(--junit-output "$JUNIT_FILE")
         fi
@@ -412,13 +573,27 @@ runs:
 
         if [[ "$OUTPUT_FORMAT_LOWER" == "json" ]]; then
           JSON_TMPFILE=$(mktemp)
-          MARKDOWN="$("${CMD[@]}" 2>"$JSON_TMPFILE")"
-          EXIT_CODE=$?
+          if MARKDOWN="$("${CMD[@]}" 2>"$JSON_TMPFILE")"; then
+            EXIT_CODE=0
+          else
+            EXIT_CODE=$?
+          fi
           JSON_OUTPUT=$(cat "$JSON_TMPFILE")
+          if [[ -n "$JSON_OUTPUT" ]] && ! python3 -c 'import json, sys; json.load(sys.stdin)' <<< "$JSON_OUTPUT" 2>/dev/null; then
+            MARKDOWN="${MARKDOWN}"$'\n'"${JSON_OUTPUT}"
+            JSON_OUTPUT=""
+            if [[ "$EXIT_CODE" == "0" ]]; then
+              echo "::error::insomnia-run did not produce valid JSON output"
+              EXIT_CODE=1
+            fi
+          fi
           rm -f "$JSON_TMPFILE"
         else
-          MARKDOWN="$("${CMD[@]}" 2>&1)"
-          EXIT_CODE=$?
+          if MARKDOWN="$("${CMD[@]}" 2>&1)"; then
+            EXIT_CODE=0
+          else
+            EXIT_CODE=$?
+          fi
           JSON_OUTPUT=""
         fi
         echo "::endgroup::"
@@ -430,24 +605,41 @@ runs:
           echo "junit-file=" >> "$GITHUB_OUTPUT"
         fi
 
-        EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+        EOF=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
         {
           echo "markdown<<$EOF"
-          echo "$MARKDOWN"
+          printf '%s\n' "$MARKDOWN"
           echo "$EOF"
         } >> "$GITHUB_OUTPUT"
 
         if [[ -n "$JSON_OUTPUT" ]]; then
-          EOF_JSON=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          EOF_JSON=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
           {
             echo "json-output<<$EOF_JSON"
-            echo "$JSON_OUTPUT"
+            printf '%s\n' "$JSON_OUTPUT"
             echo "$EOF_JSON"
           } >> "$GITHUB_OUTPUT"
         fi
 
-        echo "$MARKDOWN" >> "$GITHUB_STEP_SUMMARY"
+        printf '%s\n' "$MARKDOWN" >> "$GITHUB_STEP_SUMMARY"
+        printf '%s\n' "$MARKDOWN" > "${REPORT_DIR}/report.md"
+        if [[ -n "$JSON_OUTPUT" ]]; then
+          printf '%s\n' "$JSON_OUTPUT" > "${REPORT_DIR}/report.json"
+        fi
+        if [[ -n "$JUNIT_FILE" && -f "$JUNIT_FILE" && "$JUNIT_FILE" != "${REPORT_DIR}/junit.xml" ]]; then
+          cp "$JUNIT_FILE" "${REPORT_DIR}/junit.xml"
+        fi
+        echo "report-directory=$REPORT_DIR" >> "$GITHUB_OUTPUT"
         exit 0
+
+    - name: Upload report artifact
+      if: inputs.upload-artifact == 'true' && steps.run-cli.outputs.report-directory != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.run-cli.outputs.report-directory }}
+        retention-days: ${{ inputs.artifact-retention-days }}
+        if-no-files-found: error
 
     - name: Post PR Comment
       if: inputs.pr-comment == 'true' && (github.event_name == 'pull_request' || inputs.comment-issue-number != '')

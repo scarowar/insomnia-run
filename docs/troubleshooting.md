@@ -28,12 +28,14 @@
 ## Secrets Not Working
 
 **Fix:**
-- Use `env:` block:
+- For collections, map secrets with `env-var`:
   ```yaml
-  env:
-    API_KEY: ${{ secrets.API_KEY }}
+  with:
+    env-var: |
+      API_KEY=${{ secrets.API_KEY }}
   ```
 - Access in Insomnia as `{{ _.API_KEY }}`
+- A runner `env:` block alone does not populate Insomnia environments. For legacy test suites, use an Insomnia environment and Inso's supported external vault integration.
 
 ## SSL Certificate Errors
 
@@ -76,8 +78,12 @@ Insomnia Run uses `inso` from `PATH` when it is available. If the runner cannot 
 
 **Fix:**
 - Install Python 3.10 or newer
-- Ensure `python3 -m venv` works on the runner
-- Configure pip to use an internal package mirror when public package index access is blocked
+- Preinstall exactly `uv 0.11.11`, or allow the action to install that pinned version
+- For offline runs, prepopulate uv's cache with frozen runtime packages and the build backend; an index override alone does not replace public URLs in the lockfile
+
+Automatic Inso installation supports Linux x64 and macOS Intel. Apple Silicon needs Rosetta or a compatible preinstalled Inso. Linux ARM requires a compatible preinstalled Inso. Windows is not supported.
+
+Cached and downloaded archives must pass SHA-256 verification. For a custom `inso-version` without an official digest, preinstall and verify that binary in your runner image. Set `cache-inso: "false"` when the Actions cache service is unavailable.
 
 ## JSON Output Not Appearing
 

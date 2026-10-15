@@ -102,16 +102,29 @@ class InsoRunner:
 
     @staticmethod
     def _add_error_result_if_needed(report: InsoRunReport, result) -> None:
-        """Add a synthetic error result if inso CLI failed with no TAP output."""
-        if result.returncode != 0 and report.total_tests == 0:
-            error_msg = result.stderr.strip() or "Unknown error"
-            report.results.append(
-                InsoResult(
-                    id=1,
-                    status=InsoStatus.FAIL,
-                    description=f"Inso CLI Error: {error_msg}",
-                )
+        """Preserve a nonzero Inso exit as a report failure with diagnostics."""
+        if result.returncode == 0 or report.failed_count > 0:
+            return
+
+        output_lines = [
+            line.strip()
+            for output in (result.stderr, result.stdout)
+            for line in output.splitlines()
+            if line.strip()
+        ]
+        error_msg = next(
+            (line for line in output_lines if "error" in line.lower()),
+            output_lines[0] if output_lines else "Unknown error",
+        )
+        next_id = max((item.id for item in report.results), default=0) + 1
+        report.results.append(
+            InsoResult(
+                id=next_id,
+                status=InsoStatus.FAIL,
+                description=f"Inso CLI Error: {error_msg}",
             )
+        )
+        report.plan_end = max(report.plan_end, next_id)
 
     def run_collection(self, options: InsoCollectionOptions) -> InsoRunReport:
         cmd = self._base_cmd(

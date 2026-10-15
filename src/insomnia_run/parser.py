@@ -11,6 +11,7 @@ class TapParser:
 
     def parse(self, output: str) -> InsoRunReport:
         report = InsoRunReport(plan_end=0)
+        planned_tests = 0
 
         lines = output.strip().split("\n")
         for line in lines:
@@ -23,14 +24,14 @@ class TapParser:
 
             match = re.search(self.PLAN, line)
             if match:
-                report.plan_start = int(match.group(1))
-                report.plan_end = int(match.group(2))
+                planned_tests += max(0, int(match.group(2)) - int(match.group(1)) + 1)
                 continue
 
             match = re.search(self.TEST_LINE, line)
             if match:
                 status_str = match.group(1)
-                test_id = int(match.group(2))
+                # Collection requests each emit their own TAP plan and restart IDs.
+                test_id = len(report.results) + 1
                 description = match.group(3)
 
                 # Check for SKIP directive in description
@@ -44,4 +45,5 @@ class TapParser:
                 result = InsoResult(id=test_id, status=status, description=description)
                 report.results.append(result)
 
+        report.plan_end = max(planned_tests, len(report.results))
         return report

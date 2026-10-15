@@ -32,7 +32,9 @@ def _validate_output_format(output_format: Optional[str]) -> None:
         )
 
 
-def _emit_machine_readable_output(report, output_format: Optional[str]) -> None:
+def _emit_machine_readable_output(
+    report, output_format: Optional[str], *, include_raw_output: bool = False
+) -> None:
     """
     Emits the test report in the specified machine-readable format to stderr.
 
@@ -46,7 +48,9 @@ def _emit_machine_readable_output(report, output_format: Optional[str]) -> None:
     requested_format = output_format.lower()
 
     if requested_format == "json":
-        json_report = report.model_dump_json(indent=2)
+        json_report = report.model_dump_json(
+            indent=2, exclude=None if include_raw_output else {"raw_output"}
+        )
         typer.echo(json_report, err=True)
 
 
@@ -80,7 +84,9 @@ def _finalize_report(
 
     print(markdown)
     _write_junit_output(reporter, report, junit_output)
-    _emit_machine_readable_output(report, output_format)
+    _emit_machine_readable_output(
+        report, output_format, include_raw_output=include_raw_output
+    )
 
     if report.failed_count > 0:
         raise typer.Exit(code=1)
@@ -174,7 +180,7 @@ def run_collection(  # NOSONAR - CLI command requires many options
     include_raw_output: bool = typer.Option(
         False,
         "--include-raw-output",
-        help="Include raw Inso output in the Markdown report.",
+        help="Include raw Inso output in Markdown and JSON reports.",
     ),
     junit_output: Optional[str] = typer.Option(
         None,
@@ -289,7 +295,7 @@ def run_test(  # NOSONAR - CLI command requires many options
     include_raw_output: bool = typer.Option(
         False,
         "--include-raw-output",
-        help="Include raw Inso output in the Markdown report.",
+        help="Include raw Inso output in Markdown and JSON reports.",
     ),
     junit_output: Optional[str] = typer.Option(
         None,

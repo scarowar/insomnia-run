@@ -1,8 +1,16 @@
 # Migration
 
-## v0.1.x to v0.2.0
+## v0.1.x to v0.2.0 (Unreleased)
 
-Update the action reference:
+The default Inso CLI changes to `13.3.1`. Pin `inso-version` explicitly when you require an older version. Preinstalled binaries must match that version exactly.
+
+Python installation now uses `uv 0.11.11` and frozen dependencies. Offline runners must provide that exact uv version and prepopulate its cache; configuring an index mirror does not redirect URLs recorded in the lockfile.
+
+JSON reports now omit `raw_output` by default. Enable `include-raw-output: "true"` only when logs are safe to share. Collection result IDs are unique across requests and the TAP plan is aggregated.
+
+Verified Inso archives are cached by default. Set `cache-inso: "false"` to disable caching. Report uploads are optional through `upload-artifact: "true"` on GitHub.com. Use a distinct `artifact-name` for each invocation and matrix job; the default retention is 14 days.
+
+The `v0.2.0` tag will be available only after release. To test this candidate, pin the reviewed candidate commit SHA. After release, update the action reference:
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.2.0
@@ -12,7 +20,7 @@ For production workflows, pin to the v0.2.0 release SHA after reviewing the rele
 
 ## Inso Version
 
-The default Inso CLI version is now `12.6.0`.
+The next action revision updates the default Inso CLI version to `13.3.1`.
 
 If your workflow depends on a specific Inso version, set it explicitly:
 
@@ -21,18 +29,21 @@ If your workflow depends on a specific Inso version, set it explicitly:
   with:
     command: collection
     working-directory: .insomnia
-    inso-version: "12.6.0"
+    inso-version: "13.3.1"
 ```
 
 ## Self-Hosted Runners
 
-Insomnia Run uses `inso` from `PATH` when it is already available. If `inso` is not available, the action installs the requested `inso-version` from the official Insomnia release assets.
+Insomnia Run uses `inso` from `PATH` when its version matches the requested `inso-version`. Otherwise, it installs and verifies the requested official release archive.
+
+Automatic installation supports Linux x64 and macOS Intel. Apple Silicon requires Rosetta for the official macOS binary or a compatible preinstalled Inso. Linux ARM requires a compatible preinstalled Inso. Windows is not supported.
 
 Runners without public internet access should provide:
 
 - Python 3.10 or newer
-- Python package index access through the runner's pip configuration, or an internal package mirror
-- `inso` on `PATH` when GitHub release downloads are blocked
+- Exactly `uv 0.11.11` on `PATH`
+- A prepopulated uv cache containing the frozen runtime dependencies and build backend
+- The exact requested `inso` version on `PATH`
 
 ## Inso Configuration
 

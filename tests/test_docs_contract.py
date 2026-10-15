@@ -62,3 +62,10 @@ def test_inso_config_auto_detection_is_documented():
     assert ".insorc" in reference
     assert ".insorc" in migration
     assert "config-file" not in action
+
+
+def test_installation_guidance_uses_uv_not_pip():
+    text = user_facing_text().lower()
+
+    assert "configure pip" not in text
+    assert "uv 0.11.11" in text

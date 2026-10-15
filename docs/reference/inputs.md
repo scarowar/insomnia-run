@@ -13,18 +13,22 @@
 |-------|---------|-------------|
 | `identifier` | — | Collection or test suite name |
 | `environment` | — | Insomnia environment name |
-| `github-token` | — | Token for PR comments |
+| `github-token` | — | Token for PR comments and authenticated public GitHub tool downloads |
 | `comment-issue-number` | — | Issue or PR number for comments outside `pull_request` workflows |
 | `pr-comment` | `true` | Post results to a PR or explicit issue |
 | `fail-on-error` | `true` | Fail workflow on test failure |
 | `bail` | `false` | Stop on first failure |
 | `verbose` | `false` | Enable debug logging |
-| `inso-version` | `12.6.0` | Inso CLI version |
+| `inso-version` | `13.3.1` | Exact Inso CLI version |
+| `cache-inso` | `true` | Cache verified Inso archives between workflow runs |
 | `execution-timeout` | `300` | Max execution time in seconds |
 | `output-format` | — | JSON output in addition to Markdown |
-| `include-raw-output` | `false` | Include raw Inso output in the Markdown report |
+| `include-raw-output` | `false` | Include raw Inso output in Markdown and JSON; logs may contain secrets |
 | `junit-report` | `true` | Generate a JUnit XML report file |
 | `junit-output-file` | — | Custom path for the JUnit XML report |
+| `upload-artifact` | `false` | Upload generated reports on GitHub.com, including test failures |
+| `artifact-name` | `insomnia-run-reports` | Unique artifact name per invocation and matrix job |
+| `artifact-retention-days` | `14` | Retention within repository policy, from 1 to 400 days |
 
 ## Collection Only
 
@@ -63,7 +67,7 @@
 | `markdown` | Generated Markdown report |
 | `json-output` | Generated JSON report |
 | `junit-file` | Path to the generated JUnit XML report |
-| `exit-code` | `0` = success, `1` = failure |
+| `exit-code` | `0` = success, nonzero = test or execution failure |
 
 ## Using Outputs
 
@@ -161,7 +165,9 @@ The workflow token needs `issues: write` for issues and `pull-requests: write` f
 
 ## Enterprise Runners
 
-Insomnia Run uses `inso` from `PATH` when it is already available. If `inso` is missing, the action installs the requested `inso-version` from the official Insomnia release assets.
+Insomnia Run uses `inso` from `PATH` only when its version matches `inso-version`. Otherwise, the action installs the requested version from official Insomnia release assets and verifies the archive's SHA-256 digest before extraction. Cached archives are verified again before use.
+
+Automatic installation supports Linux x64 and macOS Intel runners. On Apple Silicon, the official macOS binary requires Rosetta; provision Rosetta or preinstall a compatible Inso binary. Linux ARM requires a compatible preinstalled Inso binary. Windows is not supported.
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.2.0
@@ -170,7 +176,27 @@ Insomnia Run uses `inso` from `PATH` when it is already available. If `inso` is 
     working-directory: .insomnia
 ```
 
-On runners without public internet access, add `inso` to `PATH` in the runner image before the workflow starts and configure pip to use an internal package mirror.
+The action requires Python 3.10 or newer and uses that interpreter without downloading another Python. Provision exactly `uv 0.11.11` to skip its installer. A different preinstalled uv version triggers setup of the pinned version. Self-hosted runners must support Node.js 24 actions.
+
+The default Inso version and previous defaults have bundled digests and do not query the GitHub release API. Other versions require access to `api.github.com` for their official SHA-256 digest. GitHub Enterprise Server tokens are never sent to public GitHub download APIs.
+
+Runners without public internet access must preinstall matching Inso and uv versions and prepopulate uv's cache with the exact locked runtime packages and build backend. A frozen lockfile contains public artifact URLs; an index environment variable alone does not redirect those URLs to an internal mirror. Set `UV_OFFLINE=true` after provisioning the cache. Set `cache-inso: "false"` if your runner cannot use the Actions cache service.
+
+GitHub Enterprise Server installations must also make the pinned dependency actions available through their supported action mirroring or allowlisting process. Preinstalling tools skips their installers, but GitHub still needs to resolve the referenced actions.
+
+Built-in report uploads use `actions/upload-artifact` for GitHub.com. On GitHub Enterprise Server, use the report outputs with an uploader supported by your installation. Artifact uploads occur before `fail-on-error` is applied. Set distinct `artifact-name` values for matrix jobs and multiple invocations; uploads with the same name conflict.
+
+For the unreleased v0.2.0 candidate, replace the placeholder below with its reviewed commit SHA:
+
+```yaml
+- uses: scarowar/insomnia-run@<reviewed-candidate-sha>
+  with:
+    command: collection
+    working-directory: .insomnia
+    upload-artifact: "true"
+    artifact-name: api-tests-${{ matrix.environment }}
+    artifact-retention-days: "14"
+```
 
 ## Inso Configuration
 

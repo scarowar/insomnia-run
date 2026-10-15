@@ -64,8 +64,8 @@ Pass secrets to your Insomnia workspace via environment variables:
   with:
     command: collection
     working-directory: .insomnia
-  env:
-    API_KEY: ${{ secrets.API_KEY }}
+    env-var: |
+      API_KEY=${{ secrets.API_KEY }}
 ```
 
 ## Multi-Environment

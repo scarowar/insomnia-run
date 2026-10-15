@@ -40,6 +40,8 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 
 ## Quick Start
 
+These examples describe the unreleased v0.2.0 candidate. Use its reviewed commit SHA while testing; the `v0.2.0` tag does not exist yet.
+
 **Run a collection:**
 ```yaml
 - uses: scarowar/insomnia-run@v0.2.0
@@ -70,6 +72,8 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 | `fail-on-error` | No | `true` | Fail workflow on test failures |
 | `output-format` | No | | Use `json` to get JSON output in addition to Markdown |
 | `junit-report` | No | `true` | Generate a JUnit XML report file |
+
+The unreleased v0.2.0 candidate adds verified Inso archive caching (`cache-inso`, enabled by default) and optional report uploads (`upload-artifact`, disabled by default). See the [migration guide](docs/migration.md) for candidate behavior and runner requirements.
 
 [View all inputs](https://scarowar.github.io/insomnia-run/reference/inputs/)
 

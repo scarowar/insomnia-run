@@ -59,7 +59,7 @@ Set a timeout for individual requests:
 
 ## With Secrets
 
-Pass secrets via environment variables:
+Select an Insomnia environment for the suite:
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.2.0
@@ -67,9 +67,10 @@ Pass secrets via environment variables:
     command: test
     working-directory: .insomnia
     identifier: "My Test Suite"
-  env:
-    API_KEY: ${{ secrets.API_KEY }}
+    environment: CI
 ```
+
+For secret values, configure Inso's supported [external vault integration](https://developer.konghq.com/insomnia/external-vault/). A runner `env:` block alone does not populate Insomnia environment variables. The `env-var` input is collection-only; see [Handling Secrets](secrets.md).
 
 ## Test vs Collection
 

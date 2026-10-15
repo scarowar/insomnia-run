@@ -55,7 +55,6 @@ def test_release_security_workflows_exist():
     workflows = {path.name for path in WORKFLOWS}
 
     assert "security.yml" in workflows
-    assert "sonarqube.yml" in workflows
     assert "codeql.yml" in workflows
     assert "dependency-review.yml" in workflows
     assert "scorecards.yml" in workflows
@@ -135,7 +134,6 @@ def test_expensive_bot_prs_are_cost_controlled():
     )
     e2e = load_yaml(ROOT / ".github" / "workflows" / "e2e-test.yml")
     security = load_yaml(ROOT / ".github" / "workflows" / "security.yml")
-    sonarqube = load_yaml(ROOT / ".github" / "workflows" / "sonarqube.yml")
 
     assert "github.actor != 'dependabot[bot]'" in codeql["jobs"]["analyze"]["if"]
     assert "github.actor != 'pre-commit-ci[bot]'" in codeql["jobs"]["analyze"]["if"]
@@ -151,12 +149,22 @@ def test_expensive_bot_prs_are_cost_controlled():
         "github.actor != 'pre-commit-ci[bot]'"
         in security["jobs"]["deterministic-security"]["if"]
     )
-    assert "github.actor != 'dependabot[bot]'" in sonarqube["jobs"]["sonar"]["if"]
-    assert "github.actor != 'pre-commit-ci[bot]'" in sonarqube["jobs"]["sonar"]["if"]
-    assert (
-        "github.event.pull_request.head.repo.full_name == github.repository"
-        in sonarqube["jobs"]["sonar"]["if"]
+
+
+def test_e2e_jobs_use_local_api_fixtures():
+    e2e = load_yaml(ROOT / ".github" / "workflows" / "e2e-test.yml")
+
+    for job_name, job in e2e["jobs"].items():
+        step_names = {step.get("name") for step in job.get("steps", [])}
+        assert "Start local API fixture" in step_names, (
+            f"{job_name} does not start the deterministic API fixture"
+        )
+
+    fixture_text = "\n".join(
+        path.read_text() for path in (ROOT / "tests" / "fixtures").glob("*.yaml")
     )
+    assert "jsonplaceholder.typicode.com" not in fixture_text
+    assert "httpbin.org" not in fixture_text
 
 
 def test_docs_deploy_runs_only_for_docs_surface_changes():
@@ -217,21 +225,13 @@ def test_security_workflow_runs_deterministic_scanners():
     assert "uv run cyclonedx-py environment .venv" in steps_text
 
 
-def test_sonarqube_waits_for_quality_gate():
-    workflow = load_yaml(ROOT / ".github" / "workflows" / "sonarqube.yml")
-    sonar_steps = workflow["jobs"]["sonar"]["steps"]
-    scan_step = next(
-        step for step in sonar_steps if "sonarqube-scan-action" in step.get("uses", "")
-    )
+def test_automatic_sonar_analysis_has_no_conflicting_ci_scanner():
+    assert (ROOT / ".sonarcloud.properties").is_file()
+    for _, _, step in workflow_steps():
+        assert "sonarqube-scan-action" not in step.get("uses", "")
 
-    assert scan_step["env"]["SONAR_TOKEN"] == "${{ secrets.SONAR_TOKEN }}"
-    assert "-Dsonar.host.url=https://sonarcloud.io" in scan_step["with"]["args"]
-    assert "-Dsonar.organization=scarowar" in scan_step["with"]["args"]
-    assert "-Dsonar.projectKey=scarowar_insomnia-run" in scan_step["with"]["args"]
-    assert (
-        "-Dsonar.python.coverage.reportPaths=coverage.xml" in scan_step["with"]["args"]
-    )
-    assert "-Dsonar.qualitygate.wait=true" in scan_step["with"]["args"]
-    assert "--cov-report=xml:coverage.xml" in "\n".join(
-        step.get("run", "") for step in sonar_steps
-    )
+
+def test_ci_enforces_coverage_independently_of_automatic_analysis():
+    ci = load_yaml(ROOT / ".github/workflows/ci.yml")
+    commands = "\n".join(s.get("run", "") for s in ci["jobs"]["test"]["steps"])
+    assert "--cov-fail-under=95" in commands

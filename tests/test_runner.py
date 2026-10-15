@@ -186,6 +186,46 @@ ok 1 - Test passed
                 f"{options.execution_timeout}" in r.description for r in report.results
             )
 
+    def test_collection_cli_error_from_stdout_is_reported(self, runner):
+        with patch("insomnia_run.runner.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                stdout="Error: No data source found at path '/tmp/missing'\nTIP: use --workingDir",
+                stderr="",
+                returncode=1,
+            )
+
+            report = runner.run_collection(InsoCollectionOptions(working_dir="/path"))
+
+        assert report.failed_count == 1
+        assert "No data source found" in report.results[0].description
+        assert "TIP:" not in report.results[0].description
+
+    def test_collection_nonzero_exit_with_tap_results_still_fails(self, runner):
+        with patch("insomnia_run.runner.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                stdout="TAP version 13\n1..1\nok 1 - Passed\n",
+                stderr="",
+                returncode=1,
+            )
+
+            report = runner.run_collection(InsoCollectionOptions(working_dir="/path"))
+
+        assert report.passed_count == 1
+        assert report.failed_count == 1
+        assert "Inso CLI Error" in report.results[-1].description
+
+    def test_collection_cli_error_prefers_diagnostic_across_streams(self, runner):
+        with patch("insomnia_run.runner.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                stdout="Error: No data source found at path '/tmp/missing'",
+                stderr="Warning: using default configuration",
+                returncode=1,
+            )
+
+            report = runner.run_collection(InsoCollectionOptions(working_dir="/path"))
+
+        assert "No data source found" in report.results[0].description
+
 
 class TestInsoRunnerTest:
     @pytest.fixture
@@ -311,3 +351,16 @@ class TestInsoRunnerTest:
             assert any(
                 f"{options.execution_timeout}" in r.description for r in report.results
             )
+
+    def test_test_cli_error_from_stdout_is_reported(self, runner):
+        with patch("insomnia_run.runner.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                stdout="No test suites found; cannot run tests.",
+                stderr="",
+                returncode=1,
+            )
+
+            report = runner.run_test(InsoTestOptions(working_dir="/path"))
+
+        assert report.failed_count == 1
+        assert "No test suites found" in report.results[0].description

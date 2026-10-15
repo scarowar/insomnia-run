@@ -4,41 +4,69 @@ All notable changes to Insomnia Run are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.0] - 2026-06-02
-
-### Added
-
-- JUnit XML report generation for CI test reporting integrations.
-- Explicit comment targeting for manual, scheduled, deployment, and push workflows.
-- Inso CLI detection before setup, allowing self-hosted runners to provide `inso` directly.
-- Security, SonarQube, CodeQL, Dependency Review, Scorecard, pre-commit, and E2E release gates.
-- Migration guidance for upgrading from v0.1.x.
+## [0.2.0] - Unreleased
 
 ### Changed
 
-- The action installs its Python package through a virtual environment instead of installing `uv` at runtime.
-- Raw Inso output is hidden from Markdown reports unless explicitly enabled.
-- Documentation now separates getting started, collections, test suites, secrets, examples, reference, migration, and troubleshooting.
-- Workflow examples use reviewed release references and documented report outputs.
+- Default to the verified Inso CLI `13.3.1` release.
+- Install the action package with a pinned `uv` toolchain and frozen lockfile.
+- Pass GitHub authentication to `setup-uv` and disable cache writes for untrusted comment-triggered runs.
+- Refresh locked development dependencies to patched versions.
+- Use Pydantic 2.14.1 for current Python support, with a test matrix covering Python 3.10 through 3.15.
+- Hide raw Inso output from Markdown and JSON reports unless explicitly enabled.
+- Separate getting started, collections, test suites, secrets, examples, reference, migration, and troubleshooting documentation.
+
+### Added
+
+- SHA-256 verification before extracting official Inso archives, including cache restores.
+- Inso archive caching with version, operating system, and architecture isolation; cache writes are disabled for untrusted comment triggers.
+- Optional report artifact uploads on GitHub.com, with configurable names and retention, including failing test runs.
+- JUnit XML report generation for CI test reporting integrations.
+- Explicit comment targeting for manual, scheduled, deployment, and push workflows.
+- Exact-version detection of preinstalled Inso for self-hosted runners.
+- Security, CodeQL, Dependency Review, Scorecard, pre-commit, and E2E release checks, with SonarQube Cloud GitHub App analysis.
+- Migration guidance for upgrading from v0.1.x.
 
 ### Fixed
 
-- GitHub API rate-limit failures caused by runtime `setup-uv` usage.
-- Open dependency vulnerabilities in documentation and test dependencies.
-- PR comments can now be posted from non-PR workflow triggers when an issue or pull request number is provided.
+- Preserve nonzero Inso exits as report failures, including diagnostics emitted on stdout or after partial TAP output.
+- Create Inso's package cache directory before invoking the CLI on clean runners.
+- Omit raw logs from JSON unless explicitly requested, matching Markdown privacy defaults.
+- Aggregate per-request TAP plans and assign unique result IDs across collection requests.
+- Fail when action output or job summary publication fails while preserving expected test exit codes.
+- Use the validated runner Python without inheriting the caller's project constraints or downloading another interpreter.
+- Generate output delimiters portably and report macOS Rosetta requirements and unsupported Windows runners clearly.
+- Preserve runner proxy environment variables when no proxy input overrides them.
+- Use the existing token-free Sonar GitHub App integration without a conflicting CI scanner; CI enforces coverage independently.
+- Correct secret-mapping examples and replace a legacy fixture script that silently executed zero assertions.
+- Replace broad default workflow token permissions with explicit read permissions.
 
 ### Security
 
 - Third-party GitHub Actions are pinned by full commit SHA.
 - Workflow tokens use least privilege.
-- Security scanning includes dependency audit, Bandit, Semgrep, Zizmor, Gitleaks, actionlint, CodeQL, SonarQube, and SBOM generation.
+- Security scanning includes dependency audit, Bandit, Zizmor, Gitleaks, actionlint, CodeQL, SonarQube, and SBOM generation.
 - Raw command output is not included in public reports by default.
 
-## [0.1.0] - 2025-07-27
+## [0.1.2] - 2026-01-06
+
+### Fixed
+
+- Add the Python executable directory to the action PATH.
+
+## [0.1.1] - 2026-01-06
+
+### Fixed
+
+- Remove the setup-python step and improve installation error handling.
+
+## [0.1.0] - 2026-01-04
 
 ### Added
 
 - Initial Insomnia Run action release.
 
-[0.2.0]: https://github.com/scarowar/insomnia-run/compare/v0.1.0...v0.2.0
+[0.2.0]: https://github.com/scarowar/insomnia-run/compare/v0.1.2...release/v0.2.0-hardening
+[0.1.2]: https://github.com/scarowar/insomnia-run/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/scarowar/insomnia-run/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/scarowar/insomnia-run/releases/tag/v0.1.0
