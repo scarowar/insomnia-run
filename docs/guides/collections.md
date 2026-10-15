@@ -1,15 +1,29 @@
 # Running Collections
 
+v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these examples, replace `scarowar/insomnia-run@v0.2.0` with `scarowar/insomnia-run@<reviewed-full-pr-head-sha>`, using the reviewed full PR-head commit SHA (40 hexadecimal characters).
+
 ## Basic Usage
 
-Run all requests in a collection:
+Run all requests in a YAML export. For legacy Git Sync, use the parent repository root instead; see [input paths](../reference/inputs.md#input-paths).
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
 ```
+
+## Assertions
+
+Running requests does not automatically assert HTTP status codes or response data. Add explicit tests in the collection's after-response scripts, for example:
+
+```javascript
+insomnia.test('Status code is 200', () => {
+    insomnia.expect(insomnia.response.code).to.eql(200);
+});
+```
+
+Empty runs retain exit code `0`, but **No assertions executed** is not successful test validation. Check that requests have supported script assertions and that the selected requests and iterations include them. Report counts are test results, not HTTP requests; results may include assertions, skips, or synthetic execution failures.
 
 ## With Environment
 
@@ -19,7 +33,7 @@ Target a specific Insomnia environment:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     environment: staging
 ```
 
@@ -31,7 +45,7 @@ By pattern:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     request-name-pattern: ".*users.*"
 ```
 
@@ -41,7 +55,7 @@ By ID:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     item: "req_001,req_002"
 ```
 
@@ -53,7 +67,7 @@ Run the collection multiple times with data from a CSV or JSON file:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     iteration-count: "5"
     iteration-data: "test-data.csv"
 ```
@@ -66,7 +80,7 @@ Control request delays and timeouts:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     delay-request: "500"
     request-timeout: "30000"
     execution-timeout: "600"
@@ -84,7 +98,7 @@ Stop execution immediately when a request fails:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     bail: "true"
 ```
 
@@ -96,7 +110,7 @@ Pass secrets via environment variables:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     env-var: |
       API_KEY=${{ secrets.API_KEY }}
 ```

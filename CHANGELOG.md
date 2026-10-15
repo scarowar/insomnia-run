@@ -29,6 +29,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Validate complete TAP plans and bailouts, protect option-like target identifiers, and label empty/skipped reports without claiming successful assertions.
+- Stop the Inso process group on timeout and decode diagnostics as UTF-8 with replacement for invalid bytes.
+- Keep execution diagnostics and exception locals out of default reports, including synthetic failures and report-write errors.
+- Reject invalid iteration and timeout bounds before execution while preserving explicit zero request timeouts and delays.
+- Prevent custom JUnit filenames from injecting workflow outputs or republishing stale reports.
+- Preserve the current invocation's selected preinstalled Inso after an earlier installation.
+- Require valid requested JSON output and scan committed content in CI rather than an empty staging area.
 - Keep JUnit reports valid when test names contain XML-forbidden characters, and preserve legal attribute whitespace.
 - Preserve nonzero Inso exits as report failures, including diagnostics emitted on stdout or after partial TAP output.
 - Create Inso's package cache directory before invoking the CLI on clean runners.

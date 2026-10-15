@@ -66,8 +66,9 @@ jobs:
 
       - name: Run secret and workflow linters
         run: |
-          uv run --frozen --no-sync --no-build pre-commit run gitleaks --all-files
+          uv run --frozen --no-sync --no-build pre-commit run gitleaks-ci --hook-stage manual --all-files
           uv run --frozen --no-sync --no-build pre-commit run actionlint --all-files
+          uv run --frozen --no-sync --no-build pytest -q -rs tests/test_secret_scanning.py
 
       - name: Generate SBOM
         run: |

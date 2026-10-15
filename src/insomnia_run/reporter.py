@@ -27,8 +27,14 @@ class Reporter:
         lines = []
 
         run_label = self._run_label(report)
-        status = "Passed" if report.failed_count == 0 else "Failed"
-        icon = "✅" if report.failed_count == 0 else "❌"
+        if report.failed_count:
+            status, icon = "Failed", "❌"
+        elif not report.total_tests:
+            status, icon = "No Assertions Executed", "⏭️"
+        elif report.skipped_count == report.total_tests:
+            status, icon = "Skipped", "⏭️"
+        else:
+            status, icon = "Passed", "✅"
         target = f": {report.target_name}" if report.target_name else ""
         lines.extend(
             [
@@ -38,7 +44,9 @@ class Reporter:
                 "",
             ]
         )
-        if report.failed_count == 0 and report.skipped_count == 0:
+        if not report.total_tests:
+            passed_text = "(No assertions executed)"
+        elif report.failed_count == 0 and report.skipped_count == 0:
             passed_text = "(all passed)"
         elif report.skipped_count > 0:
             passed_text = f"({report.passed_count} passed, {report.failed_count} failed, {report.skipped_count} skipped)"
@@ -46,7 +54,8 @@ class Reporter:
             passed_text = (
                 f"({report.passed_count} passed, {report.failed_count} failed)"
             )
-        lines.append(f"- **{report.total_tests} requests executed** {passed_text}")
+        result_label = "test result" if report.total_tests == 1 else "test results"
+        lines.append(f"- **{report.total_tests} {result_label}** {passed_text}")
         if report.target_name:
             lines.append(f"- **Target:** `{report.target_name}`")
         lines.extend(["", "### Test Results", ""])
@@ -60,9 +69,17 @@ class Reporter:
             lines.append(f"- {icon} **{result.description}**")
         lines.extend(["", "### Additional Information", ""])
         if workflow_url:
-            lines.append(f"Check the [workflow logs]({workflow_url}) for details")
+            lines.append(
+                f"See the [workflow run]({workflow_url}) for execution details."
+            )
         else:
-            lines.append("Check the workflow logs for details")
+            lines.append("See the workflow run for execution details.")
+        if not include_raw_output:
+            lines.append(
+                "Raw Inso diagnostics are omitted. Enable `include-raw-output` "
+                "(CLI: `--include-raw-output`) only when safe: diagnostics can "
+                "contain secrets."
+            )
         lines.append("")
 
         if include_raw_output and report.raw_output:

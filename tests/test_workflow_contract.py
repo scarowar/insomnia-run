@@ -167,6 +167,23 @@ def test_e2e_jobs_use_local_api_fixtures():
     assert "httpbin.org" not in fixture_text
 
 
+def test_e2e_checks_the_verified_binary_against_the_compatibility_suite():
+    workflow = load_yaml(ROOT / ".github/workflows/e2e-test.yml")
+    steps = workflow["jobs"]["test-test-command"]["steps"]
+    compatibility = next(
+        step
+        for step in steps
+        if "tests/test_inso_compatibility.py" in step.get("run", "")
+    )
+    assert (
+        compatibility["env"]["INSOMNIA_RUN_INSO_BINARY"]
+        == "${{ runner.temp }}/insomnia-run-inso/bin/inso"
+    )
+    assert "--no-build --no-install-project" in compatibility["run"]
+    assert "--require-hashes" in compatibility["run"]
+    assert "uv run --frozen --no-sync --no-build pytest" in compatibility["run"]
+
+
 def test_docs_deploy_runs_only_for_docs_surface_changes():
     workflow = load_yaml(ROOT / ".github" / "workflows" / "docs.yml")
     paths = workflow_on(workflow)["push"]["paths"]

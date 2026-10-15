@@ -17,7 +17,9 @@ nav:
     - Running Collections: guides/collections.md
     - Running Test Suites: guides/test-suites.md
     - Handling Secrets: guides/secrets.md
-  - Reference: reference/inputs.md
+  - Reference:
+    - Inputs and Outputs: reference/inputs.md
+    - Upstream Compatibility: reference/compatibility.md
   - Examples: examples/index.md
   - Migration: migration.md
   - Troubleshooting: troubleshooting.md

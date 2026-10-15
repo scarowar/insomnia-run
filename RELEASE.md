@@ -2,6 +2,16 @@
 
 Insomnia Run wraps the Inso CLI for GitHub Actions. A release must preserve the action inputs, outputs, CLI commands, generated reports, and failure behavior.
 
+## Owner Decisions
+
+This is a solo-maintainer project. Recruiting another maintainer is not a prerequisite for technical work. Existing GitHub review rules remain unchanged: required reviews, CODEOWNERS, and branch protections must still be honored. Automated reviews are not independent human approval and do not authorize a bypass.
+
+ClusterFuzzLite is explicitly deferred by the owner. This is an accepted remaining limitation, not a false positive or a claim that recognized fuzzing is implemented. Keep the deferral separate from confirmed code defects and scanner false-positive decisions.
+
+Historical Scorecard results are not proof of a present code defect. Evaluate their evidence against the current candidate and record the disposition without rewriting history or dismissing alerts to improve a score.
+
+No merge, tag, or release is authorized by this checklist or the candidate review. Keep the candidate unreleased; the owner's final release decision is separate from technical verification.
+
 ## Local Gates
 
 Run from this repository:
@@ -23,7 +33,7 @@ Before tagging:
 - Review code scanning alerts.
 - Review secret scanning alerts.
 - Review SonarQube Cloud findings.
-- Resolve every open finding, regardless of severity, or record a narrow false-positive decision.
+- Triage every open finding. Fix confirmed defects or record an explicit unresolved disposition; document false positives and owner-approved deferrals separately.
 - Confirm the stable branch is protected by branch protection or a repository ruleset.
 - Confirm CODEOWNERS is active for workflow and action changes.
 - Confirm required checks include CI, Security, CodeQL, `SonarCloud Code Analysis`, Dependency Review, docs build, and E2E.
@@ -41,23 +51,28 @@ The six open Scorecard alerts inspected on 2026-10-15 reference default-branch c
 - [Token permissions (#2)](https://github.com/scarowar/insomnia-run/security/code-scanning/2): explicit read-only workflow defaults are present in the candidate; a default-branch analysis must confirm the result after an approved merge.
 - [CI tests (#3)](https://github.com/scarowar/insomnia-run/security/code-scanning/3): historical analysis found CI on 25 of 27 merged PRs. The ruleset now requires the unit matrix, lint/docs, Security, Dependency Review, and E2E alongside the existing checks. Do not alter past reviews or results to improve this score.
 - [Branch protection (#1)](https://github.com/scarowar/insomnia-run/security/code-scanning/1): the candidate adds CODEOWNERS, but the existing one-review policy and administrator PR bypass remain unchanged. Those intentional policy choices need maintainer risk review, not a scanner suppression.
-- [Code review (#5)](https://github.com/scarowar/insomnia-run/security/code-scanning/5): arrange independent human review and nominate another eligible CODEOWNER; the PR author cannot self-approve. Automated reviews do not replace this requirement or change historical review coverage.
+- [Code review (#5)](https://github.com/scarowar/insomnia-run/security/code-scanning/5): preserve the existing review requirements; the PR author cannot self-approve. Automated reviews do not replace required human approval or change historical review coverage. The solo-maintainer model does not require recruiting another maintainer for technical work or permit bypassing GitHub rules.
 - [Best practices badge (#4)](https://github.com/scarowar/insomnia-run/security/code-scanning/4): OpenSSF enrollment and its attestations require maintainer participation. Do not display an unearned badge.
-- [Fuzzing (#6)](https://github.com/scarowar/insomnia-run/security/code-scanning/6): generated-input tests cover Unicode report validity and repeated TAP plans, but this is not a Scorecard-recognized fuzzing integration. A dedicated integration or an explicit maintainer risk decision remains outstanding.
+- [Fuzzing (#6)](https://github.com/scarowar/insomnia-run/security/code-scanning/6): generated-input tests cover Unicode report validity and repeated TAP plans, but this is not a Scorecard-recognized fuzzing integration. The owner's explicit ClusterFuzzLite deferral above records the accepted limitation; it is not a false-positive dismissal or an additional technical prerequisite.
 
 ## Release Validation
 
 - Use the exact candidate commit or release tag for validation.
 - Do not validate production examples from a floating `main` reference.
+- Recheck the latest stable upstream release, exact binary help, versioned source, release notes, asset digests, and [compatibility matrix](docs/reference/compatibility.md). Resolve every supported-contract discrepancy or disclose a deliberate restriction; do not claim unverified universal conformance.
+- Confirm the E2E test-command job passes the real-binary compatibility suite and audited option inventory against the installed candidate wheel.
 - Confirm hosted runner and self-hosted runner behavior:
-  - preinstalled `inso` is used when available
+  - preinstalled `inso` is used only when its version exactly matches `inso-version`
   - fallback Inso installation works
   - the pinned `uv` version uses the validated runner Python and frozen runtime dependencies
   - Linux x64, macOS Intel, and macOS Apple Silicon with Rosetta run the exact candidate
   - a cold Inso install verifies its SHA-256 digest before extraction; a cache hit verifies it again
   - a corrupted cache is replaced and an unverifiable download fails closed
   - Markdown, JSON, and JUnit outputs are produced as documented
+  - empty runs retain exit code `0` and show `No Assertions Executed` / `No assertions executed`, never successful test validation; all-skipped runs show `Skipped`
+  - counts describe test results, including assertions, skips, and synthetic execution failures, not HTTP requests
   - raw Inso logs are absent from JSON and Markdown unless explicitly enabled
+  - `verbose` diagnostics require explicit `include-raw-output` opt-in, with disclosure limits documented
   - opt-in report artifacts are uploaded for passing and failing tests before the final failure decision
 
 For versions in `inso-checksums.json`, compare the pinned digests with the official `Kong/insomnia` release metadata. When updating a default, verify Kong's `inso-provenance.intoto.jsonl` with `slsa-verifier` before adding its digest. Other user-selected versions resolve their digest from the official release API and fail if no SHA-256 digest is available.

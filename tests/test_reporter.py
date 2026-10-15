@@ -28,7 +28,7 @@ class TestReporterMarkdownGeneration:
         markdown = reporter.generate_markdown(report)
 
         assert "## ✅ Insomnia Collection Passed: My Collection" in markdown
-        assert "**2 requests executed** (all passed)" in markdown
+        assert "**2 test results** (all passed)" in markdown
         assert "- ✅ **Test 1**" in markdown
         assert "- ✅ **Test 2**" in markdown
 
@@ -68,15 +68,15 @@ class TestReporterMarkdownGeneration:
             report, workflow_url="https://github.com/org/repo/actions/runs/123"
         )
 
-        assert "[workflow logs]" in markdown
+        assert "[workflow run]" in markdown
         assert "https://github.com/org/repo/actions/runs/123" in markdown
 
     def test_no_workflow_url(self, reporter):
         report = InsoRunReport(plan_end=0)
         markdown = reporter.generate_markdown(report)
 
-        assert "Check the workflow logs for details" in markdown
-        assert "[workflow logs]" not in markdown
+        assert "See the workflow run for execution details." in markdown
+        assert "[workflow run]" not in markdown
 
     def test_raw_output_is_hidden_by_default(self, reporter):
         report = InsoRunReport(
@@ -88,6 +88,9 @@ class TestReporterMarkdownGeneration:
 
         assert "<details>" not in markdown
         assert "ok 1 - Test" not in markdown
+        assert "diagnostics are omitted" in markdown
+        assert "`--include-raw-output`" in markdown
+        assert "contain secrets" in markdown
 
     def test_raw_output_can_be_included(self, reporter):
         report = InsoRunReport(
@@ -100,6 +103,7 @@ class TestReporterMarkdownGeneration:
         assert "<details>" in markdown
         assert "<summary>View raw output</summary>" in markdown
         assert "ok 1 - Test" in markdown
+        assert "diagnostics are omitted" not in markdown
 
     def test_no_raw_output(self, reporter):
         report = InsoRunReport(plan_end=0)
@@ -117,7 +121,7 @@ class TestReporterMarkdownGeneration:
         report = InsoRunReport(plan_end=0)
         markdown = reporter.generate_markdown(report)
 
-        assert "**0 requests executed**" in markdown
+        assert "**0 test results**" in markdown
         assert "### Test Results" in markdown
 
 
@@ -150,6 +154,43 @@ class TestReporterEdgeCases:
         markdown = reporter.generate_markdown(report)
 
         assert ("A" * 100) in markdown
+
+
+def test_empty_report_does_not_claim_assertions_passed():
+    markdown = Reporter().generate_markdown(InsoRunReport(plan_end=0))
+
+    assert "No assertions executed" in markdown
+    assert "Passed" not in markdown
+    assert "all passed" not in markdown
+
+
+def test_all_skipped_report_is_not_labelled_passed():
+    report = InsoRunReport(
+        plan_end=1,
+        results=[
+            InsoResult(id=1, status=InsoStatus.SKIP, description="not applicable")
+        ],
+    )
+
+    markdown = Reporter().generate_markdown(report)
+
+    assert "Skipped" in markdown
+    assert "Passed" not in markdown
+
+
+def test_summary_counts_results_without_claiming_request_execution():
+    report = InsoRunReport(
+        plan_end=2,
+        results=[
+            InsoResult(id=1, status=InsoStatus.PASS, description="status assertion"),
+            InsoResult(id=2, status=InsoStatus.PASS, description="body assertion"),
+        ],
+    )
+
+    markdown = Reporter().generate_markdown(report)
+
+    assert "2 test results" in markdown
+    assert "requests executed" not in markdown
 
 
 class TestReporterJUnitGeneration:

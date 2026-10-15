@@ -40,14 +40,16 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 
 ## Quick Start
 
-These examples describe the unreleased v0.2.0 candidate. Use its reviewed commit SHA while testing; the `v0.2.0` tag does not exist yet.
+v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these examples, replace `scarowar/insomnia-run@v0.2.0` with `scarowar/insomnia-run@<reviewed-full-pr-head-sha>`, using the reviewed full PR-head commit SHA (40 hexadecimal characters).
+
+Examples use `insomnia-export.yaml`. For legacy Git Sync data under `.insomnia/Workspace/`, use the parent repository root (`working-directory: .`), not `.insomnia`. See [input paths](docs/reference/inputs.md#input-paths).
 
 **Run a collection:**
 ```yaml
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
 ```
 
 **Run a test suite:**
@@ -55,7 +57,7 @@ These examples describe the unreleased v0.2.0 candidate. Use its reviewed commit
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     identifier: "My Test Suite"
 ```
 
@@ -64,7 +66,7 @@ These examples describe the unreleased v0.2.0 candidate. Use its reviewed commit
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `command` | Yes | | `collection` or `test` |
-| `working-directory` | Yes | | Path to `.insomnia` or export file |
+| `working-directory` | Yes | | Explicit YAML export path, or repository root for legacy Git Sync |
 | `identifier` | No | | Collection/test suite name or ID |
 | `environment` | No | | Insomnia environment to use |
 | `pr-comment` | No | `true` | Post results as PR comment |
@@ -84,7 +86,9 @@ The unreleased v0.2.0 candidate adds verified Inso archive caching (`cache-inso`
 | `markdown` | Generated test report in Markdown format |
 | `json-output` | Generated JSON report (machine-readable) |
 | `junit-file` | Path to the generated JUnit XML report |
-| `exit-code` | `0` for pass, `1` for fail |
+| `exit-code` | `0` for command success; nonzero for test, execution, or CLI errors |
+
+A report saying **No assertions executed** is not successful test validation. Collections need explicit script assertions; check test filters when an expected suite executes no assertions.
 
 ## CI Reports
 
@@ -97,7 +101,7 @@ Grant `checks: write` when publishing a GitHub test report.
   id: tests
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     fail-on-error: "false"
 
 - uses: dorny/test-reporter@a6ddd83ac95ff4586f5d3aceeb314d9a1841db95 # v3.0.0

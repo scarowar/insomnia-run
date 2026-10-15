@@ -30,9 +30,10 @@ def run_action(tmp_path):
     cli.parent.mkdir(parents=True)
     cli.write_text(
         "#!/usr/bin/env python3\n"
-        "import json, os, pathlib, sys\n"
+        "import json, os, pathlib, subprocess, sys\n"
         "if os.environ.get('TEST_ENV_FILE'):\n"
-        "    pathlib.Path(os.environ['TEST_ENV_FILE']).write_text(json.dumps({'proxy': os.environ.get('HTTPS_PROXY'), 'args': sys.argv}))\n"
+        "    selected = subprocess.check_output(['inso', '--version'], text=True).strip() if os.environ.get('TEST_CHECK_INSO') else None\n"
+        "    pathlib.Path(os.environ['TEST_ENV_FILE']).write_text(json.dumps({'proxy': os.environ.get('HTTPS_PROXY'), 'args': sys.argv, 'inso_version': selected}))\n"
         "print('## Insomnia report\\n\\n- result')\n"
         "if '--junit-output' in sys.argv and not os.environ.get('TEST_SKIP_JUNIT'):\n"
         "    path = pathlib.Path(sys.argv[sys.argv.index('--junit-output') + 1])\n"
@@ -126,12 +127,53 @@ def test_action_does_not_publish_cli_diagnostics_as_json(run_action, tmp_path):
     assert "invalid options" in outputs["markdown"]
 
 
+@pytest.mark.parametrize("payload", ["", "not JSON"])
+def test_action_rejects_missing_or_invalid_json_after_cli_success(
+    run_action, tmp_path, payload
+):
+    result = run_action(OUTPUT_FORMAT="json", TEST_JSON=payload)
+
+    assert result.returncode == 0, result.stderr
+    outputs = read_outputs(tmp_path / "outputs")
+    assert outputs["exit-code"] == "1"
+    assert "json-output" not in outputs
+    assert "did not produce valid JSON" in result.stdout
+
+
 def test_action_does_not_reuse_stale_junit_reports(run_action, tmp_path):
     first = run_action()
     assert first.returncode == 0, first.stderr
     second = run_action(TEST_SKIP_JUNIT="true", TEST_CLI_EXIT="2")
     assert second.returncode == 0, second.stderr
     assert read_outputs(tmp_path / "outputs")["junit-file"] == ""
+
+
+def test_custom_junit_path_cannot_overwrite_failure_outputs(run_action, tmp_path):
+    report_path = tmp_path / "junit.xml\nexit-code=0"
+
+    result = run_action(JUNIT_OUTPUT_FILE=str(report_path), TEST_CLI_EXIT="1")
+
+    assert result.returncode == 0, result.stderr
+    outputs = read_outputs(tmp_path / "outputs")
+    assert outputs["exit-code"] == "1"
+    assert outputs["junit-file"] == str(report_path)
+
+
+def test_custom_junit_path_does_not_publish_a_previous_report(run_action, tmp_path):
+    report_path = tmp_path / "custom" / "junit.xml"
+    first = run_action(JUNIT_OUTPUT_FILE=str(report_path))
+    assert first.returncode == 0, first.stderr
+    previous_report = report_path.read_text()
+
+    second = run_action(
+        JUNIT_OUTPUT_FILE=str(report_path), TEST_SKIP_JUNIT="true", TEST_CLI_EXIT="2"
+    )
+
+    assert second.returncode == 0, second.stderr
+    outputs = read_outputs(tmp_path / "outputs")
+    assert outputs["junit-file"] == ""
+    assert not (Path(outputs["report-directory"]) / "junit.xml").exists()
+    assert report_path.read_text() == previous_report
 
 
 @pytest.mark.parametrize("days", ["0", "401", "invalid"])
@@ -166,3 +208,25 @@ def test_inherited_enterprise_proxy_is_not_erased(run_action, tmp_path):
         payload["args"][payload["args"].index("--https-proxy") + 1]
         == "http://override.proxy:8080"
     )
+
+
+def test_preinstalled_inso_is_not_shadowed_by_a_previous_invocation(
+    run_action, tmp_path
+):
+    previous_bin = tmp_path / "insomnia-run-inso" / "bin"
+    previous_bin.mkdir(parents=True)
+    previous = previous_bin / "inso"
+    previous.write_text("#!/bin/bash\nprintf '13.1.0\\n'\n")
+    previous.chmod(0o755)
+    preinstalled = tmp_path / "fake-bin" / "inso"
+    preinstalled.write_text("#!/bin/bash\nprintf '13.3.1\\n'\n")
+    preinstalled.chmod(0o755)
+    captured = tmp_path / "selected-path.json"
+
+    result = run_action(
+        USE_INSTALLED_INSO="false", TEST_ENV_FILE=str(captured), TEST_CHECK_INSO="true"
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(captured.read_text())
+    assert payload["inso_version"] == "13.3.1"

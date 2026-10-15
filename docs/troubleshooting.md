@@ -1,5 +1,7 @@
 # Troubleshooting
 
+v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these examples, replace `scarowar/insomnia-run@v0.2.0` with `scarowar/insomnia-run@<reviewed-full-pr-head-sha>`, using the reviewed full PR-head commit SHA (40 hexadecimal characters).
+
 ## Collection/Test Not Found
 
 **Error:** `No collection/test suite found`
@@ -7,7 +9,8 @@
 **Fix:**
 - Verify `working-directory` path is correct
 - Check `identifier` matches exactly (case-sensitive)
-- For Git Sync, ensure `.insomnia/` directory exists
+- For legacy Git Sync data under `.insomnia/Workspace/`, pass the parent repository root (`working-directory: .`), not `.insomnia`
+- For a YAML export or a file-based Git Sync project, pass the explicit file path, such as `working-directory: insomnia-export.yaml`
 
 ## Environment Not Found
 
@@ -65,21 +68,30 @@ delay-request: "1000"
 
 ## Inso Installation Fails
 
-Insomnia Run uses `inso` from `PATH` when it is available. If the runner cannot download Inso during the workflow, add `inso` to `PATH` in the runner image.
+Insomnia Run uses `inso` from `PATH` only when its version matches `inso-version` exactly. A version mismatch triggers installation of the requested version, even if another Inso binary is available.
+
+If the runner cannot download Inso, provision the exact requested version in its image. For a provisioned `13.3.1` binary, select it explicitly:
+
+```yaml
+inso-version: "13.3.1"
+```
+
+Check `inso --version` on the runner before starting the action. If you provision a different version, set `inso-version` to that exact version instead.
 
 ## Inso Configuration Not Applied
 
 **Fix:**
-- Keep the Inso configuration file with the Insomnia project files
-- Confirm the workflow checks out the repository before running Insomnia Run
-- Confirm `working-directory` points at the Insomnia project or export file you expect
+- Set run options through action inputs, not arbitrary `.insorc` defaults
+- Inso 13.3.1 only imports truthy `workingDir`, `ci`, `verbose`, and `printOptions` configuration keys; command options/defaults then take precedence
+- This wrapper does not expose `--config` or run `.insorc` scripts; see [configuration limits](reference/inputs.md#inso-configuration)
 
 ## Installation Fails on Self-Hosted Runners
 
 **Fix:**
 - Install Python 3.10 or newer
 - Preinstall exactly `uv 0.11.11`, or allow the action to install that pinned version
-- For offline runs, prepopulate uv's cache with frozen runtime packages and the build backend; an index override alone does not replace public URLs in the lockfile
+- For offline runs, prepopulate uv's cache with frozen runtime packages and the build backend, then set `UV_OFFLINE=true`; an index override alone does not replace public URLs in the lockfile
+- Ensure the preinstalled Inso binary matches `inso-version` exactly; see [Inso Installation Fails](#inso-installation-fails)
 
 Automatic Inso installation supports Linux x64 and macOS Intel. Apple Silicon needs Rosetta or a compatible preinstalled Inso. Linux ARM requires a compatible preinstalled Inso. Windows is not supported.
 
@@ -111,15 +123,32 @@ Cached and downloaded archives must pass SHA-256 verification. For a custom `ins
 
 | Code | Meaning |
 |------|---------|
-| `0` | All tests passed |
-| `1` | One or more tests failed |
+| `0` | Command succeeded; does not guarantee assertions ran |
+| `1` | Test or execution failure |
+| Other nonzero | CLI or setup error; inspect the step diagnostics |
+
+## No Assertions Executed
+
+Empty runs retain exit code `0` and are labeled **No Assertions Executed**, with the summary **No assertions executed**, not **Passed**. This is not successful test validation. Check that collection scripts contain explicit assertions and that test-name filters match the intended tests. Runs containing only skipped results are labeled **Skipped**.
+
+Report counts are test results, not HTTP requests; results may include assertions, skips, or synthetic execution failures.
 
 ## Debug Mode
 
-Enable verbose logging:
+Raw Inso diagnostics are captured, not streamed to workflow logs. Verbose alone does not expose them in reports. For a trusted debugging run, explicitly enable both options:
+
 ```yaml
 verbose: "true"
+include-raw-output: "true"
+pr-comment: "false"
+upload-artifact: "false"
 ```
+
+For the standalone CLI, combine `--verbose` with `--include-raw-output`.
+
+Raw output may contain secrets, credentials, URLs, and response bodies. Opting in adds it to Markdown and requested JSON reports, including job summaries, enabled comments, and uploaded report artifacts. Disabling comments and uploads does not remove it from the job summary. Only opt in when everyone with access to those reports may see the output; hiding raw output does not guarantee that parsed result names or error messages are redacted.
+
+The workflow link provides execution details such as installation and step failures; it does not expose captured raw Inso diagnostics by default. Start with the parsed report, check the step diagnostics for CLI or installation errors, and use the explicit raw-output opt-in only when its disclosure is acceptable.
 
 ## Help
 

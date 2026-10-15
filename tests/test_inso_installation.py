@@ -142,3 +142,34 @@ def test_missing_release_digest_stops_before_downloading_binary(install_inso, tm
     assert result.returncode != 0
     assert "no SHA-256 digest" in result.stderr
     assert (tmp_path / "downloads").read_text().splitlines() == ["metadata"]
+
+
+def test_verification_uses_current_preinstalled_binary_after_an_install(
+    install_inso, tmp_path
+):
+    first = install_inso()
+    assert first.returncode == 0, first.stderr
+    preinstalled = tmp_path / "bin" / "inso"
+    preinstalled.write_text("#!/bin/bash\nprintf '12.2.0\\n'\n")
+    preinstalled.chmod(0o755)
+    verify = next(
+        s["run"] for s in ACTION["runs"]["steps"] if s.get("name") == "Verify Inso CLI"
+    )
+
+    result = subprocess.run(
+        ["bash", "-eo", "pipefail", "-c", verify],
+        env={
+            **os.environ,
+            "PATH": f"{tmp_path / 'bin'}:{os.environ['PATH']}",
+            "RUNNER_TEMP": str(tmp_path),
+            "INSO_VERSION": "12.2.0",
+            "USE_INSTALLED_INSO": "false",
+        },
+        text=True,
+        capture_output=True,
+        timeout=20,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "12.2.0" in result.stdout

@@ -151,7 +151,7 @@ def test_action_generates_junit_report_file():
     )
     assert 'JUNIT_FILE="${REPORT_DIR}/junit.xml"' in action_text
     assert 'CMD+=(--junit-output "$JUNIT_FILE")' in action_text
-    assert "junit-file=$JUNIT_FILE" in action_text
+    assert 'write_output junit-file "${JUNIT_OUTPUT_FILE:-$JUNIT_FILE}"' in action_text
 
 
 def test_action_keeps_inso_config_auto_detected():

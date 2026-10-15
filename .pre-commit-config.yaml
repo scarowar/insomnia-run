@@ -26,6 +26,11 @@ repos:
   rev: v8.30.0
   hooks:
   - id: gitleaks
+  - id: gitleaks
+    alias: gitleaks-ci
+    name: Detect committed secrets
+    entry: gitleaks git --redact --verbose
+    stages: [manual]
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.14.10

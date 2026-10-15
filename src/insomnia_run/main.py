@@ -8,7 +8,9 @@ from .runner import InsoRunner
 from .reporter import Reporter
 
 app = typer.Typer(
-    name="insomnia-run", help="CLI runner for Insomnia API tests and collections."
+    name="insomnia-run",
+    help="CLI runner for Insomnia API tests and collections.",
+    pretty_exceptions_show_locals=False,
 )
 
 SUPPORTED_OUTPUT_FORMATS = {"json"}
@@ -63,8 +65,15 @@ def _write_junit_output(
         return
 
     output_path = Path(junit_output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(reporter.generate_junit(report), encoding="utf-8")
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(reporter.generate_junit(report), encoding="utf-8")
+    except OSError as error:
+        typer.echo(
+            "Unable to write JUnit report. Check the destination path and permissions.",
+            err=True,
+        )
+        raise typer.Exit(code=1) from error
 
 
 def _finalize_report(
@@ -115,7 +124,7 @@ def run_collection(  # NOSONAR - CLI command requires many options
         ...,
         "--working-dir",
         "-w",
-        help="Path to Insomnia export or .insomnia directory",
+        help="Path to an Insomnia export, legacy Git Sync repository root, or app-data directory",
     ),
     identifier: Optional[str] = typer.Option(
         None, "--identifier", "-i", help="Collection name or workspace ID"
@@ -130,22 +139,27 @@ def run_collection(  # NOSONAR - CLI command requires many options
         None, "--item", help="Request or folder IDs to run (repeatable)"
     ),
     globals: Optional[str] = typer.Option(
-        None, "--globals", "-g", help="Global environment file or ID"
+        None, "--globals", "-g", help="Global environment file, ID, or name"
     ),
     delay_request: Optional[int] = typer.Option(
-        None, "--delay-request", help="Delay between requests (ms)"
+        None, "--delay-request", min=0, help="Delay between requests (ms)"
     ),
     request_timeout: Optional[int] = typer.Option(
-        None, "--request-timeout", help="Request timeout (ms)"
+        None, "--request-timeout", min=0, help="Request timeout (ms)"
     ),
     iteration_count: Optional[int] = typer.Option(
-        None, "--iteration-count", "-n", help="Number of iterations"
+        None, "--iteration-count", "-n", min=1, help="Number of iterations"
     ),
     iteration_data: Optional[str] = typer.Option(
-        None, "--iteration-data", "-d", help="Path to CSV/JSON data file"
+        None,
+        "--iteration-data",
+        "-d",
+        help="CSV/JSON iteration data path or HTTP(S) URL",
     ),
     env_var: Optional[list[str]] = typer.Option(
-        None, "--env-var", help="Override env vars (KEY=VALUE, repeatable)"
+        None,
+        "--env-var",
+        help="Override env vars (KEY=VALUE, repeatable; Inso URL decoding)",
     ),
     bail: bool = typer.Option(False, "--bail", "-b", help="Stop on first failure"),
     disable_cert_validation: bool = typer.Option(
@@ -167,6 +181,7 @@ def run_collection(  # NOSONAR - CLI command requires many options
     execution_timeout: int = typer.Option(
         300,
         "--execution-timeout",
+        min=1,
         help="Execution timeout for the entire process (seconds)",
     ),
     workflow_url: Optional[str] = typer.Option(
@@ -192,16 +207,10 @@ def run_collection(  # NOSONAR - CLI command requires many options
 
     _validate_output_format(output_format)
 
-    env_var_dict = None
     if env_var:
-        env_var_dict = {}
         for pair in env_var:
             if "=" not in pair:
-                raise typer.BadParameter(
-                    f"Invalid env-var format: '{pair}'. Expected KEY=VALUE."
-                )
-            key, value = pair.split("=", 1)
-            env_var_dict[key] = value
+                raise typer.BadParameter("Invalid env-var format. Expected KEY=VALUE.")
 
     options = InsoCollectionOptions(
         working_dir=working_dir,
@@ -214,7 +223,7 @@ def run_collection(  # NOSONAR - CLI command requires many options
         request_timeout=request_timeout,
         iteration_count=iteration_count,
         iteration_data=iteration_data,
-        env_var=env_var_dict,
+        env_var=env_var,
         bail=bail,
         disable_cert_validation=disable_cert_validation,
         https_proxy=https_proxy,
@@ -245,7 +254,7 @@ def run_test(  # NOSONAR - CLI command requires many options
         ...,
         "--working-dir",
         "-w",
-        help="Path to Insomnia export or .insomnia directory",
+        help="Path to an Insomnia export, legacy Git Sync repository root, or app-data directory",
     ),
     identifier: Optional[str] = typer.Option(
         None, "--identifier", "-i", help="Test suite or API spec ID"
@@ -254,14 +263,17 @@ def run_test(  # NOSONAR - CLI command requires many options
         None, "--env", "-e", help="Environment name to use"
     ),
     test_name_pattern: Optional[str] = typer.Option(
-        None, "--test-name-pattern", "-t", help="Regex to filter test names"
+        None,
+        "--test-name-pattern",
+        "-t",
+        help="Literal substring to filter test titles (Inso 13.3.1)",
     ),
     bail: bool = typer.Option(False, "--bail", "-b", help="Stop on first failure"),
     keep_file: bool = typer.Option(
         False, "--keep-file", help="Keep generated test file"
     ),
     request_timeout: Optional[int] = typer.Option(
-        None, "--request-timeout", help="Request timeout (ms)"
+        None, "--request-timeout", min=0, help="Request timeout (ms)"
     ),
     disable_cert_validation: bool = typer.Option(
         False, "--disable-cert-validation", "-k", help="Disable SSL verification"
@@ -282,6 +294,7 @@ def run_test(  # NOSONAR - CLI command requires many options
     execution_timeout: int = typer.Option(
         300,
         "--execution-timeout",
+        min=1,
         help="Execution timeout for the entire process (seconds)",
     ),
     workflow_url: Optional[str] = typer.Option(

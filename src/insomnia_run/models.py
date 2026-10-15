@@ -59,10 +59,10 @@ class InsoCollectionOptions(BaseModel):
     request_name_pattern: Optional[str] = None
     item: Optional[List[str]] = None
     globals: Optional[str] = None
-    delay_request: Optional[int] = None
-    request_timeout: Optional[int] = None
-    env_var: Optional[dict[str, str]] = None
-    iteration_count: Optional[int] = None
+    delay_request: Optional[int] = Field(default=None, ge=0)
+    request_timeout: Optional[int] = Field(default=None, ge=0)
+    env_var: Optional[list[str] | dict[str, str]] = None
+    iteration_count: Optional[int] = Field(default=None, gt=0)
     iteration_data: Optional[str] = None
     bail: bool = False
     disable_cert_validation: bool = False
@@ -71,7 +71,7 @@ class InsoCollectionOptions(BaseModel):
     no_proxy: Optional[str] = None
     data_folders: Optional[List[str]] = None
     verbose: bool = False
-    execution_timeout: int = 300
+    execution_timeout: int = Field(default=300, gt=0)
 
 
 class InsoTestOptions(BaseModel):
@@ -81,11 +81,11 @@ class InsoTestOptions(BaseModel):
     test_name_pattern: Optional[str] = None
     bail: bool = False
     keep_file: bool = False
-    request_timeout: Optional[int] = None
+    request_timeout: Optional[int] = Field(default=None, ge=0)
     disable_cert_validation: bool = False
     https_proxy: Optional[str] = None
     http_proxy: Optional[str] = None
     no_proxy: Optional[str] = None
     data_folders: Optional[List[str]] = None
     verbose: bool = False
-    execution_timeout: int = 300
+    execution_timeout: int = Field(default=300, gt=0)

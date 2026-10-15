@@ -1,5 +1,9 @@
 # Examples
 
+v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these examples, replace `scarowar/insomnia-run@v0.2.0` with `scarowar/insomnia-run@<reviewed-full-pr-head-sha>`, using the reviewed full PR-head commit SHA (40 hexadecimal characters).
+
+Examples use an explicit YAML export path. For legacy Git Sync, pass the parent repository root instead; see [input paths](../reference/inputs.md#input-paths).
+
 ## Basic Collection
 
 Run a collection on every PR and push to main:
@@ -25,7 +29,7 @@ jobs:
       - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
-          working-directory: .insomnia
+          working-directory: insomnia-export.yaml
 ```
 
 ## Basic Test Suite
@@ -51,7 +55,7 @@ jobs:
       - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: test
-          working-directory: .insomnia
+          working-directory: insomnia-export.yaml
           identifier: "My Test Suite"
 ```
 
@@ -63,7 +67,7 @@ Pass secrets to your Insomnia workspace via environment variables:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     env-var: |
       API_KEY=${{ secrets.API_KEY }}
 ```
@@ -85,7 +89,7 @@ jobs:
       - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
-          working-directory: .insomnia
+          working-directory: insomnia-export.yaml
           environment: ${{ matrix.env }}
 ```
 
@@ -98,7 +102,7 @@ Run tests without failing the workflow, then handle results manually:
   id: tests
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     fail-on-error: "false"
 
 - name: Check results
@@ -119,7 +123,7 @@ Grant `checks: write` when publishing a GitHub test report.
   id: tests
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     fail-on-error: "false"
 
 - name: Publish JUnit report
@@ -162,7 +166,7 @@ jobs:
       - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
-          working-directory: .insomnia
+          working-directory: insomnia-export.yaml
           pr-comment: "false"
 ```
 
@@ -174,7 +178,7 @@ Route requests through a corporate proxy:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     https-proxy: "https://proxy.example.com:8080"
     http-proxy: "https://proxy.example.com:8080"
     no-proxy: "localhost,127.0.0.1"
@@ -189,7 +193,7 @@ Route requests through a corporate proxy:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     disable-cert-validation: "true"
 ```
 
@@ -218,13 +222,16 @@ jobs:
         id: tests
         with:
           command: collection
-          working-directory: .insomnia
+          working-directory: insomnia-export.yaml
           pr-comment: "false"
           fail-on-error: "false"
 
       - name: Write report to file
         if: steps.tests.outputs.exit-code != '0'
-        run: echo "${{ steps.tests.outputs.markdown }}" > report.md
+        env:
+          REPORT_MARKDOWN: ${{ steps.tests.outputs.markdown }}
+        run: |
+          printf '%s\n' "$REPORT_MARKDOWN" > report.md
 
       - name: Create Issue on Failure
         if: steps.tests.outputs.exit-code != '0'
@@ -245,7 +252,7 @@ Send email notification on test failure. This example uses AWS SES, but any SMTP
   id: tests
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     fail-on-error: "false"
 
 - name: Send Email on Failure
@@ -274,7 +281,7 @@ Send test results to Slack:
   id: tests
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     fail-on-error: "false"
 
 - name: Notify Slack on Failure
@@ -306,7 +313,7 @@ For large collections or slow APIs, increase the execution timeout:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     execution-timeout: "600"  # 10 minutes
 ```
 
@@ -318,7 +325,7 @@ Run collections with external data files:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     iteration-data: "tests/data/users.csv"
     iteration-count: "10"
 ```
@@ -332,7 +339,7 @@ Run a collection and save the machine-readable JSON report:
   id: run-cli
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     output-format: json
 
 - name: Save JSON report

@@ -1,11 +1,21 @@
 # Action Inputs
 
+v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these examples, replace `scarowar/insomnia-run@v0.2.0` with `scarowar/insomnia-run@<reviewed-full-pr-head-sha>`, using the reviewed full PR-head commit SHA (40 hexadecimal characters).
+
 ## Required
 
 | Input | Description |
 |-------|-------------|
 | `command` | `collection` or `test` |
-| `working-directory` | Path to `.insomnia` directory or export file |
+| `working-directory` | Explicit YAML export path, or repository root for legacy Git Sync |
+
+## Input Paths
+
+For an exported workspace or a Git Sync project stored as a YAML file, pass that file's explicit path, for example `working-directory: insomnia-export.yaml`.
+
+For legacy Git Sync data under `.insomnia/Workspace/`, pass the parent repository root, such as `working-directory: .`. Do not pass `.insomnia` itself: Inso appends `.insomnia` when loading this layout and would search for `.insomnia/.insomnia`.
+
+Paths are relative to the workflow step's current directory unless absolute paths are provided. The action must run after the project files have been checked out.
 
 ## Common
 
@@ -18,10 +28,10 @@
 | `pr-comment` | `true` | Post results to a PR or explicit issue |
 | `fail-on-error` | `true` | Fail workflow on test failure |
 | `bail` | `false` | Stop on first failure |
-| `verbose` | `false` | Enable debug logging |
+| `verbose` | `false` | Capture additional Inso diagnostics; requires `include-raw-output` to expose them in reports |
 | `inso-version` | `13.3.1` | Exact Inso CLI version |
 | `cache-inso` | `true` | Cache verified Inso archives between workflow runs |
-| `execution-timeout` | `300` | Max execution time in seconds |
+| `execution-timeout` | `300` | Positive max execution time in seconds |
 | `output-format` | — | JSON output in addition to Markdown |
 | `include-raw-output` | `false` | Include raw Inso output in Markdown and JSON; logs may contain secrets |
 | `junit-report` | `true` | Generate a JUnit XML report file |
@@ -29,6 +39,13 @@
 | `upload-artifact` | `false` | Upload generated reports on GitHub.com, including test failures |
 | `artifact-name` | `insomnia-run-reports` | Unique artifact name per invocation and matrix job |
 | `artifact-retention-days` | `14` | Retention within repository policy, from 1 to 400 days |
+| `data-folders` | - | Folders Insomnia can read/write, comma-separated; supported for both collection and test commands |
+
+For both collection and test commands, separate `data-folders` paths with commas, for example:
+
+```yaml
+data-folders: "./fixtures,./uploads"
+```
 
 ## Collection Only
 
@@ -36,18 +53,17 @@
 |-------|-------------|
 | `request-name-pattern` | Regex to filter requests |
 | `item` | Request/folder IDs, comma-separated |
-| `globals` | Global environment file |
+| `globals` | Global environment file, ID, or name |
 | `delay-request` | Delay between requests (ms) |
-| `iteration-count` | Number of iterations |
-| `iteration-data` | Path to iteration data file |
+| `iteration-count` | Positive integer; upstream defaults to one iteration |
+| `iteration-data` | CSV/JSON file path or HTTP(S) URL; relative files use the process working directory |
 | `env-var` | Environment variables, `key=value` per line |
-| `data-folders` | Folders Insomnia can access for file references |
 
 ## Test Only
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `test-name-pattern` | — | Regex to filter tests |
+| `test-name-pattern` | — | Literal substring of the full test title in Inso 13.3.1 (Mocha `fgrep`) |
 | `keep-file` | `false` | Keep generated test file |
 
 ## Network
@@ -69,6 +85,10 @@
 | `junit-file` | Path to the generated JUnit XML report |
 | `exit-code` | `0` = success, nonzero = test or execution failure |
 
+Report counts are **test results**, which can include assertions, skips, and synthetic execution failures, not HTTP requests. Empty runs retain exit code `0`, but show **No Assertions Executed** with the summary **No assertions executed**; this is not successful test validation. Runs with only skipped results are labeled **Skipped**. Invalid CLI options can produce a nonzero exit code without a test report.
+
+Raw Inso diagnostics are captured, not streamed to workflow logs. `verbose` alone does not expose them. Explicitly enable `include-raw-output: "true"` to include them in Markdown and requested JSON reports; raw output may contain secrets and is then shared through job summaries, enabled comments, and uploaded report artifacts. See [Debug Mode](../troubleshooting.md#debug-mode) before opting in.
+
 ## Using Outputs
 
 Access the exit code and markdown report from subsequent steps:
@@ -78,9 +98,10 @@ Access the exit code and markdown report from subsequent steps:
   id: tests
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
 
-- run: echo "Exit code: ${{ steps.tests.outputs.exit-code }}"
+- run: |
+    echo "Exit code: ${{ steps.tests.outputs.exit-code }}"
 ```
 
 Access json report from subsequent steps:
@@ -90,7 +111,7 @@ Access json report from subsequent steps:
   id: tests
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     output-format: json
 
 - name: Save JSON report
@@ -109,7 +130,7 @@ Grant `checks: write` when publishing a GitHub test report.
   id: tests
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     fail-on-error: "false"
 
 - name: Publish JUnit report
@@ -141,7 +162,7 @@ Run steps based on test results:
   id: tests
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     fail-on-error: "false"
 
 - name: Deploy
@@ -157,7 +178,7 @@ Pull request workflows are detected automatically. For manual, scheduled, deploy
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     comment-issue-number: "123"
 ```
 
@@ -173,7 +194,7 @@ Automatic installation supports Linux x64 and macOS Intel runners. On Apple Sili
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
 ```
 
 The action requires Python 3.10 or newer and uses that interpreter without downloading another Python. Provision exactly `uv 0.11.11` to skip its installer. A different preinstalled uv version triggers setup of the pinned version. Self-hosted runners must support Node.js 24 actions.
@@ -186,13 +207,13 @@ GitHub Enterprise Server installations must also make the pinned dependency acti
 
 Built-in report uploads use `actions/upload-artifact` for GitHub.com. On GitHub Enterprise Server, use the report outputs with an uploader supported by your installation. Artifact uploads occur before `fail-on-error` is applied. Set distinct `artifact-name` values for matrix jobs and multiple invocations; uploads with the same name conflict.
 
-For the unreleased v0.2.0 candidate, replace the placeholder below with its reviewed commit SHA:
+For the unreleased v0.2.0 candidate, replace the placeholder below with the reviewed full PR-head commit SHA:
 
 ```yaml
-- uses: scarowar/insomnia-run@<reviewed-candidate-sha>
+- uses: scarowar/insomnia-run@<reviewed-full-pr-head-sha>
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     upload-artifact: "true"
     artifact-name: api-tests-${{ matrix.environment }}
     artifact-retention-days: "14"
@@ -200,6 +221,6 @@ For the unreleased v0.2.0 candidate, replace the placeholder below with its revi
 
 ## Inso Configuration
 
-Inso loads its supported configuration files from the workspace. Keep configuration such as `.insorc` with the Insomnia project when you need Inso defaults, scripts, or shared options.
+Inso 13.3.1 attempts automatic configuration discovery starting at `workingDir` (or its process working directory when omitted). Its implementation only imports truthy `workingDir`, `ci`, `verbose`, and `printOptions` keys, then overlays command options and defaults. It does not load arbitrary request or collection defaults from `.insorc`.
 
-Insomnia Run does not add a separate configuration input. Values passed through action inputs are sent as command options for the current run.
+Use action inputs for run options. Insomnia Run does not expose `--config`, `--printOptions`, or `inso script`; it does not execute `.insorc` scripts. See [upstream compatibility](compatibility.md) for the complete supported option mapping and known documentation discrepancies.

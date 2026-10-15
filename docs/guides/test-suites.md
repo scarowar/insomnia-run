@@ -1,5 +1,7 @@
 # Running Test Suites
 
+v0.2.0 is unreleased; the `v0.2.0` tag does not exist yet. Before running these examples, replace `scarowar/insomnia-run@v0.2.0` with `scarowar/insomnia-run@<reviewed-full-pr-head-sha>`, using the reviewed full PR-head commit SHA (40 hexadecimal characters).
+
 ## Basic Usage
 
 Run a test suite by name:
@@ -8,24 +10,26 @@ Run a test suite by name:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     identifier: "My Test Suite"
 ```
 
-The `identifier` is required for test suites.
+The `identifier` is required for test suites. Examples use a YAML export containing the legacy suite. For legacy Git Sync, pass the parent repository root instead; see [input paths](../reference/inputs.md#input-paths).
 
 ## Filter Tests
 
-Run only tests matching a pattern:
+Inso 13.3.1 filters tests by a literal substring (Mocha `fgrep`), despite the upstream help describing a regex. Run only tests whose full title contains `login`:
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     identifier: "My Test Suite"
-    test-name-pattern: ".*login.*"
+    test-name-pattern: "login"
 ```
+
+If the filter matches no tests, Inso can exit successfully without running assertions. **No assertions executed** is not successful test validation; check the pattern and suite contents before relying on the result.
 
 ## Stop on Failure
 
@@ -35,7 +39,7 @@ Stop execution immediately when a test fails:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     identifier: "My Test Suite"
     bail: "true"
 ```
@@ -48,7 +52,7 @@ Set a timeout for individual requests:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     identifier: "My Test Suite"
     request-timeout: "60000"
     execution-timeout: "600"
@@ -65,7 +69,7 @@ Select an Insomnia environment for the suite:
 - uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     identifier: "My Test Suite"
     environment: CI
 ```
@@ -78,4 +82,4 @@ For secret values, configure Inso's supported [external vault integration](https
 |-|-----------|------------|
 | **Purpose** | Run requests | Run JavaScript tests |
 | **Identifier** | Optional | Required |
-| **Assertions** | Status codes | Any response data |
+| **Assertions** | Explicit script tests | JavaScript unit tests |

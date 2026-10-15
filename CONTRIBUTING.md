@@ -20,7 +20,7 @@ Thank you for your interest in contributing to insomnia-run! Your ideas, bug rep
 
 ## Code Style & Linting
 
-- Python code is formatted with [Black](https://black.readthedocs.io/en/stable/) and checked with [Ruff](https://docs.astral.sh/ruff/).
+- Python code is formatted with the [Ruff formatter](https://docs.astral.sh/ruff/formatter/) (`ruff format`) and linted with Ruff (`ruff check`), matching the pre-commit hooks.
 - Pre-commit hooks are configured. Please run `pre-commit install` after cloning the repository to enable automatic checks before each commit.
 - You can manually run all pre-commit checks with:
   ```sh

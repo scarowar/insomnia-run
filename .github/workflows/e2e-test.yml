@@ -106,6 +106,7 @@ jobs:
       - name: Start local API fixture
         run: |
           python3 tests/fixtures/e2e_server.py >"${RUNNER_TEMP}/insomnia-run-e2e-server.log" 2>&1 &
+          echo "$!" > "${RUNNER_TEMP}/insomnia-run-e2e-server.pid"
           for attempt in {1..20}; do
             if curl --fail --silent http://127.0.0.1:8765/health >/dev/null; then
               exit 0
@@ -123,6 +124,18 @@ jobs:
           working-directory: tests/fixtures/passing_test_suite.yaml
           identifier: "Todo API Tests"
           pr-comment: "false"
+
+      - name: Verify current Inso compatibility
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/insomnia-run-compat-venv
+          INSOMNIA_RUN_INSO_BINARY: ${{ runner.temp }}/insomnia-run-inso/bin/inso
+        run: |
+          kill "$(cat "${RUNNER_TEMP}/insomnia-run-e2e-server.pid")"
+          uv build --wheel --out-dir "${RUNNER_TEMP}/insomnia-run-compat-wheel"
+          uv sync --frozen --no-dev --group test --no-build --no-install-project
+          requirement="$(python -c 'import hashlib, os; from pathlib import Path; wheel, = (Path(os.environ["RUNNER_TEMP"]) / "insomnia-run-compat-wheel").glob("*.whl"); print(f"{wheel.resolve().as_uri()} --hash=sha256:{hashlib.sha256(wheel.read_bytes()).hexdigest()}")')"
+          uv pip install --no-build --no-deps --no-index --require-hashes --python "${UV_PROJECT_ENVIRONMENT}/bin/python" -r <(printf '%s\n' "$requirement")
+          uv run --frozen --no-sync --no-build pytest -q tests/test_inso_compatibility.py
 
   test-failure-handling:
     name: Test Failure Handling

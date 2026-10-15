@@ -16,7 +16,7 @@ inputs:
     required: true
 
   working-directory:
-    description: "Path to Insomnia export file or .insomnia directory."
+    description: "Path to an Insomnia export file, legacy Git Sync repository root, or app-data directory."
     required: true
 
   github-token:
@@ -64,23 +64,23 @@ inputs:
     description: "Specific request or folder IDs to run, comma-separated."
     required: false
   globals:
-    description: "Path to global environment file or ID."
+    description: "Global environment file, ID, or name."
     required: false
   delay-request:
     description: "Delay between requests in milliseconds."
     required: false
   iteration-count:
-    description: "Number of times to iterate through the collection."
+    description: "Positive number of times to iterate through the collection."
     required: false
   iteration-data:
-    description: "Path to CSV or JSON data file for iterations."
+    description: "CSV or JSON iteration data file path or HTTP(S) URL."
     required: false
   env-var:
-    description: "Environment variables in KEY=VALUE format, one per line."
+    description: "Environment overrides in KEY=VALUE format, one per line, using Inso URL decoding."
     required: false
 
   test-name-pattern:
-    description: "Regex pattern to filter tests by name (test only)."
+    description: "Literal substring to filter tests by name (test only, Inso 13.3.1 behavior)."
     required: false
   keep-file:
     description: "Keep the generated test file after execution."
@@ -332,10 +332,11 @@ runs:
       shell: bash
       env:
         INSO_VERSION: ${{ inputs.inso-version }}
+        USE_INSTALLED_INSO: ${{ steps.detect-inso.outputs.found != 'true' }}
       run: |
         set -euo pipefail
         mkdir -p "${HOME}/.cache/pkg"
-        if [[ -d "${RUNNER_TEMP}/insomnia-run-inso/bin" ]]; then
+        if [[ "$USE_INSTALLED_INSO" == "true" ]]; then
           export PATH="${RUNNER_TEMP}/insomnia-run-inso/bin:${PATH}"
         fi
         if ! command -v inso &> /dev/null; then
@@ -429,6 +430,7 @@ runs:
       id: run-cli
       shell: bash
       env:
+        USE_INSTALLED_INSO: ${{ steps.detect-inso.outputs.found != 'true' }}
         EXECUTION_TIMEOUT: ${{ inputs.execution-timeout }}
         COMMAND: ${{ inputs.command }}
         WORKING_DIR: ${{ inputs.working-directory }}
@@ -470,7 +472,16 @@ runs:
 
         mkdir -p "${HOME}/.cache/pkg"
         INSOMNIA_RUN_BIN="${RUNNER_TEMP}/insomnia-run-venv/bin/insomnia-run"
-        if [[ -d "${RUNNER_TEMP}/insomnia-run-inso/bin" ]]; then
+        write_output() {
+          local delimiter
+          delimiter="$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
+          {
+            printf '%s<<%s\n' "$1" "$delimiter"
+            printf '%s\n' "$2"
+            printf '%s\n' "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+        }
+        if [[ "$USE_INSTALLED_INSO" == "true" ]]; then
           export PATH="${RUNNER_TEMP}/insomnia-run-inso/bin:${PATH}"
         fi
 
@@ -562,11 +573,7 @@ runs:
 
         JUNIT_FILE=""
         if [[ "$JUNIT_REPORT" == "true" ]]; then
-          if [[ -n "$JUNIT_OUTPUT_FILE" ]]; then
-            JUNIT_FILE="$JUNIT_OUTPUT_FILE"
-          else
-            JUNIT_FILE="${REPORT_DIR}/junit.xml"
-          fi
+          JUNIT_FILE="${REPORT_DIR}/junit.xml"
           CMD+=(--junit-output "$JUNIT_FILE")
         fi
 
@@ -583,7 +590,7 @@ runs:
             EXIT_CODE=$?
           fi
           JSON_OUTPUT=$(cat "$JSON_TMPFILE")
-          if [[ -n "$JSON_OUTPUT" ]] && ! python3 -c 'import json, sys; json.load(sys.stdin)' <<< "$JSON_OUTPUT" 2>/dev/null; then
+          if ! python3 -c 'import json, sys; json.load(sys.stdin)' <<< "$JSON_OUTPUT" 2>/dev/null; then
             MARKDOWN="${MARKDOWN}"$'\n'"${JSON_OUTPUT}"
             JSON_OUTPUT=""
             if [[ "$EXIT_CODE" == "0" ]]; then
@@ -602,27 +609,20 @@ runs:
         fi
         echo "::endgroup::"
 
-        echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+        write_output exit-code "$EXIT_CODE"
         if [[ -n "$JUNIT_FILE" && -f "$JUNIT_FILE" ]]; then
-          echo "junit-file=$JUNIT_FILE" >> "$GITHUB_OUTPUT"
+          if [[ -n "$JUNIT_OUTPUT_FILE" && "$JUNIT_OUTPUT_FILE" != "$JUNIT_FILE" ]]; then
+            python3 -c 'from pathlib import Path; import shutil, sys; destination = Path(sys.argv[2]); destination.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(sys.argv[1], destination)' "$JUNIT_FILE" "$JUNIT_OUTPUT_FILE"
+          fi
+          write_output junit-file "${JUNIT_OUTPUT_FILE:-$JUNIT_FILE}"
         else
-          echo "junit-file=" >> "$GITHUB_OUTPUT"
+          write_output junit-file ""
         fi
 
-        EOF=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
-        {
-          echo "markdown<<$EOF"
-          printf '%s\n' "$MARKDOWN"
-          echo "$EOF"
-        } >> "$GITHUB_OUTPUT"
+        write_output markdown "$MARKDOWN"
 
         if [[ -n "$JSON_OUTPUT" ]]; then
-          EOF_JSON=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
-          {
-            echo "json-output<<$EOF_JSON"
-            printf '%s\n' "$JSON_OUTPUT"
-            echo "$EOF_JSON"
-          } >> "$GITHUB_OUTPUT"
+          write_output json-output "$JSON_OUTPUT"
         fi
 
         printf '%s\n' "$MARKDOWN" >> "$GITHUB_STEP_SUMMARY"
@@ -630,10 +630,7 @@ runs:
         if [[ -n "$JSON_OUTPUT" ]]; then
           printf '%s\n' "$JSON_OUTPUT" > "${REPORT_DIR}/report.json"
         fi
-        if [[ -n "$JUNIT_FILE" && -f "$JUNIT_FILE" && "$JUNIT_FILE" != "${REPORT_DIR}/junit.xml" ]]; then
-          cp "$JUNIT_FILE" "${REPORT_DIR}/junit.xml"
-        fi
-        echo "report-directory=$REPORT_DIR" >> "$GITHUB_OUTPUT"
+        write_output report-directory "$REPORT_DIR"
         exit 0
 
     - name: Upload report artifact
