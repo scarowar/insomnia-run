@@ -21,8 +21,10 @@ def test_action_bootstraps_uv_from_the_pinned_toolchain():
     action = ACTION_YAML.read_text()
 
     assert "astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b" in action
-    assert "uv pip install" not in action
-    assert "uv sync --frozen --no-dev --project" in action
+    assert "uv pip install --no-build --no-deps --no-index" in action
+    assert (
+        "uv sync --frozen --no-dev --no-build --no-install-project --project" in action
+    )
     assert "python3 -m venv" not in action
     assert (
         'INSOMNIA_RUN_BIN="${RUNNER_TEMP}/insomnia-run-venv/bin/insomnia-run"' in action
@@ -49,7 +51,10 @@ def test_action_installs_inso_from_official_release_assets():
     assert "Kong/setup-inso" not in action_text
     assert "core%40${INSO_VERSION}" in install_step["run"]
     assert "inso-${platform}-${INSO_VERSION}.${archive}" in install_step["run"]
-    assert "curl -fsSL --retry 3 --retry-all-errors" in install_step["run"]
+    assert (
+        "curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 --retry-all-errors"
+        in install_step["run"]
+    )
     assert 'mkdir -p "${HOME}/.cache/pkg"' in install_step["run"]
     assert "${RUNNER_TEMP}/insomnia-run-inso/bin" in install_step["run"]
     assert "GITHUB_PATH" not in action_text
@@ -99,7 +104,12 @@ def test_action_bootstraps_uv_with_lockfile_and_rate_limit_safeguards():
         in install_step["run"]
     )
     assert 'UV_PROJECT_ENVIRONMENT="${INSOMNIA_RUN_VENV}"' in install_step["run"]
-    assert 'uv sync --frozen --no-dev --project "${ACTION_PATH}"' in install_step["run"]
+    assert (
+        'uv sync --frozen --no-dev --no-build --no-install-project --project "${ACTION_PATH}"'
+        in install_step["run"]
+    )
+    assert 'uv build --wheel --project "${ACTION_PATH}"' in install_step["run"]
+    assert "uv pip install --no-build --no-deps --no-index" in install_step["run"]
 
 
 def test_action_defaults_to_latest_verified_inso_release():

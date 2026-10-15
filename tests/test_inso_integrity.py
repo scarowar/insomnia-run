@@ -11,6 +11,38 @@ HELPERS = runpy.run_path(
 )
 expected_checksum = HELPERS["expected_checksum"]
 verify_archive = HELPERS["verify_archive"]
+release_paths = HELPERS["release_paths"]
+
+
+@pytest.mark.parametrize(
+    "asset",
+    ["../inso-linux-x64-13.3.1.tar.xz", "inso-macos-../../secret.zip", "/tmp/secret"],
+)
+def test_asset_paths_cannot_escape_runner_temp(tmp_path, asset):
+    with pytest.raises(ValueError, match="Invalid Inso release asset"):
+        release_paths(asset, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "filename", ["insomnia-run-release.json", "insomnia-run-download"]
+)
+def test_symlink_paths_cannot_escape_runner_temp(tmp_path, filename):
+    root = tmp_path / "runner"
+    root.mkdir()
+    (root / filename).symlink_to(tmp_path)
+
+    with pytest.raises(ValueError, match="inside RUNNER_TEMP"):
+        release_paths("inso-linux-x64-13.3.1.tar.xz", root)
+
+
+def test_release_paths_are_fixed_to_runner_temp(tmp_path):
+    metadata, archive = release_paths("inso-macos-13.3.1-beta.1.zip", tmp_path)
+
+    assert metadata == tmp_path / "insomnia-run-release.json"
+    assert (
+        archive
+        == tmp_path / "insomnia-run-download/13.3.1-beta.1/inso-macos-13.3.1-beta.1.zip"
+    )
 
 
 def test_bundled_digest_needs_no_network_metadata(tmp_path):

@@ -38,8 +38,9 @@ def test_json_raw_logs_require_explicit_opt_in(capsys, include_raw_output):
 
 
 def test_emit_output_unsupported_format():
+    report = Mock()
     with pytest.raises(BadParameter) as excinfo:
-        _emit_machine_readable_output(Mock(), "xml")
+        _emit_machine_readable_output(report, "xml")
     assert "Unsupported output format: 'xml'" in str(excinfo.value)
 
 

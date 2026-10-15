@@ -32,6 +32,8 @@ SonarQube Cloud uses the installed GitHub App with automatic analysis for this r
 
 Scanner policy must not be relaxed for a release.
 
+Runtime and developer dependencies install from locked wheels with `--no-build`; the first-party wheel is built separately using the pinned native uv backend. Tool invocations use `--frozen --no-sync --no-build`. The Python 3.15 unit-test job has one reviewed `githubactions:S8541` exception: PyYAML 6.0.3 has no 3.15 wheel, so that test-only environment permits hash-locked source builds. Remove this exception when a compatible wheel is available. It does not apply to production installation.
+
 ## Release Validation
 
 - Use the exact candidate commit or release tag for validation.

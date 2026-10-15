@@ -45,10 +45,18 @@ jobs:
           version: "0.11.11"
 
       - name: Install dependencies
-        run: uv sync --frozen --no-dev --group test
+        run: |
+          uv build --wheel --out-dir dist
+          if [[ "$UV_PYTHON" == "3.15" ]]; then
+            # PyYAML 6.0.3 has no 3.15 wheel. Only this test environment permits locked source builds.
+            uv sync --frozen --no-dev --group test --no-install-project # NOSONAR(githubactions:S8541)
+          else
+            uv sync --frozen --no-dev --group test --no-build --no-install-project
+          fi
+          uv pip install --no-build --no-deps --no-index dist/*.whl
 
       - name: Run tests
-        run: uv run --frozen --no-dev --group test pytest -v --tb=short --cov=src/insomnia_run --cov-report=term-missing --cov-fail-under=95
+        run: uv run --frozen --no-sync --no-build pytest -v --tb=short --cov=insomnia_run --cov-report=term-missing --cov-fail-under=95
 
   lint:
     name: Lint
@@ -75,16 +83,19 @@ jobs:
           version: "0.11.11"
 
       - name: Install dependencies
-        run: uv sync --frozen --dev
+        run: |
+          uv build --wheel --out-dir dist
+          uv sync --frozen --dev --no-build --no-install-project
+          uv pip install --no-build --no-deps --no-index dist/*.whl
 
       - name: Run ruff check
-        run: uv run ruff check src/ tests/ scripts/
+        run: uv run --frozen --no-sync --no-build ruff check src/ tests/ scripts/
 
       - name: Run ruff format check
-        run: uv run ruff format --check src/ tests/ scripts/
+        run: uv run --frozen --no-sync --no-build ruff format --check src/ tests/ scripts/
 
       - name: Run type checking
-        run: uv run mypy src/insomnia_run --ignore-missing-imports --cache-dir=/tmp/mypy-cache
+        run: uv run --frozen --no-sync --no-build mypy src/insomnia_run --ignore-missing-imports --cache-dir=/tmp/mypy-cache
 
       - name: Build documentation
-        run: uv run zensical build
+        run: uv run --frozen --no-sync --no-build zensical build

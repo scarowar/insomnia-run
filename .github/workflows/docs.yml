@@ -47,10 +47,13 @@ jobs:
           version: "0.11.11"
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: |
+          uv build --wheel --out-dir dist
+          uv sync --frozen --dev --no-build --no-install-project
+          uv pip install --no-build --no-deps --no-index dist/*.whl
 
       - name: Build documentation
-        run: uv run zensical build
+        run: uv run --frozen --no-sync --no-build zensical build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0

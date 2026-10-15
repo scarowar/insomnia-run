@@ -286,26 +286,26 @@ runs:
           if [[ -n "$INSO_DOWNLOAD_TOKEN" ]]; then
             auth_args=(-H "Authorization: Bearer ${INSO_DOWNLOAD_TOKEN}")
           fi
-          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 60 \
+          curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 60 \
             "${auth_args[@]}" --output "$metadata" \
             "https://api.github.com/repos/Kong/insomnia/releases/tags/core%40${INSO_VERSION}"
-          integrity_args+=(--metadata "$metadata")
+          integrity_args+=(--metadata)
           python3 "$integrity_script" "${integrity_args[@]}" >/dev/null
         fi
 
         echo "Installing Inso CLI ${INSO_VERSION}"
-        if [[ -f "$archive_path" ]] && ! python3 "$integrity_script" "${integrity_args[@]}" --archive "$archive_path"; then
+        if [[ -f "$archive_path" ]] && ! python3 "$integrity_script" "${integrity_args[@]}" --verify; then
           echo "::warning::Cached Inso archive failed verification; downloading a fresh copy."
           rm -f "$archive_path"
         fi
         if [[ ! -f "$archive_path" ]]; then
-          if ! curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 300 --output "$archive_path" "$url"; then
+          if ! curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 300 --output "$archive_path" "$url"; then
             echo "::error::Failed to download Inso CLI ${INSO_VERSION}"
             echo "::error::Expected release asset: $url"
             exit 1
           fi
         fi
-        python3 "$integrity_script" "${integrity_args[@]}" --archive "$archive_path"
+        python3 "$integrity_script" "${integrity_args[@]}" --verify
 
         if [[ "$archive" == "tar.xz" ]]; then
           tar -xJf "$archive_path" -C "$extract_dir"
@@ -410,16 +410,20 @@ runs:
         set -euo pipefail
 
         python_path="$(python3 -c 'import sys; print(sys.executable)')"
+        wheel_dir="$(mktemp -d "${RUNNER_TEMP}/insomnia-run-wheel.XXXXXX")"
         if ! uv venv --no-project --no-python-downloads --python "$python_path" --clear "${INSOMNIA_RUN_VENV}"; then
           echo "::error::Failed to create the insomnia-run virtual environment"
           exit 1
         fi
+        # Build only this action's source with the pinned native uv backend.
+        uv build --wheel --project "${ACTION_PATH}" --out-dir "$wheel_dir" --python "$python_path" --no-python-downloads
         if ! UV_PROJECT_ENVIRONMENT="${INSOMNIA_RUN_VENV}" \
-          uv sync --frozen --no-dev --project "${ACTION_PATH}" --python "$python_path" --no-python-downloads; then
+          uv sync --frozen --no-dev --no-build --no-install-project --project "${ACTION_PATH}" --python "$python_path" --no-python-downloads; then
           echo "::error::Failed to install insomnia-run from its locked dependencies"
           echo "::error::Check package index access or configure uv for this runner"
           exit 1
         fi
+        uv pip install --no-build --no-deps --no-index --python "${INSOMNIA_RUN_VENV}/bin/python" "$wheel_dir"/*.whl
 
     - name: Run Insomnia
       id: run-cli

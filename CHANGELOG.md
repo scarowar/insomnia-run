@@ -43,6 +43,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Restrict release downloads and redirects to HTTPS, and confine integrity-helper paths to runner temporary storage.
+- Install runtime dependencies from locked wheels without executing third-party source builds.
 - Third-party GitHub Actions are pinned by full commit SHA.
 - Workflow tokens use least privilege.
 - Security scanning includes dependency audit, Bandit, Zizmor, Gitleaks, actionlint, CodeQL, SonarQube, and SBOM generation.

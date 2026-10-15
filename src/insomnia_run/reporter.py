@@ -26,11 +26,14 @@ class Reporter:
         status = "Passed" if report.failed_count == 0 else "Failed"
         icon = "✅" if report.failed_count == 0 else "❌"
         target = f": {report.target_name}" if report.target_name else ""
-        lines.append(f"## {icon} Insomnia {run_label} {status}{target}")
-        lines.append("")
-
-        lines.append("### Test Summary")
-        lines.append("")
+        lines.extend(
+            [
+                f"## {icon} Insomnia {run_label} {status}{target}",
+                "",
+                "### Test Summary",
+                "",
+            ]
+        )
         if report.failed_count == 0 and report.skipped_count == 0:
             passed_text = "(all passed)"
         elif report.skipped_count > 0:
@@ -42,10 +45,7 @@ class Reporter:
         lines.append(f"- **{report.total_tests} requests executed** {passed_text}")
         if report.target_name:
             lines.append(f"- **Target:** `{report.target_name}`")
-        lines.append("")
-
-        lines.append("### Test Results")
-        lines.append("")
+        lines.extend(["", "### Test Results", ""])
         for result in report.results:
             if result.status == InsoStatus.PASS:
                 icon = "✅"
@@ -54,10 +54,7 @@ class Reporter:
             else:
                 icon = "❌"
             lines.append(f"- {icon} **{result.description}**")
-        lines.append("")
-
-        lines.append("### Additional Information")
-        lines.append("")
+        lines.extend(["", "### Additional Information", ""])
         if workflow_url:
             lines.append(f"Check the [workflow logs]({workflow_url}) for details")
         else:
@@ -65,12 +62,16 @@ class Reporter:
         lines.append("")
 
         if include_raw_output and report.raw_output:
-            lines.append("<details><summary>View raw output</summary>")
-            lines.append("")
-            lines.append("```")
-            lines.append(report.raw_output.strip())
-            lines.append("```")
-            lines.append("</details>")
+            lines.extend(
+                [
+                    "<details><summary>View raw output</summary>",
+                    "",
+                    "```",
+                    report.raw_output.strip(),
+                    "```",
+                    "</details>",
+                ]
+            )
 
         return "\n".join(lines)
 
@@ -101,17 +102,23 @@ class Reporter:
 
             if result.status == InsoStatus.FAIL:
                 failure_attrs = self._xml_attrs({"message": result.description})
-                lines.append(f"  <testcase {testcase_attrs}>")
-                lines.append(
-                    f"    <failure {failure_attrs}>"
-                    "Inso reported this test as failed."
-                    "</failure>"
+                lines.extend(
+                    [
+                        f"  <testcase {testcase_attrs}>",
+                        f"    <failure {failure_attrs}>"
+                        "Inso reported this test as failed."
+                        "</failure>",
+                        "  </testcase>",
+                    ]
                 )
-                lines.append("  </testcase>")
             elif result.status == InsoStatus.SKIP:
-                lines.append(f"  <testcase {testcase_attrs}>")
-                lines.append("    <skipped />")
-                lines.append("  </testcase>")
+                lines.extend(
+                    [
+                        f"  <testcase {testcase_attrs}>",
+                        "    <skipped />",
+                        "  </testcase>",
+                    ]
+                )
             else:
                 lines.append(f"  <testcase {testcase_attrs} />")
 

@@ -219,10 +219,15 @@ def test_security_workflow_runs_deterministic_scanners():
         for step in workflow["jobs"]["deterministic-security"]["steps"]
     )
 
-    assert "uv run pip-audit --strict" in steps_text
-    assert "uv run bandit -r src/insomnia_run" in steps_text
-    assert "uv run zizmor --offline ." in steps_text
-    assert "uv run cyclonedx-py environment .venv" in steps_text
+    assert "uv run --frozen --no-sync --no-build pip-audit --strict" in steps_text
+    assert (
+        "uv run --frozen --no-sync --no-build bandit -r src/insomnia_run" in steps_text
+    )
+    assert "uv run --frozen --no-sync --no-build zizmor --offline ." in steps_text
+    assert (
+        "uv run --frozen --no-sync --no-build cyclonedx-py environment .venv"
+        in steps_text
+    )
 
 
 def test_automatic_sonar_analysis_has_no_conflicting_ci_scanner():
