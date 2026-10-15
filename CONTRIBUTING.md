@@ -19,11 +19,14 @@ Run checks before submitting a pull request:
 ```sh
 uv run --frozen --no-sync --no-build pytest --cov=insomnia_run --cov-fail-under=95
 uv run --frozen --no-sync --no-build pre-commit run --all-files
+uv run --frozen --no-sync --no-build pre-commit run gitleaks-ci --hook-stage manual --all-files
 uv run --frozen --no-sync --no-build mypy src/insomnia_run --ignore-missing-imports
 uv run --frozen --no-sync --no-build zensical build --strict
 ```
 
 Ruff checks and formats Python. Its rule selectors are explicit in `pyproject.toml` so tool upgrades do not silently change the lint policy. Pre-commit also checks YAML, JSON, workflows, dependencies, and security rules. Gitlint runs at the `commit-msg` stage; `--all-files` does not run it.
+
+The local secret hook scans staged changes; the manual `gitleaks-ci` hook scans fetched Git history. Keep a full clone for that check. `.gitleaksignore` contains only commit-specific fingerprints for confirmed non-issued historical test fixtures, not file exclusions.
 
 To test against an official Inso release, verify its archive digest and set its executable path:
 

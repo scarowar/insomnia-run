@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import shlex
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -70,6 +71,7 @@ def secret_repository(tmp_path):
     (tmp_path / ".pre-commit-config.yaml").write_text(
         yaml.safe_dump({"repos": [scanner]})
     )
+    shutil.copyfile(ROOT / ".gitleaksignore", tmp_path / ".gitleaksignore")
     (tmp_path / "example.txt").write_text("A harmless scanner fixture.\n")
     git("add", ".")
     git("-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Clean fixture")
@@ -114,14 +116,27 @@ def write_synthetic_key(path):
     return token
 
 
-def assert_redacted_detection(result, token):
+def assert_redacted_detection(result, token, rule="github-pat"):
     output = result.stdout + result.stderr
     if token in output:
         pytest.fail("The secret scanner exposed the synthetic token", pytrace=False)
-    if result.returncode != 1 or "github-pat" not in output or "REDACTED" not in output:
-        pytest.fail(
-            "Expected a redacted GitHub token finding:\n" + output, pytrace=False
-        )
+    if result.returncode != 1 or rule not in output or "REDACTED" not in output:
+        pytest.fail("Expected a redacted secret finding:\n" + output, pytrace=False)
+
+
+@pytest.mark.parametrize("line_number", [461, 470, 471])
+def test_historical_fixture_exceptions_do_not_hide_new_findings(
+    secret_repository, line_number
+):
+    root, git, scan = secret_repository
+    path = root / "tests/test_runner.py"
+    path.parent.mkdir()
+    token = "abcdef" + "123456"
+    path.write_text("\n" * (line_number - 1) + f"X-Api-Key: {token}\n")
+    git("add", ".")
+    git("-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Reintroduced fixture")
+
+    assert_redacted_detection(scan(*ci_scanner_args()), token, rule="generic-api-key")
 
 
 def test_ci_detects_committed_secret_with_clean_index(secret_repository):
