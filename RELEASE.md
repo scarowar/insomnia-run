@@ -34,6 +34,17 @@ Scanner policy must not be relaxed for a release.
 
 Runtime and developer dependencies install from locked wheels with `--no-build`; the first-party wheel is built separately using the pinned native uv backend. Tool invocations use `--frozen --no-sync --no-build`. The Python 3.15 unit-test job has one reviewed `githubactions:S8541` exception: PyYAML 6.0.3 has no 3.15 wheel, so that test-only environment permits hash-locked source builds. Remove this exception when a compatible wheel is available. It does not apply to production installation.
 
+### Scorecard Follow-Ups
+
+The six open Scorecard alerts inspected on 2026-10-15 reference default-branch commit `31f82a6`, not this candidate. They have not been dismissed. Recheck their latest analyses before release:
+
+- [Token permissions (#2)](https://github.com/scarowar/insomnia-run/security/code-scanning/2): explicit read-only workflow defaults are present in the candidate; a default-branch analysis must confirm the result after an approved merge.
+- [CI tests (#3)](https://github.com/scarowar/insomnia-run/security/code-scanning/3): historical analysis found CI on 25 of 27 merged PRs. The ruleset now requires the unit matrix, lint/docs, Security, Dependency Review, and E2E alongside the existing checks. Do not alter past reviews or results to improve this score.
+- [Branch protection (#1)](https://github.com/scarowar/insomnia-run/security/code-scanning/1): the candidate adds CODEOWNERS, but the existing one-review policy and administrator PR bypass remain unchanged. Those intentional policy choices need maintainer risk review, not a scanner suppression.
+- [Code review (#5)](https://github.com/scarowar/insomnia-run/security/code-scanning/5): arrange independent human review and nominate another eligible CODEOWNER; the PR author cannot self-approve. Automated reviews do not replace this requirement or change historical review coverage.
+- [Best practices badge (#4)](https://github.com/scarowar/insomnia-run/security/code-scanning/4): OpenSSF enrollment and its attestations require maintainer participation. Do not display an unearned badge.
+- [Fuzzing (#6)](https://github.com/scarowar/insomnia-run/security/code-scanning/6): generated-input tests cover Unicode report validity and repeated TAP plans, but this is not a Scorecard-recognized fuzzing integration. A dedicated integration or an explicit maintainer risk decision remains outstanding.
+
 ## Release Validation
 
 - Use the exact candidate commit or release tag for validation.

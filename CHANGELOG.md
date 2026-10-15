@@ -29,6 +29,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Keep JUnit reports valid when test names contain XML-forbidden characters, and preserve legal attribute whitespace.
 - Preserve nonzero Inso exits as report failures, including diagnostics emitted on stdout or after partial TAP output.
 - Create Inso's package cache directory before invoking the CLI on clean runners.
 - Omit raw logs from JSON unless explicitly requested, matching Markdown privacy defaults.

@@ -1,4 +1,5 @@
-from html import escape
+import re
+from xml.etree import ElementTree  # nosec B405 - only creates and serializes XML.
 
 from .models import InsoRunReport, InsoStatus, RunType
 
@@ -9,9 +10,12 @@ class Reporter:
         return "Collection" if report.run_type == RunType.COLLECTION else "Test Suite"
 
     @staticmethod
-    def _xml_attrs(attrs: dict[str, str]) -> str:
-        return " ".join(
-            f'{name}="{escape(value, quote=True)}"' for name, value in attrs.items()
+    def _xml_text(value: str) -> str:
+        # XML 1.0 forbids some characters that are valid in Python strings.
+        return re.sub(
+            r"[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD\U00010000-\U0010FFFF]",
+            "\ufffd",
+            value,
         )
 
     def generate_markdown(
@@ -78,8 +82,9 @@ class Reporter:
     def generate_junit(self, report: InsoRunReport) -> str:
         run_label = self._run_label(report)
         suite_name = f"Insomnia {run_label}"
-        classname = report.target_name or suite_name
-        suite_attrs = self._xml_attrs(
+        classname = self._xml_text(report.target_name or suite_name)
+        suite = ElementTree.Element(
+            "testsuite",
             {
                 "name": suite_name,
                 "tests": str(report.total_tests),
@@ -87,40 +92,31 @@ class Reporter:
                 "errors": "0",
                 "skipped": str(report.skipped_count),
                 "time": "0",
-            }
+            },
         )
-        lines = ['<?xml version="1.0" encoding="UTF-8"?>', f"<testsuite {suite_attrs}>"]
-
         for result in report.results:
-            testcase_attrs = self._xml_attrs(
+            description = self._xml_text(result.description)
+            testcase = ElementTree.SubElement(
+                suite,
+                "testcase",
                 {
                     "classname": classname,
-                    "name": result.description,
+                    "name": description,
                     "time": "0",
-                }
+                },
             )
 
             if result.status == InsoStatus.FAIL:
-                failure_attrs = self._xml_attrs({"message": result.description})
-                lines.extend(
-                    [
-                        f"  <testcase {testcase_attrs}>",
-                        f"    <failure {failure_attrs}>"
-                        "Inso reported this test as failed."
-                        "</failure>",
-                        "  </testcase>",
-                    ]
+                failure = ElementTree.SubElement(
+                    testcase, "failure", {"message": description}
                 )
+                failure.text = "Inso reported this test as failed."
             elif result.status == InsoStatus.SKIP:
-                lines.extend(
-                    [
-                        f"  <testcase {testcase_attrs}>",
-                        "    <skipped />",
-                        "  </testcase>",
-                    ]
-                )
-            else:
-                lines.append(f"  <testcase {testcase_attrs} />")
+                ElementTree.SubElement(testcase, "skipped")
 
-        lines.append("</testsuite>")
-        return "\n".join(lines) + "\n"
+        ElementTree.indent(suite, space="  ")
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            + ElementTree.tostring(suite, encoding="unicode")
+            + "\n"
+        )
