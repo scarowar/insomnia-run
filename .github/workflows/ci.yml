@@ -6,66 +6,106 @@ on:
   pull_request:
     branches: [main, develop]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@803947b9bd8e9f986429fa0c5a41c367cd732b41
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.11.15"
 
-      - name: Install dependencies
-        run: uv sync --dev
+      - name: Build first-party wheel
+        run: uv build --wheel --out-dir dist
+
+      - name: Install dependencies from locked wheels
+        if: matrix.python-version != '3.15'
+        run: uv sync --frozen --no-dev --group test --no-build --no-install-project
+
+      - name: Install Python 3.15 test dependencies
+        if: matrix.python-version == '3.15'
+        # PyYAML 6.0.3 has no 3.15 wheel. This test-only exception permits hash-locked source builds.
+        run: uv sync --frozen --no-dev --group test --no-install-project # NOSONAR
+
+      - name: Install first-party wheel
+        run: |
+          requirement="$(python -c 'import hashlib; from pathlib import Path; wheel, = Path("dist").glob("*.whl"); print(f"{wheel.resolve().as_uri()} --hash=sha256:{hashlib.sha256(wheel.read_bytes()).hexdigest()}")')"
+          uv pip install --no-build --no-deps --no-index --require-hashes -r <(printf '%s\n' "$requirement")
 
       - name: Run tests
-        run: uv run pytest -v --tb=short
-
-      - name: Run type checking
-        run: uv run mypy src/insomnia_run --ignore-missing-imports
-        continue-on-error: true
+        run: uv run --frozen --no-sync --no-build pytest -v --tb=short --cov=insomnia_run --cov-report=term-missing --cov-fail-under=95
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@803947b9bd8e9f986429fa0c5a41c367cd732b41
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.11.15"
+
+      - name: Check lockfile freshness
+        run: uv lock --check
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: |
+          uv build --wheel --out-dir dist
+          uv sync --frozen --dev --no-build --no-install-project
+          requirement="$(python -c 'import hashlib; from pathlib import Path; wheel, = Path("dist").glob("*.whl"); print(f"{wheel.resolve().as_uri()} --hash=sha256:{hashlib.sha256(wheel.read_bytes()).hexdigest()}")')"
+          uv pip install --no-build --no-deps --no-index --require-hashes -r <(printf '%s\n' "$requirement")
 
       - name: Run ruff check
-        run: uv run ruff check src/
-        continue-on-error: true
+        run: uv run --frozen --no-sync --no-build ruff check src/ tests/ scripts/
 
       - name: Run ruff format check
-        run: uv run ruff format --check src/
-        continue-on-error: true
+        run: uv run --frozen --no-sync --no-build ruff format --check src/ tests/ scripts/
+
+      - name: Run type checking
+        run: uv run --frozen --no-sync --no-build mypy src/insomnia_run --ignore-missing-imports --cache-dir=/tmp/mypy-cache
+
+      - name: Build documentation
+        run: uv run --frozen --no-sync --no-build zensical build

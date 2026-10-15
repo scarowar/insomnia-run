@@ -1,7 +1,16 @@
+import json
 from unittest.mock import Mock, patch
 import pytest
 from typer import BadParameter
-from insomnia_run.main import _emit_machine_readable_output
+
+from insomnia_run.main import (
+    _emit_machine_readable_output,
+    _validate_output_format,
+    _write_junit_output,
+)
+from insomnia_run.models import InsoResult, InsoRunReport, InsoStatus
+from insomnia_run.reporter import Reporter
+
 
 def test_emit_json_output_success():
     mock_report = Mock()
@@ -10,15 +19,60 @@ def test_emit_json_output_success():
     with patch("insomnia_run.main.typer.echo") as mock_echo:
         _emit_machine_readable_output(mock_report, "json")
 
-    mock_report.model_dump_json.assert_called_once_with(indent=2)
+    mock_report.model_dump_json.assert_called_once_with(
+        indent=2, exclude={"raw_output"}
+    )
     mock_echo.assert_called_once_with('{"status": "passed"}', err=True)
 
+
+@pytest.mark.parametrize("include_raw_output", [False, True])
+def test_json_raw_logs_require_explicit_opt_in(capsys, include_raw_output):
+    report = InsoRunReport(plan_end=0, raw_output="Authorization: secret")
+
+    _emit_machine_readable_output(report, "json", include_raw_output=include_raw_output)
+
+    payload = json.loads(capsys.readouterr().err)
+    assert ("raw_output" in payload) is include_raw_output
+    if include_raw_output:
+        assert payload["raw_output"] == "Authorization: secret"
+
+
 def test_emit_output_unsupported_format():
+    report = Mock()
     with pytest.raises(BadParameter) as excinfo:
-        _emit_machine_readable_output(Mock(), "xml")
+        _emit_machine_readable_output(report, "xml")
     assert "Unsupported output format: 'xml'" in str(excinfo.value)
+
+
+def test_validate_output_unsupported_format():
+    with pytest.raises(BadParameter) as excinfo:
+        _validate_output_format("xml")
+    assert "Unsupported output format: 'xml'" in str(excinfo.value)
+
 
 def test_emit_output_none_format():
     with patch("insomnia_run.main.typer.echo") as mock_echo:
         _emit_machine_readable_output(Mock(), None)
     mock_echo.assert_not_called()
+
+
+def test_write_junit_output(tmp_path):
+    report = InsoRunReport(
+        plan_end=1,
+        results=[InsoResult(id=1, status=InsoStatus.PASS, description="passes")],
+    )
+    output = tmp_path / "reports" / "insomnia-run.xml"
+
+    _write_junit_output(Reporter(), report, str(output))
+
+    assert output.exists()
+    assert output.read_text(encoding="utf-8").startswith(
+        '<?xml version="1.0" encoding="UTF-8"?>'
+    )
+    assert 'tests="1"' in output.read_text(encoding="utf-8")
+
+
+def test_write_junit_output_is_optional(tmp_path):
+    _write_junit_output(Reporter(), InsoRunReport(plan_end=0), None)
+
+    assert list(tmp_path.iterdir()) == []

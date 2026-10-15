@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 from insomnia_run.models import (
     RunType,
     InsoStatus,
@@ -155,3 +156,24 @@ class TestInsoTestOptions:
         )
         assert options.test_name_pattern == ".*login.*"
         assert options.keep_file is True
+
+
+@pytest.mark.parametrize("count", [0, -1])
+def test_collection_iteration_count_must_be_positive(count):
+    with pytest.raises(ValidationError):
+        InsoCollectionOptions(working_dir="fixture", iteration_count=count)
+
+
+@pytest.mark.parametrize("model", [InsoCollectionOptions, InsoTestOptions])
+@pytest.mark.parametrize(
+    "field,value",
+    [("execution_timeout", 0), ("execution_timeout", -1), ("request_timeout", -1)],
+)
+def test_run_options_reject_invalid_numeric_limits(model, field, value):
+    with pytest.raises(ValidationError):
+        model(working_dir="fixture", **{field: value})
+
+
+def test_collection_delay_cannot_be_negative():
+    with pytest.raises(ValidationError):
+        InsoCollectionOptions(working_dir="fixture", delay_request=-1)

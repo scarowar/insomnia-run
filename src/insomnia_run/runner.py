@@ -1,4 +1,8 @@
-import subprocess
+import os
+import signal
+
+# Inso must be executed as a subprocess.
+import subprocess  # nosec B404
 
 from .models import (
     InsoCollectionOptions,
@@ -13,14 +17,54 @@ from .parser import TapParser
 
 class InsoRunner:
     @staticmethod
-    def _base_cmd(run_type: RunType, working_dir: str, identifier: str | None):
-        cmd = ["inso", "run", run_type.value]
+    def _run_command(cmd: list[str], timeout: int):
+        if os.name != "posix":
+            raise NotImplementedError(
+                "InsoRunner requires POSIX process groups (Linux/macOS); Windows is unsupported."
+            )
+        # Arguments are passed without a shell.
+        with subprocess.Popen(  # nosec B603
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            errors="replace",
+            start_new_session=True,
+            shell=False,
+            env={**os.environ, "INSO_TELEMETRY_DISABLED": "1"},
+        ) as process:
+            try:
+                stdout, stderr = process.communicate(timeout=timeout)
+            except BaseException:
+                # A new session does not inherit terminal interrupts; stop it too.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                except OSError:
+                    try:
+                        process.kill()
+                    except OSError:
+                        pass
+                try:
+                    process.communicate(timeout=1)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+                raise
+            return subprocess.CompletedProcess(cmd, process.returncode, stdout, stderr)
 
-        if identifier:
-            cmd.append(identifier)
-
-        cmd.extend(["-w", working_dir, "--reporter", "tap", "--ci"])
-        return cmd
+    @staticmethod
+    def _base_cmd(run_type: RunType, working_dir: str):
+        return [
+            "inso",
+            "run",
+            run_type.value,
+            "-w",
+            working_dir,
+            "--reporter",
+            "tap",
+            "--ci",
+        ]
 
     @staticmethod
     def _apply_common_options(
@@ -29,7 +73,7 @@ class InsoRunner:
         if options.environment:
             cmd.extend(["--env", options.environment])
 
-        if options.request_timeout:
+        if options.request_timeout is not None:
             cmd.extend(["--requestTimeout", str(options.request_timeout)])
 
         if options.disable_cert_validation:
@@ -63,12 +107,16 @@ class InsoRunner:
         if options.globals:
             cmd.extend(["--globals", options.globals])
 
-        if options.delay_request:
+        if options.delay_request is not None:
             cmd.extend(["--delay-request", str(options.delay_request)])
 
         if options.env_var:
-            for key, value in options.env_var.items():
-                cmd.extend(["--env-var", f"{key}={value}"])
+            if isinstance(options.env_var, dict):
+                env_vars = [f"{key}={value}" for key, value in options.env_var.items()]
+            else:
+                env_vars = options.env_var
+            for value in env_vars:
+                cmd.extend(["--env-var", value])
 
         if options.iteration_count:
             cmd.extend(["--iteration-count", str(options.iteration_count)])
@@ -92,30 +140,35 @@ class InsoRunner:
 
     @staticmethod
     def _add_error_result_if_needed(report: InsoRunReport, result) -> None:
-        """Add a synthetic error result if inso CLI failed with no TAP output."""
-        if result.returncode != 0 and report.total_tests == 0:
-            error_msg = result.stderr.strip() or "Unknown error"
-            report.results.append(
-                InsoResult(
-                    id=1,
-                    status=InsoStatus.FAIL,
-                    description=f"Inso CLI Error: {error_msg}",
-                )
+        """Preserve a nonzero exit without publishing arbitrary diagnostics."""
+        if result.returncode == 0 or report.failed_count > 0:
+            return
+
+        next_id = max((item.id for item in report.results), default=0) + 1
+        report.results.append(
+            InsoResult(
+                id=next_id,
+                status=InsoStatus.FAIL,
+                description=f"Inso CLI Error: Process exited with code {result.returncode}.",
             )
+        )
+        report.plan_end = max(report.plan_end, next_id)
 
     def run_collection(self, options: InsoCollectionOptions) -> InsoRunReport:
-        cmd = self._base_cmd(
-            RunType.COLLECTION, options.working_dir, options.identifier
-        )
+        cmd = self._base_cmd(RunType.COLLECTION, options.working_dir)
         self._apply_common_options(cmd, options)
         self._apply_collection_options(cmd, options)
+        if options.identifier:
+            cmd.extend(["--", options.identifier])
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=options.execution_timeout)
+            result = self._run_command(cmd, options.execution_timeout)
         except subprocess.TimeoutExpired:
-            report = InsoRunReport(plan_end=0, run_type=RunType.COLLECTION)
+            report = InsoRunReport(plan_end=1, run_type=RunType.COLLECTION)
             report.target_name = options.identifier
-            report.raw_output = f"Inso CLI timed out after {options.execution_timeout} seconds"
+            report.raw_output = (
+                f"Inso CLI timed out after {options.execution_timeout} seconds"
+            )
             report.results.append(
                 InsoResult(
                     id=1,
@@ -138,16 +191,20 @@ class InsoRunner:
         return report
 
     def run_test(self, options: InsoTestOptions) -> InsoRunReport:
-        cmd = self._base_cmd(RunType.TEST, options.working_dir, options.identifier)
+        cmd = self._base_cmd(RunType.TEST, options.working_dir)
         self._apply_common_options(cmd, options)
         self._apply_test_options(cmd, options)
+        if options.identifier:
+            cmd.extend(["--", options.identifier])
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=options.execution_timeout)
+            result = self._run_command(cmd, options.execution_timeout)
         except subprocess.TimeoutExpired:
-            report = InsoRunReport(plan_end=0, run_type=RunType.TEST)
+            report = InsoRunReport(plan_end=1, run_type=RunType.TEST)
             report.target_name = options.identifier
-            report.raw_output = f"Inso CLI timed out after {options.execution_timeout} seconds"
+            report.raw_output = (
+                f"Inso CLI timed out after {options.execution_timeout} seconds"
+            )
             report.results.append(
                 InsoResult(
                     id=1,
@@ -160,7 +217,7 @@ class InsoRunner:
         full_output = result.stdout + result.stderr
 
         parser = TapParser()
-        report = parser.parse(result.stdout)
+        report = parser.parse(result.stdout, require_tap=True)
         report.raw_output = full_output
         report.run_type = RunType.TEST
         report.target_name = options.identifier
