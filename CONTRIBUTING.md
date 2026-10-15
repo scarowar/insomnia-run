@@ -23,7 +23,7 @@ uv run --frozen --no-sync --no-build mypy src/insomnia_run --ignore-missing-impo
 uv run --frozen --no-sync --no-build zensical build --strict
 ```
 
-Ruff checks and formats Python. Pre-commit also checks YAML, JSON, workflows, dependencies, and security rules. Gitlint runs at the `commit-msg` stage; `--all-files` does not run it.
+Ruff checks and formats Python. Its rule selectors are explicit in `pyproject.toml` so tool upgrades do not silently change the lint policy. Pre-commit also checks YAML, JSON, workflows, dependencies, and security rules. Gitlint runs at the `commit-msg` stage; `--all-files` does not run it.
 
 To test against an official Inso release, verify its archive digest and set its executable path:
 

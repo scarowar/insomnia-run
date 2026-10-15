@@ -230,6 +230,16 @@ def test_dependabot_updates_have_cooldown():
         assert update["cooldown"]["default-days"] >= 7
 
 
+def test_dependabot_updates_the_uv_lockfile_ecosystem():
+    config = load_yaml(ROOT / ".github" / "dependabot.yml")
+    ecosystems = {entry["package-ecosystem"]: entry for entry in config["updates"]}
+
+    assert "pip" not in ecosystems
+    assert ecosystems["uv"]["directory"] == "/"
+    assert ecosystems["uv"]["allow"] == [{"dependency-type": "all"}]
+    assert ecosystems["github-actions"]["directory"] == "/"
+
+
 def test_security_workflow_runs_deterministic_scanners():
     workflow = load_yaml(ROOT / ".github" / "workflows" / "security.yml")
     steps_text = "\n".join(
