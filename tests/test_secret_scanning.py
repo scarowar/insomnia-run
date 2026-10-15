@@ -74,10 +74,10 @@ def secret_repository(tmp_path):
     git("add", ".")
     git("-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Clean fixture")
 
-    def scan(*args):
+    def scan(*args, cwd=tmp_path):
         return subprocess.run(
             [sys.executable, "-m", "pre_commit", "run", *args],
-            cwd=tmp_path,
+            cwd=cwd,
             env=env,
             capture_output=True,
             text=True,
@@ -132,6 +132,35 @@ def test_ci_detects_committed_secret_with_clean_index(secret_repository):
     assert git("status", "--porcelain").stdout == ""
 
     assert_redacted_detection(scan(*ci_scanner_args()), token)
+
+
+def test_ci_checkout_detects_a_secret_deleted_before_the_current_tree(
+    secret_repository,
+):
+    root, git, scan = secret_repository
+    key_file = root / "removed-key.txt"
+    token = write_synthetic_key(key_file)
+    git("add", ".")
+    git("-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Synthetic key")
+    git("rm", "--quiet", key_file.name)
+    git("-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Remove key")
+    assert git("status", "--porcelain").stdout == ""
+
+    workflow = yaml.safe_load((ROOT / ".github/workflows/security.yml").read_text())
+    checkout = next(
+        step
+        for step in workflow["jobs"]["deterministic-security"]["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
+    depth = checkout.get("with", {}).get("fetch-depth", 1)
+    checkout_dir = root / "workflow-checkout"
+    args = ["clone", "--quiet"]
+    if depth:
+        args += ["--depth", str(depth)]
+    git(*args, root.as_uri(), str(checkout_dir))
+    assert not (checkout_dir / key_file.name).exists()
+
+    assert_redacted_detection(scan(*ci_scanner_args(), cwd=checkout_dir), token)
 
 
 def test_ci_accepts_clean_repository(secret_repository):

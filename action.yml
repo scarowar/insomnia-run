@@ -134,7 +134,7 @@ inputs:
     required: false
     default: "true"
   fail-on-error:
-    description: "Fail the workflow if tests fail."
+    description: "Fail the workflow on failed reports. Wrapper validation, startup, and report-write errors always fail."
     required: false
     default: "true"
 
@@ -178,7 +178,7 @@ runs:
       run: |
         set -euo pipefail
         if [[ ! "$INSO_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-          echo "::error::Invalid Inso CLI version '${INSO_VERSION}'"
+          echo "::error::Invalid Inso CLI version."
           echo "::error::Use a version published by Kong/insomnia releases"
           exit 1
         fi
@@ -229,7 +229,7 @@ runs:
         mkdir -p "${HOME}/.cache/pkg"
 
         if [[ ! "$INSO_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-          echo "::error::Invalid Inso CLI version '$INSO_VERSION'"
+          echo "::error::Invalid Inso CLI version."
           echo "::error::Use a version published by Kong/insomnia releases"
           exit 1
         fi
@@ -319,8 +319,8 @@ runs:
           rm -f "$archive_path"
         fi
         if [[ ! -f "$archive_path" ]]; then
-          if ! curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 300 --output "$archive_path" "$url"; then
-            echo "::error::Failed to download Inso CLI ${INSO_VERSION}"
+          if ! curl --proto '=https' --proto-redir '=https' -fsSL --retry 0 --connect-timeout 15 --max-time 300 --output "$archive_path" "$url"; then
+            echo "::error::Failed to download Inso CLI ${INSO_VERSION}. Request not retried. Check GitHub access or preinstall a verified binary."
             echo "::error::Expected release asset: $url"
             exit 1
           fi
@@ -392,7 +392,7 @@ runs:
       id: check-uv
       shell: bash
       env:
-        INSOMNIA_RUN_UV_VERSION: "0.11.11"
+        INSOMNIA_RUN_UV_VERSION: "0.11.15"
       run: |
         set -euo pipefail
 
@@ -413,9 +413,9 @@ runs:
 
     - name: Setup uv
       if: steps.check-uv.outputs.needs-setup == 'true'
-      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       with:
-        version: "0.11.11"
+        version: "0.11.15"
         working-directory: ${{ github.action_path }}
         github-token: ${{ github.server_url == 'https://github.com' && (inputs.github-token || github.token) || '' }}
         # Actions cache writes are denied for untrusted comment-triggered runs.
@@ -512,7 +512,7 @@ runs:
         fi
 
         if [[ "$COMMAND" != "collection" && "$COMMAND" != "test" ]]; then
-          echo "::error::Invalid command '$COMMAND'. Must be 'collection' or 'test'."
+          echo "::error::Invalid command. Must be 'collection' or 'test'."
           exit 1
         fi
 

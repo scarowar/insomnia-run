@@ -20,7 +20,7 @@ def step_by_name(action, name):
 def test_action_bootstraps_uv_from_the_pinned_toolchain():
     action = ACTION_YAML.read_text()
 
-    assert "astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b" in action
+    assert "astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884" in action
     assert "uv pip install --no-build --no-deps --no-index" in action
     assert (
         "uv sync --frozen --no-dev --no-build --no-install-project --project" in action
@@ -52,7 +52,7 @@ def test_action_installs_inso_from_official_release_assets():
     assert "core%40${INSO_VERSION}" in install_step["run"]
     assert "inso-${platform}-${INSO_VERSION}.${archive}" in install_step["run"]
     assert (
-        "curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 --retry-all-errors"
+        "curl --proto '=https' --proto-redir '=https' -fsSL --retry 0"
         in install_step["run"]
     )
     assert 'mkdir -p "${HOME}/.cache/pkg"' in install_step["run"]
@@ -72,16 +72,16 @@ def test_action_bootstraps_uv_with_lockfile_and_rate_limit_safeguards():
     setup_step = step_by_name(action, "Setup uv")
     install_step = step_by_name(action, "Install insomnia-run")
 
-    assert check_step["env"]["INSOMNIA_RUN_UV_VERSION"] == "0.11.11"
+    assert check_step["env"]["INSOMNIA_RUN_UV_VERSION"] == "0.11.15"
     assert "command -v uv" in check_step["run"]
     assert "uv --version" in check_step["run"]
     assert "needs-setup=${needs_setup}" in check_step["run"]
 
     assert setup_step["if"] == "steps.check-uv.outputs.needs-setup == 'true'"
     assert setup_step["uses"] == (
-        "astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b"
+        "astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884"
     )
-    assert setup_step["with"]["version"] == "0.11.11"
+    assert setup_step["with"]["version"] == "0.11.15"
     assert setup_step["with"]["working-directory"] == "${{ github.action_path }}"
     assert (
         "github.server_url == 'https://github.com'"

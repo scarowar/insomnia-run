@@ -150,6 +150,36 @@ def test_missing_release_digest_stops_before_downloading_binary(install_inso, tm
     assert (tmp_path / "downloads").read_text().splitlines() == ["metadata"]
 
 
+@pytest.mark.parametrize("step_name", ["Validate Inso Version", "Install Inso CLI"])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "invalid\n::warning::INJECTED",
+        "invalid\r::error::INJECTED",
+        "%0A::notice::INJECTED",
+    ],
+)
+def test_invalid_version_is_not_echoed_as_a_workflow_command(
+    tmp_path, step_name, payload
+):
+    step = next(
+        step for step in ACTION["runs"]["steps"] if step.get("name") == step_name
+    )
+    result = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", step["run"]],
+        env={**os.environ, "HOME": str(tmp_path), "INSO_VERSION": payload},
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "Invalid Inso CLI version" in result.stdout
+    assert "INJECTED" not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("endpoint", ["metadata", "archive"])
 @pytest.mark.parametrize(
     ("status", "diagnostic"),
     [
@@ -160,10 +190,13 @@ def test_missing_release_digest_stops_before_downloading_binary(install_inso, tm
         ("disconnect", "network or transport error"),
     ],
 )
-def test_metadata_errors_are_not_retried(install_inso, tmp_path, status, diagnostic):
+def test_release_download_errors_are_not_retried(
+    install_inso, tmp_path, status, diagnostic, endpoint
+):
     real_curl = shutil.which("curl")
     assert real_curl, "curl is required for installer regression tests"
-    (tmp_path / "action/inso-checksums.json").write_text("{}")
+    if endpoint == "metadata":
+        (tmp_path / "action/inso-checksums.json").write_text("{}")
     requests = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -207,15 +240,18 @@ exec {shlex.quote(real_curl)} "${{args[@]}}"
             thread.join(timeout=5)
 
     assert result.returncode != 0
-    assert requests == ["/metadata"]
+    assert requests == [f"/{endpoint}"]
     output = result.stdout + result.stderr
-    assert diagnostic in output
     assert "not retried" in output
-    if isinstance(status, int):
-        assert f"HTTP {status}" in output
-    if status in (403, 429):
-        assert "reset window" in output
-        assert "preinstall a verified Inso binary" in output
+    if endpoint == "metadata":
+        assert diagnostic in output
+        if isinstance(status, int):
+            assert f"HTTP {status}" in output
+        if status in (403, 429):
+            assert "reset window" in output
+            assert "preinstall a verified Inso binary" in output
+    else:
+        assert "Failed to download Inso CLI" in output
     assert not list((tmp_path / "insomnia-run-download").rglob("*.tar.xz"))
     assert all(not list(path.iterdir()) for path in tmp_path.glob("inso-extract.*"))
     assert not (tmp_path / "insomnia-run-inso/bin/inso").exists()

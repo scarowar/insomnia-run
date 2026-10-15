@@ -92,6 +92,22 @@ def read_outputs(path):
     return outputs
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "invalid\n::warning::INJECTED",
+        "invalid\r::error::INJECTED",
+        "%0A::notice::INJECTED",
+    ],
+)
+def test_invalid_command_is_not_echoed_as_a_workflow_command(run_action, payload):
+    result = run_action(COMMAND=payload)
+
+    assert result.returncode != 0
+    assert "Invalid command" in result.stdout
+    assert "INJECTED" not in result.stdout + result.stderr
+
+
 @pytest.mark.parametrize("command", ["collection", "test"])
 @pytest.mark.parametrize("cli_exit", ["0", "1"])
 def test_action_preserves_cli_exit_and_reports(run_action, tmp_path, command, cli_exit):
