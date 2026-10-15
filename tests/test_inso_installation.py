@@ -1,13 +1,16 @@
 """Run the real installer with local release archives and a controlled downloader."""
 
 import hashlib
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import io
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import tarfile
+from threading import Thread
 
 import pytest
 import yaml
@@ -47,8 +50,10 @@ def install_inso(tmp_path):
         "curl": """#!/bin/bash
 set -eu
 out=""
+write_out=""
 while (( $# )); do
   if [[ "$1" == "--output" ]]; then out="$2"; shift; fi
+  if [[ "$1" == "--write-out" ]]; then write_out="$2"; shift; fi
   url="$1"
   shift
 done
@@ -59,6 +64,7 @@ else
   echo archive >> "$TEST_DOWNLOADS"
   cp "$TEST_SOURCE" "$out"
 fi
+if [[ -n "$write_out" ]]; then printf '200'; fi
 """,
     }
     for name, script in commands.items():
@@ -142,6 +148,77 @@ def test_missing_release_digest_stops_before_downloading_binary(install_inso, tm
     assert result.returncode != 0
     assert "no SHA-256 digest" in result.stderr
     assert (tmp_path / "downloads").read_text().splitlines() == ["metadata"]
+
+
+@pytest.mark.parametrize(
+    ("status", "diagnostic"),
+    [
+        (403, "forbidden or rate limited"),
+        (429, "forbidden or rate limited"),
+        (401, "authentication failed"),
+        (404, "release not found"),
+        ("disconnect", "network or transport error"),
+    ],
+)
+def test_metadata_errors_are_not_retried(install_inso, tmp_path, status, diagnostic):
+    real_curl = shutil.which("curl")
+    assert real_curl, "curl is required for installer regression tests"
+    (tmp_path / "action/inso-checksums.json").write_text("{}")
+    requests = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            requests.append(self.path)
+            if status == "disconnect":
+                self.close_connection = True
+                return
+            self.send_response(status)
+            self.end_headers()
+            self.wfile.write(b'{"message":"Request rejected"}')
+
+        def log_message(self, *args):
+            pass
+
+    with HTTPServer(("127.0.0.1", 0), Handler) as server:
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        wrapper = tmp_path / "bin/curl"
+        # Keep real curl's retry and error behavior, changing only the transport.
+        wrapper.write_text(
+            f"""#!/bin/bash
+set -eu
+args=()
+while (( $# )); do
+  case "$1" in
+    --proto|--proto-redir) args+=("$1" '=http'); shift 2 ;;
+    https://api.github.com/*) args+=('{base_url}/metadata'); shift ;;
+    https://github.com/*) args+=('{base_url}/archive'); shift ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+exec {shlex.quote(real_curl)} "${{args[@]}}"
+"""
+        )
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            result = install_inso()
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+
+    assert result.returncode != 0
+    assert requests == ["/metadata"]
+    output = result.stdout + result.stderr
+    assert diagnostic in output
+    assert "not retried" in output
+    if isinstance(status, int):
+        assert f"HTTP {status}" in output
+    if status in (403, 429):
+        assert "reset window" in output
+        assert "preinstall a verified Inso binary" in output
+    assert not list((tmp_path / "insomnia-run-download").rglob("*.tar.xz"))
+    assert all(not list(path.iterdir()) for path in tmp_path.glob("inso-extract.*"))
+    assert not (tmp_path / "insomnia-run-inso/bin/inso").exists()
 
 
 def test_verification_uses_current_preinstalled_binary_after_an_install(

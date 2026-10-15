@@ -286,9 +286,29 @@ runs:
           if [[ -n "$INSO_DOWNLOAD_TOKEN" ]]; then
             auth_args=(-H "Authorization: Bearer ${INSO_DOWNLOAD_TOKEN}")
           fi
-          curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 60 \
-            "${auth_args[@]}" --output "$metadata" \
-            "https://api.github.com/repos/Kong/insomnia/releases/tags/core%40${INSO_VERSION}"
+          if ! metadata_status="$(curl --proto '=https' --proto-redir '=https' -fsSL --retry 0 --connect-timeout 15 --max-time 60 \
+            "${auth_args[@]}" --output "$metadata" --write-out '%{http_code}' \
+            "https://api.github.com/repos/Kong/insomnia/releases/tags/core%40${INSO_VERSION}")"; then
+            case "$metadata_status" in
+              403|429)
+                metadata_reason="forbidden or rate limited. Check access and wait for any rate-limit reset window, or preinstall a verified Inso binary."
+                ;;
+              401)
+                metadata_reason="authentication failed. Check the download token."
+                ;;
+              404)
+                metadata_reason="release not found. Check the requested Inso version."
+                ;;
+              000|'')
+                metadata_reason="network or transport error. Check connectivity and GitHub access."
+                ;;
+              *)
+                metadata_reason="unexpected HTTP response. Check GitHub availability and access."
+                ;;
+            esac
+            echo "::error::GitHub release metadata request failed (HTTP ${metadata_status:-unknown}): ${metadata_reason} Request not retried."
+            exit 1
+          fi
           integrity_args+=(--metadata)
           python3 "$integrity_script" "${integrity_args[@]}" >/dev/null
         fi
@@ -592,9 +612,9 @@ runs:
           if ! python3 -c 'import json, sys; json.load(sys.stdin)' <<< "$JSON_OUTPUT" 2>/dev/null; then
             MARKDOWN="${MARKDOWN}"$'\n'"${JSON_OUTPUT}"
             JSON_OUTPUT=""
-            if [[ "$EXIT_CODE" == "0" ]]; then
+            if (( EXIT_CODE < 2 )); then
               echo "::error::insomnia-run did not produce valid JSON output"
-              EXIT_CODE=1
+              EXIT_CODE=2
             fi
           fi
           rm -f "$JSON_TMPFILE"
@@ -650,8 +670,20 @@ runs:
         body: ${{ steps.run-cli.outputs.markdown }}
 
     - name: Check for Failures
-      if: inputs.fail-on-error == 'true' && steps.run-cli.outputs.exit-code != '0'
       shell: bash
+      env:
+        EXIT_CODE: ${{ steps.run-cli.outputs.exit-code }}
+        FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
       run: |
-        echo "::error::Tests failed. See the report above for details."
+        if [[ "$EXIT_CODE" == "0" ]]; then
+          exit 0
+        fi
+        if [[ "$EXIT_CODE" == "1" ]]; then
+          if [[ "$FAIL_ON_ERROR" == [Ff][Aa][Ll][Ss][Ee] ]]; then
+            exit 0
+          fi
+          echo "::error::Tests failed. See the report above for details."
+        else
+          echo "::error::insomnia-run failed with a configuration or runtime error (exit code ${EXIT_CODE}). Check the step diagnostics."
+        fi
         exit 1

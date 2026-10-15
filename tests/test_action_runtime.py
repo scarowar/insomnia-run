@@ -108,6 +108,43 @@ def test_action_preserves_cli_exit_and_reports(run_action, tmp_path, command, cl
     assert (reports / "junit.xml").exists()
 
 
+@pytest.mark.parametrize(
+    "fail_on_error", ["true", "false", "TRUE", "True", "FALSE", "False", "", "typo"]
+)
+@pytest.mark.parametrize("cli_exit", ["0", "1", "2", "127"])
+def test_final_failure_policy_only_allows_test_failures_to_be_ignored(
+    run_action, tmp_path, fail_on_error, cli_exit
+):
+    result = run_action(OUTPUT_FORMAT="json", TEST_CLI_EXIT=cli_exit)
+    assert result.returncode == 0, result.stderr
+    outputs = read_outputs(tmp_path / "outputs")
+    final_step = next(
+        step for step in ACTION["runs"]["steps"] if step["name"] == "Check for Failures"
+    )
+    # Configuration failures must reach the policy even when test failures are allowed.
+    assert final_step.get("if", "success()") == "success()"
+    assert final_step["env"]["EXIT_CODE"] == "${{ steps.run-cli.outputs.exit-code }}"
+    assert final_step["env"]["FAIL_ON_ERROR"] == "${{ inputs.fail-on-error }}"
+
+    decision = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", final_step["run"]],
+        env={
+            **os.environ,
+            "EXIT_CODE": outputs["exit-code"],
+            "FAIL_ON_ERROR": fail_on_error,
+        },
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+    allowed = cli_exit == "0" or (cli_exit == "1" and fail_on_error.lower() == "false")
+    assert (decision.returncode == 0) is allowed
+    if cli_exit in {"2", "127"}:
+        assert "configuration or runtime error" in decision.stdout
+
+
 @pytest.mark.parametrize("failed_file", ["GITHUB_OUTPUT", "GITHUB_STEP_SUMMARY"])
 def test_action_fails_when_publishing_reports_fails(run_action, tmp_path, failed_file):
     result = run_action(**{failed_file: str(tmp_path)})
@@ -128,14 +165,15 @@ def test_action_does_not_publish_cli_diagnostics_as_json(run_action, tmp_path):
 
 
 @pytest.mark.parametrize("payload", ["", "not JSON"])
-def test_action_rejects_missing_or_invalid_json_after_cli_success(
-    run_action, tmp_path, payload
+@pytest.mark.parametrize("cli_exit", ["0", "1"])
+def test_action_rejects_missing_or_invalid_json_after_cli_run(
+    run_action, tmp_path, payload, cli_exit
 ):
-    result = run_action(OUTPUT_FORMAT="json", TEST_JSON=payload)
+    result = run_action(OUTPUT_FORMAT="json", TEST_JSON=payload, TEST_CLI_EXIT=cli_exit)
 
     assert result.returncode == 0, result.stderr
     outputs = read_outputs(tmp_path / "outputs")
-    assert outputs["exit-code"] == "1"
+    assert outputs["exit-code"] == "2"
     assert "json-output" not in outputs
     assert "did not produce valid JSON" in result.stdout
 

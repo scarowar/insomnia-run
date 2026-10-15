@@ -68,7 +68,7 @@ def _write_junit_output(
             "Unable to write JUnit report. Check the destination path and permissions.",
             err=True,
         )
-        raise typer.Exit(code=1) from error
+        raise typer.Exit(code=2) from error
 
 
 def _finalize_report(

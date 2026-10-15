@@ -75,7 +75,7 @@ def test_junit_write_failure_does_not_return_success(tmp_path):
             app, ["run-collection", "-w", "fixture", "--junit-output", str(tmp_path)]
         )
 
-    assert result.exit_code != 0
+    assert result.exit_code == 2
     assert "Unable to write JUnit report" in result.stderr
 
 
