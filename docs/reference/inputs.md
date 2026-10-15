@@ -24,7 +24,7 @@ Paths are relative to the workflow step's current directory unless absolute path
 | `github-token` | — | Token for PR comments and authenticated public GitHub tool downloads |
 | `comment-issue-number` | — | Issue or PR number for comments outside `pull_request` workflows |
 | `pr-comment` | `true` | Post results to a PR or explicit issue |
-| `fail-on-error` | `true` | Fail workflow on test failure; CLI configuration errors always fail |
+| `fail-on-error` | `true` | Fail workflow on failed reports; wrapper validation, startup, and report-write errors always fail |
 | `bail` | `false` | Stop on first failure |
 | `verbose` | `false` | Capture additional Inso diagnostics; requires `include-raw-output` to expose them in reports |
 | `inso-version` | `13.3.1` | Exact Inso CLI version |
@@ -84,6 +84,8 @@ data-folders: "./fixtures,./uploads"
 | `exit-code` | `0` = success, nonzero = test or execution failure |
 
 Report counts are **test results**, which can include assertions, skips, and synthetic execution failures, not HTTP requests. Empty runs retain exit code `0`, but show **No Assertions Executed** with the summary **No assertions executed**; this is not successful test validation. Runs with only skipped results are labeled **Skipped**. Invalid CLI options can produce a nonzero exit code without a test report.
+
+`fail-on-error: "false"` allows wrapper exit `1` (a failed report). Inso 13.3.1 uses exit `1` for both assertion and configuration failures, so upstream configuration or execution failures can also be allowed. Wrapper-detected validation, startup, and report-write errors use exit `2` and remain fatal. Keep the default policy when upstream failures must block the workflow.
 
 Markdown displays at most 50 results and bounds long names to fit GitHub comments. Truncation is marked; summary counts, JSON results, and JUnit cases remain complete. Raw diagnostics in Markdown are limited to 8,192 UTF-8 bytes even when enabled. Requested JSON retains the full raw output, so its disclosure risk is unchanged. Use report artifacts for large machine-readable reports rather than relying on GitHub's limited step-output size.
 
@@ -197,7 +199,7 @@ Automatic installation supports Linux x64 and macOS Intel runners. On Apple Sili
     working-directory: insomnia-export.yaml
 ```
 
-The action requires Python 3.10 or newer and uses that interpreter without downloading another Python. Provision exactly `uv 0.11.11` to skip its installer. A different preinstalled uv version triggers setup of the pinned version. Self-hosted runners require Actions Runner 2.327.1 or newer for the pinned Node.js 24 actions.
+The action requires Python 3.10 or newer and uses that interpreter without downloading another Python. Provision exactly `uv 0.11.15` to skip its installer. A different preinstalled uv version triggers setup of the pinned version. Self-hosted runners require Actions Runner 2.327.1 or newer for the pinned Node.js 24 actions.
 
 The default Inso version and previous defaults have bundled digests and do not query the GitHub release API. Other versions require access to `api.github.com` for their official SHA-256 digest. GitHub Enterprise Server tokens are never sent to public GitHub download APIs.
 

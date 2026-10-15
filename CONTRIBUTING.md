@@ -4,7 +4,7 @@ Open bugs and feature requests in [GitHub Issues](https://github.com/scarowar/in
 
 ## Development
 
-Use Python 3.12 and uv 0.11.11 for local development. CI tests Python 3.10 through 3.15.
+Use Python 3.12 and uv 0.11.15 for local development. CI tests Python 3.10 through 3.15.
 
 ```sh
 uv sync --frozen --dev --no-build --no-install-project

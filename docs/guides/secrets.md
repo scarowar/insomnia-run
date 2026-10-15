@@ -72,6 +72,8 @@ The `env-var` input is available only for `command: collection`. For legacy `com
 
 ## Report Output
 
+Insomnia Run disables Inso CLI telemetry for its child process. It does not change the environment of later workflow steps.
+
 Markdown reports include parsed test results and a link to the workflow run. Raw Inso output is captured, not streamed to workflow logs, and is hidden from Markdown and JSON reports by default. `verbose: "true"` alone does not expose that captured output. For debugging, explicitly combine it with `include-raw-output: "true"`; see [Debug Mode](../troubleshooting.md#debug-mode).
 
 Raw output may contain secrets, credentials, URLs, or response bodies. Opting in includes it in Markdown and requested JSON reports, including job summaries, enabled comments, and uploaded report artifacts. Disable comments and uploads during a private debugging run; the job summary still contains the opted-in output. Parsed result names and CLI error messages can also contain sensitive data, so hiding raw output is not a guarantee of redaction.

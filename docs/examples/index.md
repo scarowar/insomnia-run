@@ -63,7 +63,7 @@ jobs:
 
 ## With Secrets
 
-Pass secrets to your Insomnia workspace via environment variables:
+Map URL-safe secrets into the collection environment:
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.2.0
@@ -73,6 +73,8 @@ Pass secrets to your Insomnia workspace via environment variables:
     env-var: |
       API_KEY=${{ secrets.API_KEY }}
 ```
+
+For arbitrary secret values, use the [encoding step](../guides/secrets.md#collection-overrides) to preserve reserved characters through Inso's URL decoding.
 
 ## Multi-Environment
 

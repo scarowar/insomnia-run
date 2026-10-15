@@ -30,6 +30,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Update the uv installer to 0.11.15 to address wheel entry-point path traversal (GHSA-4gg8-gxpx-9rph).
+- Reject malformed action inputs without echoing workflow commands from their values.
+- Check lockfile freshness in CI and scan full fetched history for secrets removed before HEAD.
+- Keep Inso startup failures fatal even when test failures are allowed.
 - Validate complete TAP plans and bailouts, protect option-like target identifiers, and label empty/skipped reports without claiming successful assertions.
 - Stop the Inso process group on timeout and decode diagnostics as UTF-8 with replacement for invalid bytes.
 - Keep execution diagnostics and exception locals out of default reports, including synthetic failures and report-write errors.
@@ -37,9 +41,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Prevent custom JUnit filenames from injecting workflow outputs or republishing stale reports.
 - Preserve the current invocation's selected preinstalled Inso after an earlier installation.
 - Require valid requested JSON output and scan committed content in CI rather than an empty staging area.
-- Stop retrying failed Inso release-metadata requests immediately, including rate-limit and authorization errors.
-- Keep CLI configuration errors fatal when test failures are allowed with `fail-on-error: "false"`.
-- Render Markdown names as literal text, use collision-safe raw-output fences, and limit displayed results and raw diagnostics to fit GitHub comments without truncating JSON or JUnit results.
+- Stop retrying failed Inso release-metadata and archive requests immediately, including rate-limit and authorization errors.
+- Keep wrapper validation and report-write errors fatal when failed reports are allowed with `fail-on-error: "false"`.
+- Render names and raw diagnostics literally, and limit their Markdown display to fit GitHub comments without truncating JSON or JUnit results.
 - Keep JUnit reports valid when test names contain XML-forbidden characters, and preserve legal attribute whitespace.
 - Preserve nonzero Inso exits as report failures, including diagnostics emitted on stdout or after partial TAP output.
 - Create Inso's package cache directory before invoking the CLI on clean runners.
@@ -55,6 +59,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Disable Inso CLI telemetry for child processes without changing the caller's environment.
+- Use a pinned setup-uv release with embedded checksums for the selected uv binary.
 - Restrict release downloads and redirects to HTTPS, and confine integrity-helper paths to runner temporary storage.
 - Install runtime dependencies from locked wheels without executing third-party source builds.
 - Third-party GitHub Actions are pinned by full commit SHA.

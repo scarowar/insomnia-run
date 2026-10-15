@@ -90,7 +90,7 @@ Control request delays and timeouts:
 
 ## Stop on Failure
 
-Stop execution immediately when a request fails:
+Stop after the first failed assertion. Add status assertions when HTTP errors should fail:
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.2.0
@@ -102,7 +102,7 @@ Stop execution immediately when a request fails:
 
 ## With Secrets
 
-Pass secrets via environment variables:
+Map URL-safe secrets into the collection environment:
 
 ```yaml
 - uses: scarowar/insomnia-run@v0.2.0
@@ -115,4 +115,4 @@ Pass secrets via environment variables:
 
 Access in Insomnia templates as `{{ _.API_KEY }}`.
 
-See [Handling Secrets](secrets.md) for more options.
+For arbitrary secret values, use the [encoding step](secrets.md#collection-overrides) to preserve reserved characters through Inso's URL decoding.

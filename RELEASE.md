@@ -15,6 +15,7 @@
 - Confirm failing Inso runs fail the action unless `fail-on-error` is disabled.
 - Confirm empty and all-skipped runs have neutral summaries, and incomplete TAP fails.
 - Inspect Markdown, JSON, and JUnit reports from passing and failing runs. Verify opt-in artifacts arrive before the final failure step.
+- Check hostile names and raw diagnostics with GitHub's GFM renderer, including long backtick runs, mentions, and HTML. CommonMark-only rendering is not sufficient.
 - Confirm raw diagnostics are omitted by default. Check explicit opt-in without using real credentials.
 
 ## Review Security

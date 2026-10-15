@@ -70,7 +70,7 @@ Examples use `insomnia-export.yaml`. For legacy Git Sync data under `.insomnia/W
 | `environment` | No | | Insomnia environment to use |
 | `pr-comment` | No | `true` | Post results as PR comment |
 | `comment-issue-number` | No | | Issue or PR number for non-PR workflow comments |
-| `fail-on-error` | No | `true` | Fail workflow on test failures |
+| `fail-on-error` | No | `true` | Fail workflow on failed reports |
 | `output-format` | No | | Use `json` to get JSON output in addition to Markdown |
 | `junit-report` | No | `true` | Generate a JUnit XML report file |
 

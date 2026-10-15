@@ -29,12 +29,13 @@
 ## Secrets Not Working
 
 **Fix:**
-- For collections, map secrets with `env-var`:
+- For collections with URL-safe secrets, map them with `env-var`:
   ```yaml
   with:
     env-var: |
       API_KEY=${{ secrets.API_KEY }}
   ```
+- For arbitrary values, use the [secret encoding step](guides/secrets.md#collection-overrides). Inso decodes `+`, `%`, and `&`; direct mappings can change credentials containing those characters.
 - Access in Insomnia as `{{ _.API_KEY }}`
 - A runner `env:` block alone does not populate Insomnia environments. For legacy test suites, use an Insomnia environment and Inso's supported external vault integration.
 
@@ -61,11 +62,11 @@ execution-timeout: "600"  # 10 minutes total
 
 ### GitHub Tool Downloads
 
-The action pins uv to `0.11.11` and reuses a matching preinstalled executable. Pinning avoids latest-version discovery, but a cold setup can still download a manifest and binary. On GitHub.com, `github-token` defaults to the workflow's token; no personal access token is required for public tool downloads.
+The action pins uv to `0.11.15` and reuses a matching preinstalled executable. Pinning avoids latest-version discovery, but a cold setup can still download a manifest and binary. On GitHub.com, `github-token` defaults to the workflow's token; no personal access token is required for public tool downloads.
 
 The default Inso release has bundled checksums, so installation does not query the releases API for its digest. Custom versions without bundled checksums require release metadata. Verified archive caching reduces binary downloads, not every GitHub request.
 
-Inso metadata requests stop on HTTP errors without automatic retries. For `429` or a rate-limited `403`, wait for GitHub's reset window before rerunning. A `403` can also indicate insufficient authorization; check the token and permissions rather than repeatedly retrying. A `404` can indicate an unavailable release. See [GitHub's rate-limit guidance](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+Inso metadata and archive requests stop on errors without automatic retries. For `429` or a rate-limited `403`, wait for GitHub's reset window before rerunning. A `403` can also indicate insufficient authorization; check the token and permissions rather than repeatedly retrying. A `404` can indicate an unavailable release. See [GitHub's rate-limit guidance](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
 
 Outside GitHub.com, the action does not forward enterprise tokens to public GitHub download endpoints. If public downloads are unavailable, provision the exact uv and verified Inso versions on the runner; see [self-hosted installation](#installation-fails-on-self-hosted-runners).
 
@@ -99,7 +100,7 @@ Check `inso --version` on the runner before starting the action. If you provisio
 
 **Fix:**
 - Install Python 3.10 or newer
-- Preinstall exactly `uv 0.11.11`, or allow the action to install that pinned version
+- Preinstall exactly `uv 0.11.15`, or allow the action to install that pinned version
 - For offline runs, prepopulate uv's cache with frozen runtime packages and the build backend, then set `UV_OFFLINE=true`; an index override alone does not replace public URLs in the lockfile
 - Ensure the preinstalled Inso binary matches `inso-version` exactly; see [Inso Installation Fails](#inso-installation-fails)
 

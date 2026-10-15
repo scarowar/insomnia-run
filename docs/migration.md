@@ -4,7 +4,7 @@
 
 The default Inso CLI changes to `13.3.1`. Pin `inso-version` explicitly when you require an older version. Preinstalled binaries must match that version exactly.
 
-Python installation now uses `uv 0.11.11` and frozen dependencies. Offline runners must provide that exact uv version and prepopulate its cache; configuring an index mirror does not redirect URLs recorded in the lockfile.
+Python installation now uses `uv 0.11.15` and frozen dependencies. Offline runners must provide that exact uv version and prepopulate its cache; configuring an index mirror does not redirect URLs recorded in the lockfile.
 
 JSON reports now omit `raw_output` by default. Enable `include-raw-output: "true"` only when logs are safe to share. Collection result IDs are unique across requests and the TAP plan is aggregated.
 
@@ -12,7 +12,7 @@ Verified Inso archives are cached by default. Set `cache-inso: "false"` to disab
 
 For production workflows, pin the action to a release commit SHA.
 
-`fail-on-error: "false"` permits test failures (CLI exit code `1`), not configuration errors or other CLI exit codes. Installation and report-publication errors still fail the action.
+`fail-on-error: "false"` permits failed reports (wrapper exit code `1`), including upstream execution failures. Inso does not distinguish assertion failures from configuration errors by exit code. Wrapper-detected validation, startup, installation, and report-publication errors still fail the action. See the [failure-policy limits](reference/inputs.md#action-outputs).
 
 Markdown renders names as literal text and limits displayed results and raw diagnostics. Summary counts and machine-readable results are not truncated; see [report limits](reference/inputs.md#action-outputs).
 
@@ -39,7 +39,7 @@ Automatic installation supports Linux x64 and macOS Intel. Apple Silicon require
 Runners without public internet access should provide:
 
 - Python 3.10 or newer
-- Exactly `uv 0.11.11` on `PATH`
+- Exactly `uv 0.11.15` on `PATH`
 - A prepopulated uv cache containing the frozen runtime dependencies and build backend
 - The exact requested `inso` version on `PATH`
 
