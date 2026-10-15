@@ -1,4 +1,5 @@
 import re
+from html import escape
 from urllib.parse import urlsplit
 
 # XML is generated, not parsed.
@@ -8,7 +9,7 @@ from .models import InsoRunReport, InsoStatus, RunType
 
 
 _MAX_RENDERED_RESULTS = 50
-# Leave room for raw output, its worst-case fences, and the duplicated target.
+# Leave room for HTML-escaped raw output and the duplicated target.
 _MAX_NAME_BYTES = 160
 _MAX_RAW_OUTPUT_BYTES = 8192
 
@@ -21,26 +22,31 @@ def _inline_code(value: str) -> str:
             encoded[:_MAX_NAME_BYTES].decode("utf-8", errors="ignore")
             + " ... (truncated)"
         )
-    delimiter = "`" * (
-        1 + max((len(match[0]) for match in re.finditer(r"`+", text)), default=0)
-    )
+    # GFM limits delimiter runs; the shortest unused run stays small for bounded names.
+    used_lengths = {len(match[0]) for match in re.finditer(r"`+", text)}
+    length = 1
+    while length in used_lengths:
+        length += 1
+    delimiter = "`" * length
     return f"{delimiter} {text} {delimiter}"
 
 
 def _workflow_link(workflow_url: str | None) -> str:
+    fallback = "workflow run"
     if (
         not workflow_url
         or len(workflow_url.encode("utf-8")) > 2048
-        or re.search(r"[\s<>\\\x00-\x1f\x7f]", workflow_url)
+        or re.search(r"[<>\\\x00-\x1f\x7f]", workflow_url)
+        or any(char.isspace() for char in workflow_url)
     ):
-        return "workflow run"
+        return fallback
     try:
         url = urlsplit(workflow_url)
         if url.scheme in {"http", "https"} and url.hostname:
             return f"[workflow run](<{workflow_url}>)"
     except ValueError:
-        return "workflow run"
-    return "workflow run"
+        return fallback
+    return fallback
 
 
 class Reporter:
@@ -127,21 +133,11 @@ class Reporter:
             raw_output = encoded[:_MAX_RAW_OUTPUT_BYTES].decode(
                 "utf-8", errors="ignore"
             )
-            fence = "`" * max(
-                3,
-                1
-                + max(
-                    (len(match[0]) for match in re.finditer(r"`+", raw_output)),
-                    default=0,
-                ),
-            )
             lines.extend(
                 [
                     "<details><summary>View raw output</summary>",
                     "",
-                    fence,
-                    raw_output,
-                    fence,
+                    f"<pre><code>{escape(raw_output, quote=False)}</code></pre>",
                 ]
             )
             if len(encoded) > _MAX_RAW_OUTPUT_BYTES:

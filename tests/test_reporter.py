@@ -247,6 +247,50 @@ def test_target_name_renders_as_literal_inline_text(target_name):
     assert dom.findall(".//a") == dom.findall(".//b") == []
 
 
+@pytest.mark.parametrize("run_length", [79, 80, 81, 160])
+def test_long_backtick_names_use_short_gfm_code_delimiters(run_length):
+    name = "`" * run_length + " @ghost #131 ![x](https://example.invalid/x)"
+    report = InsoRunReport(
+        plan_end=1,
+        target_name=name,
+        results=[InsoResult(id=1, status=InsoStatus.PASS, description=name)],
+    )
+
+    markdown = Reporter().generate_markdown(report, include_raw_output=True)
+    tokens = MarkdownIt().parse(markdown)
+    code_tokens = [
+        child
+        for token in tokens
+        for child in token.children or []
+        if child.type == "code_inline"
+    ]
+
+    expected = name if len(name) <= 160 else name[:160] + " ... (truncated)"
+    assert [token.content for token in code_tokens] == [expected] * 3
+    assert all(len(token.markup) <= 80 for token in code_tokens)
+
+
+@pytest.mark.parametrize(
+    ("name", "delimiter"),
+    [("` ```", "``"), (" ".join("`" * size for size in range(1, 17)), "`" * 17)],
+)
+def test_name_code_delimiter_uses_the_shortest_unused_run(name, delimiter):
+    report = InsoRunReport(
+        plan_end=1,
+        results=[InsoResult(id=1, status=InsoStatus.PASS, description=name)],
+    )
+
+    tokens = MarkdownIt().parse(Reporter().generate_markdown(report))
+    result_code = next(
+        child
+        for token in tokens
+        for child in token.children or []
+        if child.type == "code_inline" and child.content == name
+    )
+
+    assert result_code.markup == delimiter
+
+
 @pytest.mark.parametrize(
     ("name", "expected"),
     [
@@ -295,8 +339,20 @@ def test_name_truncation_preserves_original_text_before_code_formatting(name, ex
         "https://example.invalid/><img src=x>",
         "https://[invalid",
         "https://example.invalid/" + "x" * 60000,
+        "https://example.invalid/\u2003path",
+        "https://example.invalid/\x00path",
+        "https://example.invalid/\x7fpath",
     ],
-    ids=["scheme", "newline", "html", "invalid-host", "oversized"],
+    ids=[
+        "scheme",
+        "newline",
+        "html",
+        "invalid-host",
+        "oversized",
+        "unicode-space",
+        "nul",
+        "del",
+    ],
 )
 def test_invalid_or_oversized_workflow_urls_use_static_fallback(workflow_url):
     markdown = Reporter().generate_markdown(
@@ -324,17 +380,28 @@ def test_workflow_url_cannot_break_out_of_its_link_destination():
 
 @pytest.mark.parametrize(
     "raw_output",
-    ["before\n```\n# forged\n```\nafter", "`````\n</details>\n```"],
+    [
+        "before\n```\n# forged\n```\nafter",
+        "`````\n</details>\n```",
+        *[
+            "`" * length
+            + "\n</details>\n\n# forged\n\n![image](https://example.invalid/x)\n@ghost #131"
+            for length in (254, 255, 256, 8192)
+        ],
+    ],
+    ids=["short-fence", "html", "254-ticks", "255-ticks", "256-ticks", "8192-ticks"],
 )
-def test_raw_output_cannot_close_its_code_fence(raw_output):
+def test_raw_output_is_literal_html_code_without_markdown_fences(raw_output):
     report = InsoRunReport(plan_end=0, raw_output=raw_output)
 
     markdown = Reporter().generate_markdown(report, include_raw_output=True)
-    tokens = MarkdownIt("commonmark", {"html": True}).parse(markdown)
-    fences = [token for token in tokens if token.type == "fence"]
+    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    expected = raw_output.encode("utf-8")[:8192].decode("utf-8")
 
-    assert len(fences) == 1
-    assert fences[0].content == raw_output + "\n"
+    assert dom.find(".//details/pre/code").text == expected
+    assert len(dom.findall(".//details")) == 1
+    assert dom.findall(".//h1") == dom.findall(".//a") == dom.findall(".//img") == []
+    assert all(token.type != "fence" for token in MarkdownIt().parse(markdown))
     assert markdown.endswith("</details>")
 
 
@@ -343,11 +410,9 @@ def test_raw_output_byte_budget_boundary(size):
     report = InsoRunReport(plan_end=0, raw_output="x" * size)
 
     markdown = Reporter().generate_markdown(report, include_raw_output=True)
-    fence = next(
-        token for token in MarkdownIt().parse(markdown) if token.type == "fence"
-    )
+    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
 
-    assert fence.content.removesuffix("\n") == "x" * min(size, 8192)
+    assert dom.find(".//details/pre/code").text == "x" * min(size, 8192)
     assert ("Raw output truncated" in markdown) == (size > 8192)
 
 
@@ -355,11 +420,9 @@ def test_raw_output_truncation_preserves_complete_utf8_characters():
     report = InsoRunReport(plan_end=0, raw_output="\u754c" * 3000)
 
     markdown = Reporter().generate_markdown(report, include_raw_output=True)
-    fence = next(
-        token for token in MarkdownIt().parse(markdown) if token.type == "fence"
-    )
+    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
 
-    assert fence.content == "\u754c" * 2730 + "\n"
+    assert dom.find(".//details/pre/code").text == "\u754c" * 2730
     assert "Raw output truncated at 8192 bytes" in markdown
 
 
@@ -386,7 +449,9 @@ def test_markdown_limits_displayed_results_without_changing_counts(count):
 
 
 @pytest.mark.parametrize(
-    "raw_output", ["\U0001f600" * 3000, "`" * 10000], ids=["unicode", "backticks"]
+    "raw_output",
+    ["\U0001f600" * 3000, "`" * 10000, "&" * 10000],
+    ids=["unicode", "backticks", "ampersands"],
 )
 @pytest.mark.parametrize(
     "description",
