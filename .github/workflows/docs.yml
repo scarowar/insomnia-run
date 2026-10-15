@@ -50,7 +50,8 @@ jobs:
         run: |
           uv build --wheel --out-dir dist
           uv sync --frozen --dev --no-build --no-install-project
-          uv pip install --no-build --no-deps --no-index dist/*.whl
+          requirement="$(python -c 'import hashlib; from pathlib import Path; wheel, = Path("dist").glob("*.whl"); print(f"{wheel.resolve().as_uri()} --hash=sha256:{hashlib.sha256(wheel.read_bytes()).hexdigest()}")')"
+          uv pip install --no-build --no-deps --no-index --require-hashes -r <(printf '%s\n' "$requirement")
 
       - name: Build documentation
         run: uv run --frozen --no-sync --no-build zensical build

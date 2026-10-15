@@ -44,16 +44,22 @@ jobs:
         with:
           version: "0.11.11"
 
-      - name: Install dependencies
+      - name: Build first-party wheel
+        run: uv build --wheel --out-dir dist
+
+      - name: Install dependencies from locked wheels
+        if: matrix.python-version != '3.15'
+        run: uv sync --frozen --no-dev --group test --no-build --no-install-project
+
+      - name: Install Python 3.15 test dependencies
+        if: matrix.python-version == '3.15'
+        # PyYAML 6.0.3 has no 3.15 wheel. This test-only exception permits hash-locked source builds.
+        run: uv sync --frozen --no-dev --group test --no-install-project # NOSONAR
+
+      - name: Install first-party wheel
         run: |
-          uv build --wheel --out-dir dist
-          if [[ "$UV_PYTHON" == "3.15" ]]; then
-            # PyYAML 6.0.3 has no 3.15 wheel. Only this test environment permits locked source builds.
-            uv sync --frozen --no-dev --group test --no-install-project # NOSONAR(githubactions:S8541)
-          else
-            uv sync --frozen --no-dev --group test --no-build --no-install-project
-          fi
-          uv pip install --no-build --no-deps --no-index dist/*.whl
+          requirement="$(python -c 'import hashlib; from pathlib import Path; wheel, = Path("dist").glob("*.whl"); print(f"{wheel.resolve().as_uri()} --hash=sha256:{hashlib.sha256(wheel.read_bytes()).hexdigest()}")')"
+          uv pip install --no-build --no-deps --no-index --require-hashes -r <(printf '%s\n' "$requirement")
 
       - name: Run tests
         run: uv run --frozen --no-sync --no-build pytest -v --tb=short --cov=insomnia_run --cov-report=term-missing --cov-fail-under=95
@@ -86,7 +92,8 @@ jobs:
         run: |
           uv build --wheel --out-dir dist
           uv sync --frozen --dev --no-build --no-install-project
-          uv pip install --no-build --no-deps --no-index dist/*.whl
+          requirement="$(python -c 'import hashlib; from pathlib import Path; wheel, = Path("dist").glob("*.whl"); print(f"{wheel.resolve().as_uri()} --hash=sha256:{hashlib.sha256(wheel.read_bytes()).hexdigest()}")')"
+          uv pip install --no-build --no-deps --no-index --require-hashes -r <(printf '%s\n' "$requirement")
 
       - name: Run ruff check
         run: uv run --frozen --no-sync --no-build ruff check src/ tests/ scripts/

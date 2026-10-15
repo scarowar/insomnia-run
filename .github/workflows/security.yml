@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   schedule:
     - cron: "20 2 * * 1"
   workflow_dispatch:
@@ -50,7 +50,8 @@ jobs:
         run: |
           uv build --wheel --out-dir dist
           uv sync --frozen --all-groups --no-build --no-install-project
-          uv pip install --no-build --no-deps --no-index dist/*.whl
+          requirement="$(python -c 'import hashlib; from pathlib import Path; wheel, = Path("dist").glob("*.whl"); print(f"{wheel.resolve().as_uri()} --hash=sha256:{hashlib.sha256(wheel.read_bytes()).hexdigest()}")')"
+          uv pip install --no-build --no-deps --no-index --require-hashes -r <(printf '%s\n' "$requirement")
 
       - name: Audit Python dependencies
         run: |
