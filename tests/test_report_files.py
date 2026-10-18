@@ -122,12 +122,23 @@ def test_symlinks_within_allowed_roots_remain_supported(action_environment):
     assert result.read_text() == "safe"
 
 
-def test_symlink_loop_is_rejected_without_publishing(action_environment):
+@pytest.mark.parametrize("kind", ["file", "parent"])
+@pytest.mark.parametrize(
+    "operation", [validate_destination, write_report_file], ids=["validate", "write"]
+)
+def test_symlink_loop_is_rejected_without_publishing(
+    action_environment, kind, operation
+):
     root = Path(action_environment["GITHUB_WORKSPACE"])
     link = root / "loop"
     link.symlink_to(link)
+    destination = link if kind == "file" else link / "report.json"
+    arguments = (
+        (destination,) if operation is validate_destination else (destination, "bad")
+    )
     with pytest.raises(ValueError, match="safely resolved"):
-        write_report_file(link, "bad", environ=action_environment)
+        operation(*arguments, environ=action_environment)
+    assert link.is_symlink()
 
 
 def test_parent_swap_after_validation_cannot_redirect_write(

@@ -2,6 +2,7 @@
 
 import os
 import secrets
+import stat
 import tempfile
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
@@ -23,6 +24,14 @@ def _same_destination(first: Path, second: Path) -> bool:
     return first.exists() and second.exists() and first.samefile(second)
 
 
+def _is_directory(path: Path) -> bool:
+    """Propagate filesystem errors other than a missing destination."""
+    try:
+        return stat.S_ISDIR(path.stat().st_mode)
+    except FileNotFoundError:
+        return False
+
+
 def validate_destination(
     path: str | Path,
     *,
@@ -37,7 +46,7 @@ def validate_destination(
     destination = Path(os.path.abspath(path))
     try:
         resolved = destination.resolve()
-        if destination.is_dir():
+        if _is_directory(destination):
             raise ValueError("Report destination must name a file, not a directory.")
         if any(_same_destination(destination, Path(other)) for other in other_paths):
             raise ValueError("Report destinations must not collide.")
