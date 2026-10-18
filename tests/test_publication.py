@@ -427,7 +427,8 @@ def test_annotations_default_to_ten_and_are_bounded():
 
 def test_unicode_annotations_remain_valid_and_control_characters_are_removed():
     annotation = failure_annotations(["\x00\x1b" + "\N{SNOWMAN}" * 10_000])[0]
-    assert "\x00" not in annotation and "\x1b" not in annotation
+    assert "\x00" not in annotation
+    assert "\x1b" not in annotation
     assert "\N{REPLACEMENT CHARACTER}" not in annotation
 
 
@@ -808,7 +809,11 @@ def test_https_adapter_is_bounded_and_does_not_follow_redirects(
         assert response.read_sizes == []
 
 
-@pytest.mark.parametrize("payload", [b"invalid JSON", b"x" * (2 * 1024 * 1024 + 1)])
+@pytest.mark.parametrize(
+    "payload",
+    [b"invalid JSON", b"x" * (2 * 1024 * 1024 + 1)],
+    ids=["invalid-json", "oversized-json"],
+)
 def test_https_adapter_closes_after_bad_or_excessive_response(monkeypatch, payload):
     connection = HttpConnection(HttpResponse(payload=payload))
     monkeypatch.setattr(

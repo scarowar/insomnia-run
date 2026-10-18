@@ -1,7 +1,6 @@
 """Best-effort publication redaction; this is not a secret-detection guarantee."""
 
 import base64
-import binascii
 import html
 import json
 import re
@@ -41,7 +40,7 @@ def _variants(value: str) -> set[str]:
         plain = raw.decode("utf-8")
         if len(value) >= 8 and plain.isprintable():
             decoded.add(plain)
-    except (binascii.Error, UnicodeError, ValueError):
+    except ValueError:
         pass
     variants = set(decoded)
     for plain in decoded:
@@ -96,23 +95,8 @@ class Redactor:
 
     def redact(self, text: str) -> str:
         text = re.sub(r"[\uD800-\uDFFF]", "\ufffd", text)
-        spans: list[tuple[int, int]] = []
         # Find every sensitive span in the original text so one rule cannot hide another.
-        if self._known is not None:
-            markers = [
-                match.span() for match in re.finditer(re.escape(_REDACTED), text)
-            ]
-            starts = [start for start, _ in markers]
-            for match in self._known.finditer(text):
-                start, end = match.span(1)
-                marker = bisect_right(starts, start) - 1
-                if marker < 0 or end > markers[marker][1]:
-                    if marker >= 0 and start < markers[marker][1]:
-                        start = markers[marker][0]
-                    last = bisect_right(starts, end) - 1
-                    if last >= 0 and markers[last][0] < end < markers[last][1]:
-                        end = markers[last][1]
-                    spans.append((start, end))
+        spans = self._known_spans(text)
         spans.extend(
             (match.end(1), match.end() - 1) for match in _URL_USERINFO.finditer(text)
         )
@@ -127,19 +111,26 @@ class Redactor:
             if match[2].startswith(('"', "'")):
                 start, end = start + 1, end - 1
             spans.append((start, end))
-        merged: list[tuple[int, int]] = []
-        for start, end in sorted(spans):
-            if merged and start <= merged[-1][1]:
-                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
-            else:
-                merged.append((start, end))
-        output: list[str] = []
-        cursor = 0
-        for start, end in merged:
-            output.extend((text[cursor:start], _REDACTED))
-            cursor = end
-        output.append(text[cursor:])
-        return "".join(output)
+        return _replace_spans(text, spans)
+
+    def _known_spans(self, text: str) -> list[tuple[int, int]]:
+        if self._known is None:
+            return []
+        markers = [match.span() for match in re.finditer(re.escape(_REDACTED), text)]
+        starts = [start for start, _ in markers]
+        spans: list[tuple[int, int]] = []
+        for match in self._known.finditer(text):
+            start, end = match.span(1)
+            marker = bisect_right(starts, start) - 1
+            if marker >= 0 and end <= markers[marker][1]:
+                continue
+            if marker >= 0 and start < markers[marker][1]:
+                start = markers[marker][0]
+            last = bisect_right(starts, end) - 1
+            if last >= 0 and markers[last][0] < end < markers[last][1]:
+                end = markers[last][1]
+            spans.append((start, end))
+        return spans
 
     def redact_report(self, report: _Model) -> _Model:
         copy = report.model_copy(deep=True)
@@ -172,6 +163,22 @@ class Redactor:
         elif isinstance(value, tuple):
             return tuple(self._redact_value(item) for item in value)
         return value
+
+
+def _replace_spans(text: str, spans: list[tuple[int, int]]) -> str:
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    output: list[str] = []
+    cursor = 0
+    for start, end in merged:
+        output.extend((text[cursor:start], _REDACTED))
+        cursor = end
+    output.append(text[cursor:])
+    return "".join(output)
 
 
 def escape_workflow_command(value: str) -> str:

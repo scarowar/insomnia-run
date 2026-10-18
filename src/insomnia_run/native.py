@@ -62,6 +62,45 @@ def _seconds(milliseconds: float | None) -> float | None:
     return milliseconds / 1000 if milliseconds is not None else None
 
 
+def _captured_headers(raw_headers: object, names: list[str]) -> dict[str, str]:
+    selected: dict[str, str] = {}
+    if not isinstance(raw_headers, dict):
+        return selected
+    for name, value in raw_headers.items():
+        if not isinstance(name, str) or not isinstance(value, str):
+            continue
+        key = name.lower()
+        if key in names and len(value.encode("utf-8", errors="replace")) <= 2048:
+            selected[key] = value
+    return selected
+
+
+def _project_execution(
+    execution: _Execution, occurrence: int, raw_execution: dict, headers: list[str]
+) -> RequestExecution:
+    request = execution.request
+    if not isinstance(request.get("name"), str) or not isinstance(
+        request.get("_id"), str
+    ):
+        raise ValueError("Invalid request identity.")
+    response = execution.response
+    selected_headers: dict[str, str] = {}
+    if headers and response is not None:
+        selected_headers = _captured_headers(
+            raw_execution.get("response", {}).get("headers", {}), headers
+        )
+    return RequestExecution(
+        id=occurrence,
+        request_id=request["_id"],
+        name=request["name"],
+        iteration=execution.iteration,
+        status_code=response.code if response else None,
+        status=response.status if response else None,
+        duration_seconds=_seconds(response.responseTime) if response else None,
+        headers=selected_headers,
+    )
+
+
 def parse_native_report(
     payload: str, *, capture_headers: list[str] | None = None
 ) -> InsoRunReport:
@@ -76,40 +115,9 @@ def parse_native_report(
             "skipped": InsoStatus.SKIP,
         }
         for occurrence, execution in enumerate(native.executions, 1):
-            request = execution.request
-            if not isinstance(request.get("name"), str) or not isinstance(
-                request.get("_id"), str
-            ):
-                raise ValueError("Invalid request identity.")
-            response = execution.response
-            selected_headers: dict[str, str] = {}
-            if headers and response is not None:
-                raw_headers = (
-                    data["executions"][occurrence - 1]
-                    .get("response", {})
-                    .get("headers", {})
-                )
-                if isinstance(raw_headers, dict):
-                    for name, value in raw_headers.items():
-                        if isinstance(name, str) and isinstance(value, str):
-                            key = name.lower()
-                            if (
-                                key in headers
-                                and len(value.encode("utf-8", errors="replace")) <= 2048
-                            ):
-                                selected_headers[key] = value
             report.executions.append(
-                RequestExecution(
-                    id=occurrence,
-                    request_id=request["_id"],
-                    name=request["name"],
-                    iteration=execution.iteration,
-                    status_code=response.code if response else None,
-                    status=response.status if response else None,
-                    duration_seconds=_seconds(response.responseTime)
-                    if response
-                    else None,
-                    headers=selected_headers,
+                _project_execution(
+                    execution, occurrence, data["executions"][occurrence - 1], headers
                 )
             )
             for test in execution.tests:

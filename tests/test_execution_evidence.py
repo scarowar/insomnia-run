@@ -106,8 +106,10 @@ def test_legacy_verbose_is_rejected_before_execution(monkeypatch):
         pytest.fail("Inso must not execute unsafe legacy verbose")
 
     monkeypatch.setattr(InsoRunner, "_run_command", forbidden)
+    runner = InsoRunner()
+    options = InsoTestOptions(working_dir="x", verbose=True)
     with pytest.raises(ValueError, match="verbose"):
-        InsoRunner().run_test(InsoTestOptions(working_dir="x", verbose=True))
+        runner.run_test(options)
 
 
 def test_verbose_timeout_does_not_trust_console_forged_tap(runner, monkeypatch):

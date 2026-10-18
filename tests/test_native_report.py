@@ -80,8 +80,9 @@ def test_malformed_native_report_is_rejected(payload):
 def test_native_duration_rejects_nonfinite_values():
     data = native_report()
     data["executions"][0]["tests"][0]["executionTime"] = float("nan")
+    payload = json.dumps(data)
     with pytest.raises(ValueError):
-        parse_native_report(json.dumps(data))
+        parse_native_report(payload)
 
 
 def test_only_explicit_response_headers_from_native_mapping_are_published():

@@ -60,7 +60,9 @@ class InsoRunReport(BaseModel):
 
     @property
     def exit_code(self) -> int:
-        return 3 if self.run_error else (1 if self.failed_count else 0)
+        if self.run_error:
+            return 3
+        return 1 if self.failed_count else 0
 
     @property
     def passed_count(self) -> int:

@@ -19,8 +19,11 @@ COMMENT_WARNING = (
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _MAX_COMMENT_BYTES = 65_000
 _MAX_COMMENT_PAGES = 100
+_GHES_API_PATH = "/api/v3"
+_INVALID_PR_NUMBER = "Invalid pull request number."
 _GENERATION = re.compile(
-    r"<!-- insomnia-run:generation:v1:([1-9][0-9]{0,19}):([1-9][0-9]{0,19}) -->"
+    r"<!-- insomnia-run:generation:v1:([1-9]\d{0,19}):([1-9]\d{0,19}) -->",
+    re.ASCII,
 )
 _DEPENDABOT = {"dependabot[bot]", "dependabot-preview[bot]"}
 
@@ -122,7 +125,7 @@ def github_api_url(server_url: str) -> str:
         return "https://api.github.com"
     if host.endswith(".ghe.com"):
         return "https://api." + host
-    return origin + "/api/v3"
+    return origin + _GHES_API_PATH
 
 
 def comment_marker(scope: CommentScope) -> str:
@@ -302,17 +305,33 @@ def _publish(
         return response.data
 
     graphql = (
-        api.removesuffix("/api/v3") + "/api/graphql"
-        if api.endswith("/api/v3")
+        api.removesuffix(_GHES_API_PATH) + "/api/graphql"
+        if api.endswith(_GHES_API_PATH)
         else api + "/graphql"
     )
+    target = _verified_target(context, issue_number, request, api)
+    if target is None:
+        return CommentPublication("skipped")
+    number, repo_url = target
+    author = _authenticated_author(request, graphql)
+    return _upsert_comment(
+        request, repo_url, number, author, scope, generation, redacted_body
+    )
+
+
+def _verified_target(
+    context: CommentContext,
+    issue_number: int | None,
+    request: Callable[[str, str, object], object],
+    api: str,
+) -> tuple[int, str] | None:
     number, repository_id, repo_url = _target(context, issue_number, request, api)
     if number is None:
-        return CommentPublication("skipped")
+        return None
     is_pull_request = True
     if issue_number is not None:
         issue_url = f"{repo_url}/issues/{number}"
-        issue = _object(request("GET", issue_url))
+        issue = _object(request("GET", issue_url, None))
         if (
             not _positive_int(issue.get("id"))
             or not _positive_int(issue.get("number"))
@@ -322,18 +341,15 @@ def _publish(
         ):
             raise ValueError("Mismatched issue identity.")
         if _login(issue.get("user")) in _DEPENDABOT:
-            return CommentPublication("skipped")
+            return None
         is_pull_request = "pull_request" in issue
     if is_pull_request:
-        live_pull = request("GET", f"{repo_url}/pulls/{number}")
+        live_pull = request("GET", f"{repo_url}/pulls/{number}", None)
         if not _trusted_pr(live_pull, context.repository, repository_id):
-            return CommentPublication("skipped")
+            return None
         if _object(live_pull).get("number") != number:
             raise ValueError("Mismatched pull request number.")
-    author = _authenticated_author(request, graphql)
-    return _upsert_comment(
-        request, repo_url, number, author, scope, generation, redacted_body
-    )
+    return number, repo_url
 
 
 def _authenticated_author(
@@ -409,7 +425,7 @@ def _target(
             return None, repository_id, repo_url
     if issue_number is not None:
         if not _positive_int(issue_number):
-            raise ValueError("Invalid pull request number.")
+            raise ValueError(_INVALID_PR_NUMBER)
         repository = _object(request("GET", repo_url, None))
         if str(
             repository.get("full_name", "")
@@ -429,7 +445,7 @@ def _target(
         or type(context.event.get("number")) is not int
         or context.event["number"] != number
     ):
-        raise ValueError("Invalid pull request number.")
+        raise ValueError(_INVALID_PR_NUMBER)
     return number, repository_id, repo_url
 
 
@@ -468,8 +484,8 @@ def _environment_publication(env: Mapping[str, str]) -> CommentPublication:
         raise ValueError("Invalid workflow matrix.")
     workflow = env["GITHUB_WORKFLOW_REF"].split("@", 1)[0]
     issue_number = env.get("ACTION_COMMENT_NUMBER", "").strip()
-    if issue_number and not re.fullmatch(r"[1-9][0-9]*", issue_number):
-        raise ValueError("Invalid pull request number.")
+    if issue_number and not re.fullmatch(r"[1-9]\d*", issue_number, re.ASCII):
+        raise ValueError(_INVALID_PR_NUMBER)
     return publish_pr_comment(
         context=CommentContext(
             repository=env["GITHUB_REPOSITORY"],

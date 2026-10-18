@@ -190,6 +190,54 @@ class InsoRunner:
                 ),
             )
 
+    def _completed_report(
+        self,
+        result: subprocess.CompletedProcess[str],
+        options,
+        run_type: RunType,
+        native_path: Path | None,
+    ) -> InsoRunReport:
+        if native_path is not None and native_path.exists():
+            report = self._native_report(native_path, options)
+        else:
+            report = (
+                InsoRunReport(plan_end=0)
+                if options.verbose
+                else TapParser().parse(
+                    result.stdout, require_tap=run_type == RunType.TEST
+                )
+            )
+            if native_path is not None:
+                self._missing_native_report(report, options, result.returncode)
+        if (
+            result.returncode != 0
+            and not report.run_error
+            and (result.returncode != 1 or not report.failed_count)
+        ):
+            report.complete = False
+            report.run_error = RunError(
+                kind="execution",
+                message=f"Inso CLI exited with code {result.returncode}.",
+            )
+        return report
+
+    @staticmethod
+    def _missing_native_report(
+        report: InsoRunReport, options: InsoCollectionOptions, returncode: int
+    ) -> None:
+        report.complete = False
+        # Inso 13.3.1's bail path exits zero before saveReport().
+        if not (
+            options.bail
+            and not options.verbose
+            and returncode == 0
+            and report.failed_count
+            and not report.run_error
+        ):
+            report.run_error = RunError(
+                kind="protocol", message="Inso did not write its native report."
+            )
+
     def _execute(
         self,
         cmd: list[str],
@@ -217,40 +265,7 @@ class InsoRunner:
             )
         else:
             stdout, stderr = result.stdout, result.stderr
-            if native_path is not None and native_path.exists():
-                report = self._native_report(native_path, options)
-            else:
-                report = (
-                    InsoRunReport(plan_end=0)
-                    if options.verbose
-                    else TapParser().parse(stdout, require_tap=run_type == RunType.TEST)
-                )
-                if native_path is not None:
-                    # Inso 13.3.1's bail path exits zero before saveReport().
-                    if (
-                        options.bail
-                        and not options.verbose
-                        and result.returncode == 0
-                        and report.failed_count
-                        and not report.run_error
-                    ):
-                        report.complete = False
-                    else:
-                        report.complete = False
-                        report.run_error = RunError(
-                            kind="protocol",
-                            message="Inso did not write its native report.",
-                        )
-            if (
-                result.returncode != 0
-                and not report.run_error
-                and (result.returncode != 1 or not report.failed_count)
-            ):
-                report.complete = False
-                report.run_error = RunError(
-                    kind="execution",
-                    message=f"Inso CLI exited with code {result.returncode}.",
-                )
+            report = self._completed_report(result, options, run_type, native_path)
         report.raw_output = stdout + stderr
         report.run_type = run_type
         report.target_name = options.identifier
