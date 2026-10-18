@@ -126,8 +126,8 @@ Counts are empty when no report exists. GitHub imposes an aggregate job-output b
 | --- | --- |
 | `0` | Execution completed without failing assertions or run errors. Zero assertions is not proof of test coverage. |
 | `1` | Assertion/test failures only. |
-| `2` | Wrapper configuration, validation, startup, or report-writing error. |
-| `3` | Inso execution failure, timeout, or invalid/incomplete reporting protocol. |
+| `2` | Wrapper configuration, validation, startup (including failed or timed-out capability discovery), or report-writing error. |
+| `3` | Collection/test execution failure, execution timeout, or invalid/incomplete reporting protocol. |
 
 These are wrapper codes, not an unconditional pass-through of Inso's exit code. Installation and workflow-publication steps can fail separately, sometimes before an `exit-code` output exists. Comment failures warn and do not replace this execution policy.
 
@@ -193,7 +193,7 @@ jobs:
 
 Include every matrix dimension in the concurrency group, and use a job-specific prefix when copying this example to another job. Keep `cancel-in-progress: false` so an active writer is not interrupted. Generation metadata rejects stale updates under this cooperative serialization. GitHub's comments API provides no atomic upsert or cross-runner exactly-once guarantee. See [GitHub concurrency](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 
-Fork and Dependabot PRs skip comment publication. Insufficient permissions, API errors, and ambiguous responses produce a warning rather than failing tests; inspect `comment-status`. Skipping comments does not make untrusted collection scripts safe or grant fork workflows access to secrets. Do not execute untrusted PR code with privileged credentials through `pull_request_target`.
+Cross-repository and Dependabot PRs skip comment publication. Same-repository PRs remain eligible when the repository itself is a fork. Insufficient permissions, API errors, and ambiguous responses produce a warning rather than failing tests; inspect `comment-status`. Skipping comments does not make untrusted collection scripts safe or grant fork workflows access to secrets. Do not execute untrusted PR code with privileged credentials through `pull_request_target`.
 
 Automatic PR comments need `pull-requests: write`. Explicit issue comments need `issues: write`; set `comment-issue-number` outside PR events. Disabling comments needs no comment-write permission.
 

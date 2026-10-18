@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
@@ -267,12 +268,41 @@ def test_dependabot_pr_author_skips_even_with_maintainer_rerun(context, scope):
 
 
 @pytest.mark.parametrize(
+    "event_name,issue_number",
+    [("pull_request", None), ("pull_request_target", 8), ("workflow_dispatch", 8)],
+)
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("full_name", ["owner/project", "OWNER/PROJECT"])
+def test_same_repository_pr_hosted_in_fork_is_allowed(
+    context, scope, event_name, issue_number, existing, full_name
+):
+    context.event["repository"]["fork"] = True
+    context.event["repository"]["full_name"] = full_name
+    transport = FakeTransport(context, [[old_comment(scope)]] if existing else None)
+    transport.pull = deepcopy(transport.pull)
+    hosted = replace(
+        context,
+        event_name=event_name,
+        event={} if event_name == "workflow_dispatch" else context.event,
+    )
+
+    result = publish(hosted, scope, transport, issue_number=issue_number)
+
+    assert result.outputs() == {
+        "comment-status": "updated" if existing else "created",
+        "comment-id": "123",
+    }
+    assert transport.calls[-1][0] == ("PATCH" if existing else "POST")
+    assert transport.calls[-1][3]["body"].endswith("\n\nnew report")
+
+
+@pytest.mark.parametrize(
     "head",
     [
         None,
         {"repo": None},
         {"repo": {"id": 13, "full_name": "fork/project"}},
-        {"repo": {"id": 12, "full_name": "owner/project", "fork": True}},
+        {"repo": {"id": 13, "full_name": "fork/project", "fork": True}},
     ],
 )
 def test_forks_and_deleted_heads_skip_without_network(context, scope, head):
@@ -280,6 +310,99 @@ def test_forks_and_deleted_heads_skip_without_network(context, scope, head):
     transport = FakeTransport(context)
     assert publish(context, scope, transport).status == "skipped"
     assert transport.calls == []
+
+
+@pytest.mark.parametrize(
+    "source,event_name,issue_number",
+    [
+        ("event", "pull_request", None),
+        ("event", "pull_request_target", 8),
+        ("live", "pull_request", None),
+        ("live", "pull_request_target", 8),
+        ("live", "workflow_dispatch", 8),
+    ],
+)
+@pytest.mark.parametrize("side", ["head", "base"])
+@pytest.mark.parametrize(
+    "repo",
+    [
+        None,
+        {},
+        {"id": 13, "full_name": "fork/project", "fork": True},
+        {"id": 13, "full_name": "owner/project", "fork": False},
+        {"id": 12, "full_name": "other/project", "fork": False},
+        {"id": True, "full_name": "owner/project"},
+        {"id": "12", "full_name": "owner/project"},
+        {"id": 0, "full_name": "owner/project"},
+        {"full_name": "owner/project"},
+        {"id": 12},
+    ],
+)
+def test_pr_repository_identity_is_required_at_each_boundary(
+    context, scope, source, event_name, issue_number, side, repo
+):
+    transport = FakeTransport(context)
+    transport.pull = deepcopy(transport.pull)
+    pull = context.event["pull_request"] if source == "event" else transport.pull
+    pull[side] = {"repo": repo}
+    trigger = replace(
+        context,
+        event_name=event_name,
+        event={} if event_name == "workflow_dispatch" else context.event,
+    )
+
+    assert (
+        publish(trigger, scope, transport, issue_number=issue_number).status
+        == "skipped"
+    )
+    assert all(call[0] == "GET" for call in transport.calls)
+    if source == "event":
+        assert transport.calls == []
+    else:
+        assert transport.calls[-1][1].endswith("/pulls/8")
+
+
+@pytest.mark.parametrize("repository_id", [None, True, 0, "12", 13])
+def test_pr_event_requires_matching_numeric_workflow_repository_id(
+    context, scope, repository_id
+):
+    context.event["repository"] = {
+        **context.event["repository"],
+        "id": repository_id,
+    }
+    transport = FakeTransport(context)
+
+    assert publish(context, scope, transport).status == "skipped"
+    assert transport.calls == []
+
+
+@pytest.mark.parametrize("event_name", ["pull_request", "pull_request_target"])
+@pytest.mark.parametrize("source", ["actor", "sender", "event-author", "live-author"])
+@pytest.mark.parametrize("login", ["DEPENDABOT[BOT]", "dependabot-preview[bot]"])
+def test_fork_hosted_same_repository_pr_still_skips_dependabot(
+    context, scope, event_name, source, login
+):
+    context.event["repository"]["fork"] = True
+    transport = FakeTransport(context)
+    transport.pull = deepcopy(transport.pull)
+    if source == "sender":
+        context.event["sender"] = {"login": login}
+    elif source == "event-author":
+        context.event["pull_request"]["user"] = {"login": login}
+    elif source == "live-author":
+        transport.pull["user"] = {"login": login}
+    trigger = replace(
+        context,
+        event_name=event_name,
+        actor=login if source == "actor" else "maintainer",
+    )
+
+    assert publish(trigger, scope, transport, issue_number=8).status == "skipped"
+    assert all(call[0] == "GET" for call in transport.calls)
+    if source != "live-author":
+        assert transport.calls == []
+    else:
+        assert transport.calls[-1][1].endswith("/pulls/8")
 
 
 def test_api_pr_is_rechecked_before_publication(context, scope):
@@ -410,10 +533,34 @@ def test_annotations_have_no_invented_location_and_escape_commands():
     command = failure_annotations(["bad%\r\n::warning file=a,b::injected"])[0]
     assert (
         command
-        == "::error title=Insomnia Run::bad%25%0D%0A%3A%3Awarning file=a%2Cb%3A%3Ainjected"
+        == "::error title=Insomnia Run::bad%25%0D%0A::warning file=a,b::injected"
     )
     assert "\n" not in command
     assert ",file=" not in command
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Error: expected 2, got 1",
+        "https://example.test/path?a=1,b=2",
+        "bad%\r\n::warning file=a,b::injected",
+        "literal %3A %2C %0D %0A %25",
+        "::error file=forged.py,line=9::untrusted",
+        "one\rtwo\nthree\r\n::add-mask::payload",
+    ],
+)
+def test_annotation_message_round_trips_through_runner_data_decoder(message):
+    command = failure_annotations([message])[0]
+
+    assert "\r" not in command
+    assert "\n" not in command
+    prefix, header, data = command.split("::", 2)
+    assert prefix == ""
+    assert header == "error title=Insomnia Run"
+    # Runner.Common.ActionCommand.UnescapeData decodes percent last, only once.
+    decoded = data.replace("%0D", "\r").replace("%0A", "\n").replace("%25", "%")
+    assert decoded == message
 
 
 def test_annotations_default_to_ten_and_are_bounded():

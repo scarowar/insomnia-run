@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, TypeGuard
 from urllib.parse import urlsplit
 
+from .privacy import escape_workflow_command
+
 
 COMMENT_WARNING = (
     "Insomnia Run could not publish the report comment; see the workflow report."
@@ -178,6 +180,7 @@ def _trusted_pr(pull: object, repository: str, repository_id: object) -> bool:
         return False
     if not _positive_int(repository_id):
         return False
+    # A workflow repository can itself be a fork; require identity, not ancestry.
     for side in ("head", "base"):
         branch = pull.get(side)
         repo = branch.get("repo") if isinstance(branch, dict) else None
@@ -186,7 +189,6 @@ def _trusted_pr(pull: object, repository: str, repository_id: object) -> bool:
             or not _positive_int(repo.get("id"))
             or repo["id"] != repository_id
             or str(repo.get("full_name", "")).lower() != repository.lower()
-            or repo.get("fork") is True
         ):
             return False
     return True
@@ -461,15 +463,7 @@ def failure_annotations(
         text = "".join(
             c if (ord(c) >= 32 and ord(c) != 127) or c in "\r\n" else " " for c in text
         )
-        for source, escaped in (
-            ("%", "%25"),
-            ("\r", "%0D"),
-            ("\n", "%0A"),
-            (":", "%3A"),
-            (",", "%2C"),
-        ):
-            text = text.replace(source, escaped)
-        commands.append("::error title=Insomnia Run::" + text)
+        commands.append("::error title=Insomnia Run::" + escape_workflow_command(text))
     return commands
 
 
