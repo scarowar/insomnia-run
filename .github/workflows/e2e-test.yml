@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15-intel, macos-26]
+        os: [ubuntu-22.04, ubuntu-24.04, macos-15-intel, macos-26]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     permissions:
@@ -29,7 +29,7 @@ jobs:
     steps:
       - name: Harden the runner (Audit all outbound calls)
         if: runner.os == 'Linux'
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
 
@@ -56,6 +56,7 @@ jobs:
           exit 1
 
       - name: Test passing collection
+        id: source
         uses: ./
         with:
           command: collection
@@ -79,7 +80,62 @@ jobs:
           iteration-count: "2"
           disable-cert-validation: "true"
           verbose: "true"
+          python-version: "3.14.8"
           pr-comment: "false"
+
+      - name: Build verified native runtime bundle
+        id: bundle
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/insomnia-bundle-builder
+        run: |
+          uv sync --frozen --dev --no-build --no-install-project --python "$(command -v python3)"
+          uv run --frozen --no-sync python scripts/build_release.py build --directory "${RUNNER_TEMP}/consumer-bundle" --bundle-only
+          python3 - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          bundle, = (Path(os.environ['RUNNER_TEMP']) / 'consumer-bundle').glob('insomnia-run-runtime-*.tar.gz')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write(f'path={bundle}\nsha256={hashlib.sha256(bundle.read_bytes()).hexdigest()}\n')
+          PY
+
+      - name: Consume bundle offline with an empty cache
+        id: bundled
+        uses: ./
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/empty-consumer-cache
+        with:
+          command: collection
+          working-directory: tests/fixtures/passing_suite.yaml
+          environment: Test Environment
+          runtime-bundle: ${{ steps.bundle.outputs.path }}
+          runtime-bundle-sha256: ${{ steps.bundle.outputs.sha256 }}
+          offline-install: "true"
+          pr-comment: "false"
+
+      - name: Compare source and offline bundle reports
+        env:
+          SOURCE_JSON: ${{ steps.source.outputs.json-file }}
+          BUNDLE_JSON: ${{ steps.bundled.outputs.json-file }}
+          BUNDLE_JUNIT: ${{ steps.bundled.outputs.junit-file }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          from xml.etree import ElementTree
+          def observable(value):
+              if isinstance(value, dict):
+                  return {key: observable(item) for key, item in value.items() if key != 'duration_seconds'}
+              if isinstance(value, list):
+                  return [observable(item) for item in value]
+              return value
+          source = json.loads(Path(os.environ['SOURCE_JSON']).read_text())
+          bundled = json.loads(Path(os.environ['BUNDLE_JSON']).read_text())
+          if observable(source) != observable(bundled):
+              raise SystemExit('Source and offline bundle reports differ')
+          suite = ElementTree.parse(os.environ['BUNDLE_JUNIT']).getroot()
+          if suite.get('tests') != '3' or suite.get('failures') != '0':
+              raise SystemExit('Offline bundle JUnit results differ')
+          PY
 
   test-test-command:
     name: Test Test Command
@@ -90,7 +146,7 @@ jobs:
       contents: read
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
 
@@ -135,7 +191,7 @@ jobs:
           uv sync --frozen --no-dev --group test --no-build --no-install-project
           requirement="$(python -c 'import hashlib, os; from pathlib import Path; wheel, = (Path(os.environ["RUNNER_TEMP"]) / "insomnia-run-compat-wheel").glob("*.whl"); print(f"{wheel.resolve().as_uri()} --hash=sha256:{hashlib.sha256(wheel.read_bytes()).hexdigest()}")')"
           uv pip install --no-build --no-deps --no-index --require-hashes --python "${UV_PROJECT_ENVIRONMENT}/bin/python" -r <(printf '%s\n' "$requirement")
-          uv run --frozen --no-sync --no-build pytest -q tests/test_inso_compatibility.py
+          uv run --frozen --no-sync --no-build pytest -q tests/test_inso_compatibility.py tests/test_native_compatibility.py
 
   test-failure-handling:
     name: Test Failure Handling
@@ -146,7 +202,7 @@ jobs:
       contents: read
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
 
@@ -231,7 +287,7 @@ jobs:
       API_TOKEN: test_secret_from_env_block
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
 
@@ -286,7 +342,7 @@ jobs:
       contents: read
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
 
