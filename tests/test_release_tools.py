@@ -106,10 +106,24 @@ def test_locked_semantic_release_configuration_dry_run(tmp_path):
     assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+\s*", result.stdout)
 
 
-def test_runtime_sbom_command_keeps_root_project_identity(tmp_path):
+@pytest.mark.parametrize(
+    "alternate_version", [None, "9.8.7"], ids=["current", "changed"]
+)
+def test_runtime_sbom_command_keeps_root_project_identity(tmp_path, alternate_version):
     import json
     import shutil
 
+    if sys.version_info < (3, 11):
+        pytest.skip("Release tooling runs on Python 3.14; tomllib requires 3.11")
+    import tomllib
+
+    project_file = ROOT / "pyproject.toml"
+    project = tomllib.loads(project_file.read_text())
+    if alternate_version:
+        project_file = tmp_path / "pyproject.toml"
+        project_file.write_text(
+            f'[project]\nname = "{project["project"]["name"]}"\nversion = "{alternate_version}"\n'
+        )
     binary = shutil.which("cyclonedx-py") or str(ROOT / ".venv/bin/cyclonedx-py")
     if not Path(binary).is_file():
         pytest.skip("Runtime SBOM generation requires the locked dev tools")
@@ -120,7 +134,7 @@ def test_runtime_sbom_command_keeps_root_project_identity(tmp_path):
             "environment",
             str(ROOT / ".venv"),
             "--pyproject",
-            str(ROOT / "pyproject.toml"),
+            str(project_file),
             "--output-reproducible",
             "--of",
             "JSON",
@@ -133,7 +147,8 @@ def test_runtime_sbom_command_keeps_root_project_identity(tmp_path):
     bom = json.loads(output.read_text())
     assert bom["bomFormat"] == "CycloneDX"
     assert bom["metadata"]["component"]["name"] == "insomnia-run"
-    assert bom["metadata"]["component"]["version"] == "0.2.0"
+    expected = tomllib.loads(project_file.read_text())["project"]["version"]
+    assert bom["metadata"]["component"]["version"] == expected
 
 
 def test_manifest_hashes_every_asset_and_is_stable(release, tmp_path):
@@ -161,6 +176,7 @@ def test_recovery_uploads_only_missing_assets_and_publishes_last(release, tmp_pa
     events = []
     existing = {
         "id": 7,
+        "tag_name": "v0.2.0",
         "draft": True,
         "target_commitish": "a" * 40,
         "assets": [{"name": "package.whl", "id": 9}],
@@ -170,8 +186,8 @@ def test_recovery_uploads_only_missing_assets_and_publishes_last(release, tmp_pa
         events.append((path, method, data, upload))
         if path.endswith("/immutable-releases"):
             return {"enabled": True}
-        if path.endswith("/tags/v0.2.0"):
-            return existing
+        if path.endswith("/releases?per_page=100"):
+            return [[existing]]
         if path.endswith("/assets/9"):
             return b"wheel"
         if path.endswith("assets?per_page=100"):
@@ -190,7 +206,144 @@ def test_recovery_uploads_only_missing_assets_and_publishes_last(release, tmp_pa
     assert events[-1][1:3] == ("PATCH", {"draft": False})
 
 
-@pytest.mark.parametrize("draft,content", [(False, b"wheel"), (True, b"other")])
+@pytest.mark.parametrize("response_lost", [False, True])
+def test_interrupted_upload_reuses_draft_from_paginated_release_inventory(
+    release, tmp_path, response_lost
+):
+    (tmp_path / "package.whl").write_bytes(b"wheel")
+    (tmp_path / "SHA256SUMS").write_bytes(b"checksums")
+    unrelated = {"id": 99, "tag_name": "v0.9.0", "draft": True, "assets": []}
+    drafts = {99: unrelated}
+    contents = {}
+    uploads = []
+    interrupted = False
+    endpoint = "repos/owner/repo/releases"
+
+    def api(path, method="GET", data=None, upload=None):
+        nonlocal interrupted
+        if path == "repos/owner/repo/immutable-releases" and method == "GET":
+            return {"enabled": True}
+        if path == endpoint + "?per_page=100":
+            return [[{"tag_name": "v0.1.0", "draft": False}], list(drafts.values())]
+        if path == endpoint + "/tags/v0.2.0":
+            # GitHub's tag endpoint does not expose unpublished drafts.
+            raise release.NotFound()
+        if path == endpoint and method == "POST":
+            draft = {"id": len(drafts) + 6, **data, "assets": []}
+            drafts[draft["id"]] = draft
+            return draft
+        for release_id, draft in drafts.items():
+            if (
+                path == f"{endpoint}/{release_id}/assets?per_page=100"
+                and method == "GET"
+            ):
+                return [list(draft["assets"])]
+            if (
+                upload
+                and method == "POST"
+                and path
+                == f"https://uploads.github.com/{endpoint}/{release_id}/assets?name={upload.name}"
+            ):
+                uploads.append(upload.name)
+                interrupt = upload.name == "package.whl" and not interrupted
+                if interrupt and not response_lost:
+                    interrupted = True
+                    raise OSError("interrupted upload")
+                asset_id = len(contents) + 10
+                contents[asset_id] = upload.read_bytes()
+                draft["assets"].append({"id": asset_id, "name": upload.name})
+                if interrupt:
+                    interrupted = True
+                    raise OSError("interrupted upload")
+                return {"id": asset_id}
+            if path == f"{endpoint}/{release_id}" and method == "PATCH":
+                draft.update(data)
+                return draft
+        if path in {f"{endpoint}/assets/{key}" for key in contents} and method == "GET":
+            return contents[int(path.rsplit("/", 1)[1])]
+        pytest.fail(f"Unexpected release API request: {method} {path}")
+
+    with pytest.raises(OSError, match="interrupted"):
+        release.publish_assets("owner/repo", "v0.2.0", "a" * 40, tmp_path, api)
+    release.publish_assets("owner/repo", "v0.2.0", "a" * 40, tmp_path, api)
+    assert len(drafts) == 2
+    assert drafts[99] is unrelated
+    assert unrelated == {"id": 99, "tag_name": "v0.9.0", "draft": True, "assets": []}
+    assert drafts[7]["draft"] is False
+    expected = ["SHA256SUMS", "package.whl"] + (
+        [] if response_lost else ["package.whl"]
+    )
+    assert uploads == expected
+    assert {asset["name"] for asset in drafts[7]["assets"]} == {
+        "SHA256SUMS",
+        "package.whl",
+    }
+
+
+@pytest.mark.parametrize("published", [False, True])
+def test_ambiguous_or_published_release_inventory_is_never_modified(
+    release, tmp_path, published
+):
+    (tmp_path / "package.whl").write_bytes(b"wheel")
+    candidates = [
+        {"id": 7, "tag_name": "v0.2.0", "draft": True},
+        {"id": 8, "tag_name": "v0.2.0", "draft": not published},
+    ]
+    events = []
+
+    def api(path, method="GET", data=None, upload=None):
+        events.append(method)
+        if path.endswith("/immutable-releases"):
+            return {"enabled": True}
+        if path.endswith("/releases?per_page=100"):
+            return [[candidates[0]], [candidates[1]]]
+        if "/tags/" in path:
+            raise release.NotFound()
+        pytest.fail("Ambiguous or published release caused an API mutation")
+
+    with pytest.raises(ValueError, match="Multiple drafts|published"):
+        release.publish_assets("owner/repo", "v0.2.0", "a" * 40, tmp_path, api)
+    assert events == ["GET", "GET"]
+
+
+def test_recovered_draft_target_must_match_before_asset_mutation(release, tmp_path):
+    (tmp_path / "package.whl").write_bytes(b"wheel")
+    api = Mock(
+        side_effect=[
+            {"enabled": True},
+            [
+                [
+                    {
+                        "id": 7,
+                        "tag_name": "v0.2.0",
+                        "draft": True,
+                        "target_commitish": "b" * 40,
+                    }
+                ]
+            ],
+        ]
+    )
+    with pytest.raises(ValueError, match="target conflicts"):
+        release.publish_assets("owner/repo", "v0.2.0", "a" * 40, tmp_path, api)
+    assert all(not call.kwargs for call in api.call_args_list)
+
+
+def test_release_inventory_permission_error_never_creates_a_draft(release, tmp_path):
+    (tmp_path / "package.whl").write_bytes(b"wheel")
+    api = Mock(
+        side_effect=[
+            {"enabled": True},
+            subprocess.CalledProcessError(1, ["gh", "api"], stderr=b"HTTP 403"),
+        ]
+    )
+    with pytest.raises(subprocess.CalledProcessError):
+        release.publish_assets("owner/repo", "v0.2.0", "a" * 40, tmp_path, api)
+    assert all(not call.kwargs for call in api.call_args_list)
+
+
+@pytest.mark.parametrize(
+    "draft,content", [(False, b"wheel"), (True, b"other"), (True, b"")]
+)
 def test_published_or_conflicting_assets_are_never_changed(
     release, tmp_path, draft, content
 ):
@@ -201,13 +354,18 @@ def test_published_or_conflicting_assets_are_never_changed(
         events.append(method)
         if path.endswith("/immutable-releases"):
             return {"enabled": True}
-        if path.endswith("/tags/v0.2.0"):
-            return {
-                "id": 7,
-                "draft": draft,
-                "target_commitish": "a" * 40,
-                "assets": [{"name": "package.whl", "id": 9}],
-            }
+        if path.endswith("/releases?per_page=100"):
+            return [
+                [
+                    {
+                        "id": 7,
+                        "tag_name": "v0.2.0",
+                        "draft": draft,
+                        "target_commitish": "a" * 40,
+                        "assets": [{"name": "package.whl", "id": 9}],
+                    }
+                ]
+            ]
         if path.endswith("assets?per_page=100"):
             return [[{"name": "package.whl", "id": 9}]]
         return content
@@ -284,8 +442,8 @@ def test_missing_draft_is_created_before_upload_and_not_published_on_failure(
         events.append((method, data))
         if path.endswith("/immutable-releases"):
             return {"enabled": True}
-        if path.endswith("/tags/v0.2.0"):
-            raise release.NotFound()
+        if path.endswith("/releases?per_page=100"):
+            return [[]]
         if path.endswith("assets?per_page=100"):
             return [[]]
         if upload:
@@ -640,7 +798,16 @@ def test_release_rejects_unexpected_existing_assets(release, tmp_path):
     api = Mock(
         side_effect=[
             {"enabled": True},
-            {"id": 7, "draft": True, "target_commitish": "a" * 40},
+            [
+                [
+                    {
+                        "id": 7,
+                        "tag_name": "v0.2.0",
+                        "draft": True,
+                        "target_commitish": "a" * 40,
+                    }
+                ]
+            ],
             [[{"name": "old.exe", "id": 9}]],
         ]
     )
@@ -705,7 +872,7 @@ def test_corrupt_uploaded_asset_leaves_draft_unpublished(release, tmp_path):
     api = Mock(
         side_effect=[
             {"enabled": True},
-            release.NotFound(),
+            [[]],
             {"id": 7, "draft": True, "target_commitish": "a" * 40},
             [[]],
             {"id": 9},

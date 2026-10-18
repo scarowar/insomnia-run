@@ -337,6 +337,21 @@ def require_immutable_releases(repository: str, api=gh_api) -> None:
         )
 
 
+def existing_draft(api, endpoint: str, tag: str):
+    # The tag endpoint exposes published releases, not recoverable drafts.
+    matches = [
+        candidate
+        for page in api(f"{endpoint}?per_page=100")
+        for candidate in page
+        if candidate.get("tag_name") == tag
+    ]
+    if any(candidate.get("draft") is not True for candidate in matches):
+        raise ValueError("Refusing to modify a published release")
+    if len(matches) > 1:
+        raise ValueError("Multiple drafts exist for the release tag")
+    return matches[0] if matches else None
+
+
 def publish_assets(
     repository: str,
     tag: str,
@@ -357,9 +372,8 @@ def publish_assets(
         return [path.name for path in paths]
     require_immutable_releases(repository, api)
     endpoint = f"repos/{repository}/releases"
-    try:
-        release = api(f"{endpoint}/tags/{tag}")
-    except NotFound:
+    release = existing_draft(api, endpoint, tag)
+    if release is None:
         release = api(
             endpoint,
             method="POST",
