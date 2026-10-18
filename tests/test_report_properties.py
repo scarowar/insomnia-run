@@ -4,7 +4,14 @@ from xml.etree import ElementTree
 
 from hypothesis import example, given, settings, strategies as st
 
-from insomnia_run.models import InsoResult, InsoRunReport, InsoStatus
+from insomnia_run.models import (
+    InsoResult,
+    InsoRunReport,
+    InsoStatus,
+    RequestExecution,
+    RunError,
+)
+from markdown_it import MarkdownIt
 from insomnia_run.parser import TapParser
 from insomnia_run.reporter import Reporter
 
@@ -73,4 +80,86 @@ def test_repeated_tap_blocks_keep_counts_and_ids(blocks):
     assert [result.id for result in report.results] == list(range(1, len(expected) + 1))
     assert report.passed_count + report.failed_count + report.skipped_count == len(
         expected
+    )
+
+
+@settings(max_examples=100, derandomize=True)
+@example(name="surrogate\ud800", message="</code></pre></details>\n# forged", count=60)
+@example(name="&" * 200, message="<&\U0001f600" * 3000, count=60)
+@given(
+    name=st.text(max_size=200),
+    message=st.text(max_size=2000),
+    count=st.integers(min_value=0, max_value=70),
+)
+def test_native_markdown_is_bounded_literal_and_does_not_mutate_report(
+    name, message, count
+):
+    report = InsoRunReport(
+        source="native",
+        plan_end=count,
+        target_name=name,
+        complete=False,
+        run_error=RunError(kind="execution", message=message),
+        raw_output="&" * 9000,
+        executions=[
+            RequestExecution(
+                id=index,
+                request_id="repeated-request",
+                name=name,
+                status_code=200,
+                iteration=index - 1,
+                headers={"X-Request-ID": message},
+            )
+            for index in range(1, count + 1)
+        ],
+        results=[
+            InsoResult(
+                id=index,
+                status=InsoStatus.FAIL if index % 2 else InsoStatus.PASS,
+                description=name,
+                message=message,
+                execution_id=index,
+            )
+            for index in range(1, count + 1)
+        ],
+    )
+    before = report.model_dump()
+
+    markdown = Reporter().generate_markdown(report, include_raw_output=True)
+    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+
+    assert len(markdown.encode("utf-8")) <= 60000
+    assert dom.findall(".//img") == dom.findall(".//a") == dom.findall(".//h1") == []
+    assert len(dom.findall(".//details")) == markdown.count("</details>")
+    assert len(dom.findall(".//pre")) == len(dom.findall(".//pre/code"))
+    assert report.model_dump() == before
+
+
+@settings(max_examples=200, derandomize=True)
+@example(message="NUL\x00ANSI\x1b[31m", error="surrogate\udfff")
+@given(message=st.text(max_size=300), error=st.text(max_size=300))
+def test_junit_messages_and_run_errors_preserve_sanitized_unicode(message, error):
+    report = InsoRunReport(
+        plan_end=1,
+        results=[
+            InsoResult(
+                id=1, status=InsoStatus.FAIL, description="assertion", message=message
+            )
+        ],
+        run_error=RunError(kind="protocol", message=error),
+    )
+
+    suite = ElementTree.fromstring(Reporter().generate_junit(report))
+    failure = suite.find("./testcase/failure")
+    run_error = suite.find("./testcase/error")
+
+    assert suite.attrib["tests"] == "2"
+    assert suite.attrib["failures"] == suite.attrib["errors"] == "1"
+    assert failure.attrib["message"] == xml_safe(message or "assertion")
+    expected_failure = message if message else "Inso reported this test as failed."
+    assert failure.text == xml_safe(expected_failure).replace("\r\n", "\n").replace(
+        "\r", "\n"
+    )
+    assert (run_error.text or "") == xml_safe(error).replace("\r\n", "\n").replace(
+        "\r", "\n"
     )

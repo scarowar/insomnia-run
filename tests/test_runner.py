@@ -13,7 +13,10 @@ from insomnia_run.models import InsoCollectionOptions, InsoTestOptions, RunType
 
 @contextmanager
 def inso_output(stdout, stderr="", returncode=0):
-    with patch("insomnia_run.runner.subprocess.Popen") as popen:
+    with (
+        patch("insomnia_run.runner.subprocess.Popen") as popen,
+        patch.object(InsoRunner, "_supports_native_report", return_value=False),
+    ):
         process = popen.return_value.__enter__.return_value
         process.communicate.return_value = (stdout, stderr)
         process.returncode = returncode
@@ -294,10 +297,9 @@ ok 1 - Test passed
 
     def test_collection_with_verbose(self, runner, mock_subprocess):
         options = InsoCollectionOptions(working_dir="/path", verbose=True)
-        runner.run_collection(options)
-
-        cmd = mock_subprocess.call_args[0][0]
-        assert "--verbose" in cmd
+        with pytest.raises(ValueError, match="Native collection reporting"):
+            runner.run_collection(options)
+        mock_subprocess.assert_not_called()
 
     def test_collection_report_type(self, runner, mock_subprocess):
         options = InsoCollectionOptions(working_dir="/path")
@@ -328,11 +330,9 @@ ok 1 - Test passed
             ]
             options = InsoCollectionOptions(working_dir="/path", execution_timeout=77)
             report = runner.run_collection(options)
-            assert report.plan_end == report.total_tests == 1
-            assert f"{options.execution_timeout}" in report.raw_output
-            assert any(
-                f"{options.execution_timeout}" in r.description for r in report.results
-            )
+            assert report.total_tests == 0
+            assert report.exit_code == 3
+            assert f"{options.execution_timeout}" in report.run_error.message
 
     def test_collection_cli_error_from_stdout_is_reported(self, runner):
         with inso_output(
@@ -341,18 +341,19 @@ ok 1 - Test passed
         ):
             report = runner.run_collection(InsoCollectionOptions(working_dir="/path"))
 
-        assert report.failed_count == 1
+        assert report.exit_code == 3
         assert "No data source found" in report.raw_output
-        assert "No data source found" not in report.results[0].description
-        assert "TIP:" not in report.results[0].description
+        assert "No data source found" not in report.run_error.message
+        assert "TIP:" not in report.run_error.message
 
     def test_collection_nonzero_exit_with_tap_results_still_fails(self, runner):
         with inso_output("TAP version 13\n1..1\nok 1 - Passed\n", returncode=1):
             report = runner.run_collection(InsoCollectionOptions(working_dir="/path"))
 
         assert report.passed_count == 1
-        assert report.failed_count == 1
-        assert "Inso CLI Error" in report.results[-1].description
+        assert report.failed_count == 0
+        assert report.exit_code == 3
+        assert "code 1" in report.run_error.message
 
     def test_collection_cli_error_preserves_both_streams_only_in_raw_output(
         self, runner
@@ -364,7 +365,7 @@ ok 1 - Test passed
         ):
             report = runner.run_collection(InsoCollectionOptions(working_dir="/path"))
 
-        assert report.failed_count == 1
+        assert report.exit_code == 3
         assert "No data source found" in report.raw_output
         assert "Warning: using default configuration" in report.raw_output
         assert all("/tmp/missing" not in r.description for r in report.results)
@@ -505,16 +506,14 @@ class TestInsoRunnerTest:
             ]
             options = InsoTestOptions(working_dir="/path", execution_timeout=88)
             report = runner.run_test(options)
-            assert report.plan_end == report.total_tests == 1
-            assert f"{options.execution_timeout}" in report.raw_output
-            assert any(
-                f"{options.execution_timeout}" in r.description for r in report.results
-            )
+            assert report.total_tests == 0
+            assert report.exit_code == 3
+            assert f"{options.execution_timeout}" in report.run_error.message
 
     def test_test_cli_error_from_stdout_is_reported(self, runner):
         with inso_output("No test suites found; cannot run tests.", returncode=1):
             report = runner.run_test(InsoTestOptions(working_dir="/path"))
 
-        assert report.failed_count == 1
+        assert report.exit_code == 3
         assert "No test suites found" in report.raw_output
-        assert "No test suites found" not in report.results[0].description
+        assert "No test suites found" not in report.run_error.message

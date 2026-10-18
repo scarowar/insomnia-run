@@ -1,17 +1,20 @@
 import os
 import signal
+from pathlib import Path
+import re
+import tempfile
 
 # Inso must be executed as a subprocess.
 import subprocess  # nosec B404
 
 from .models import (
     InsoCollectionOptions,
-    InsoResult,
     InsoRunReport,
-    InsoStatus,
     InsoTestOptions,
     RunType,
+    RunError,
 )
+from .native import parse_native_report, validate_capture_headers
 from .parser import TapParser
 
 
@@ -31,11 +34,12 @@ class InsoRunner:
             errors="replace",
             start_new_session=True,
             shell=False,
+            umask=0o077,
             env={**os.environ, "INSO_TELEMETRY_DISABLED": "1"},
         ) as process:
             try:
                 stdout, stderr = process.communicate(timeout=timeout)
-            except BaseException:
+            except BaseException as error:
                 # A new session does not inherit terminal interrupts; stop it too.
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
@@ -47,11 +51,33 @@ class InsoRunner:
                     except OSError:
                         pass
                 try:
-                    process.communicate(timeout=1)
+                    drained_stdout, drained_stderr = process.communicate(timeout=1)
+                    if isinstance(error, subprocess.TimeoutExpired):
+                        error.output = drained_stdout.encode("utf-8")
+                        error.stderr = drained_stderr.encode("utf-8")
                 except (OSError, subprocess.TimeoutExpired):
                     pass
                 raise
             return subprocess.CompletedProcess(cmd, process.returncode, stdout, stderr)
+
+    def _supports_native_report(self) -> bool:
+        try:
+            # Capability discovery never runs a collection or interprets script logs.
+            result = subprocess.run(  # nosec B603 B607
+                ["inso", "run", "collection", "--help"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+                check=False,
+                env={**os.environ, "INSO_TELEMETRY_DISABLED": "1"},
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return result.returncode == 0 and bool(
+            re.search(r"^\s+--output(?:\s|$)", result.stdout, re.M)
+        )
 
     @staticmethod
     def _base_cmd(run_type: RunType, working_dir: str):
@@ -139,89 +165,124 @@ class InsoRunner:
             cmd.append("--keepFile")
 
     @staticmethod
-    def _add_error_result_if_needed(report: InsoRunReport, result) -> None:
-        """Preserve a nonzero exit without publishing arbitrary diagnostics."""
-        if result.returncode == 0 or report.failed_count > 0:
-            return
-
-        next_id = max((item.id for item in report.results), default=0) + 1
-        report.results.append(
-            InsoResult(
-                id=next_id,
-                status=InsoStatus.FAIL,
-                description=f"Inso CLI Error: Process exited with code {result.returncode}.",
-            )
+    def _text(value: str | bytes | None) -> str:
+        return (
+            value.decode("utf-8", errors="replace")
+            if isinstance(value, bytes)
+            else value or ""
         )
-        report.plan_end = max(report.plan_end, next_id)
+
+    @staticmethod
+    def _native_report(path: Path, options: InsoCollectionOptions) -> InsoRunReport:
+        try:
+            if path.stat().st_size > 32 * 1024 * 1024:
+                raise ValueError("Native report is too large.")
+            return parse_native_report(
+                path.read_text(encoding="utf-8"),
+                capture_headers=options.capture_response_headers,
+            )
+        except (ValueError, OSError):
+            return InsoRunReport(
+                plan_end=0,
+                complete=False,
+                run_error=RunError(
+                    kind="protocol", message="Inso wrote an invalid native report."
+                ),
+            )
+
+    def _execute(
+        self,
+        cmd: list[str],
+        options,
+        run_type: RunType,
+        native_path: Path | None = None,
+    ) -> InsoRunReport:
+        try:
+            result = self._run_command(cmd, options.execution_timeout)
+        except subprocess.TimeoutExpired as error:
+            stdout, stderr = self._text(error.output), self._text(error.stderr)
+            if native_path is not None and native_path.exists():
+                report = self._native_report(native_path, options)
+            elif options.verbose:
+                report = InsoRunReport(plan_end=0)
+            else:
+                report = TapParser().parse(stdout, require_tap=True)
+            report.complete = False
+            report.run_error = RunError(
+                kind="timeout",
+                message=(
+                    f"Inso CLI timed out after {options.execution_timeout} seconds."
+                    + (f" {report.run_error.message}" if report.run_error else "")
+                ),
+            )
+        else:
+            stdout, stderr = result.stdout, result.stderr
+            if native_path is not None and native_path.exists():
+                report = self._native_report(native_path, options)
+            else:
+                report = (
+                    InsoRunReport(plan_end=0)
+                    if options.verbose
+                    else TapParser().parse(stdout, require_tap=run_type == RunType.TEST)
+                )
+                if native_path is not None:
+                    # Inso 13.3.1's bail path exits zero before saveReport().
+                    if (
+                        options.bail
+                        and not options.verbose
+                        and result.returncode == 0
+                        and report.failed_count
+                        and not report.run_error
+                    ):
+                        report.complete = False
+                    else:
+                        report.complete = False
+                        report.run_error = RunError(
+                            kind="protocol",
+                            message="Inso did not write its native report.",
+                        )
+            if (
+                result.returncode != 0
+                and not report.run_error
+                and (result.returncode != 1 or not report.failed_count)
+            ):
+                report.complete = False
+                report.run_error = RunError(
+                    kind="execution",
+                    message=f"Inso CLI exited with code {result.returncode}.",
+                )
+        report.raw_output = stdout + stderr
+        report.run_type = run_type
+        report.target_name = options.identifier
+        return report
 
     def run_collection(self, options: InsoCollectionOptions) -> InsoRunReport:
+        headers = validate_capture_headers(options.capture_response_headers)
         cmd = self._base_cmd(RunType.COLLECTION, options.working_dir)
         self._apply_common_options(cmd, options)
         self._apply_collection_options(cmd, options)
-        if options.identifier:
-            cmd.extend(["--", options.identifier])
-
-        try:
-            result = self._run_command(cmd, options.execution_timeout)
-        except subprocess.TimeoutExpired:
-            report = InsoRunReport(plan_end=1, run_type=RunType.COLLECTION)
-            report.target_name = options.identifier
-            report.raw_output = (
-                f"Inso CLI timed out after {options.execution_timeout} seconds"
+        native = self._supports_native_report()
+        if not native and (options.verbose or headers):
+            raise ValueError(
+                "Native collection reporting is required for verbose or response header capture."
             )
-            report.results.append(
-                InsoResult(
-                    id=1,
-                    status=InsoStatus.FAIL,
-                    description=f"Inso CLI Error: Command timed out after {options.execution_timeout} seconds",
-                )
-            )
-            return report
-
-        full_output = result.stdout + result.stderr
-
-        parser = TapParser()
-        report = parser.parse(result.stdout)
-        report.raw_output = full_output
-        report.run_type = RunType.COLLECTION
-        report.target_name = options.identifier
-
-        self._add_error_result_if_needed(report, result)
-
-        return report
+        with tempfile.TemporaryDirectory(prefix="insomnia-run-private-") as directory:
+            path = Path(directory) / "native.json" if native else None
+            if path is not None:
+                cmd.extend(["--output", str(path)])
+                if headers:
+                    cmd.extend(["--includeFullData", "redact", "--acceptRisk"])
+            if options.identifier:
+                cmd.extend(["--", options.identifier])
+            return self._execute(cmd, options, RunType.COLLECTION, path)
 
     def run_test(self, options: InsoTestOptions) -> InsoRunReport:
+        if options.verbose:
+            raise ValueError("verbose is unsafe for legacy test TAP reporting.")
         cmd = self._base_cmd(RunType.TEST, options.working_dir)
         self._apply_common_options(cmd, options)
         self._apply_test_options(cmd, options)
         if options.identifier:
             cmd.extend(["--", options.identifier])
 
-        try:
-            result = self._run_command(cmd, options.execution_timeout)
-        except subprocess.TimeoutExpired:
-            report = InsoRunReport(plan_end=1, run_type=RunType.TEST)
-            report.target_name = options.identifier
-            report.raw_output = (
-                f"Inso CLI timed out after {options.execution_timeout} seconds"
-            )
-            report.results.append(
-                InsoResult(
-                    id=1,
-                    status=InsoStatus.FAIL,
-                    description=f"Inso CLI Error: Command timed out after {options.execution_timeout} seconds",
-                )
-            )
-            return report
-
-        full_output = result.stdout + result.stderr
-
-        parser = TapParser()
-        report = parser.parse(result.stdout, require_tap=True)
-        report.raw_output = full_output
-        report.run_type = RunType.TEST
-        report.target_name = options.identifier
-
-        self._add_error_result_if_needed(report, result)
-
-        return report
+        return self._execute(cmd, options, RunType.TEST)

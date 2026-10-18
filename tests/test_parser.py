@@ -124,7 +124,9 @@ def test_zero_plan_and_skip_directive():
 def test_missing_or_incomplete_tap_is_a_report_failure(output):
     report = TapParser().parse(output, require_tap=True)
 
-    assert report.failed_count > 0
+    assert report.exit_code == 3
+    assert report.run_error.kind == "protocol"
+    assert not report.complete
     assert [result.id for result in report.results] == list(
         range(1, report.total_tests + 1)
     )
@@ -149,7 +151,8 @@ def test_absent_tap_is_neutral_unless_required(output):
 def test_bailout_fails_even_after_a_complete_plan_without_exposing_reason(output):
     report = TapParser().parse(output)
 
-    assert report.failed_count > 0
+    assert report.exit_code == 3
+    assert report.run_error.kind == "protocol"
     assert all("PRIVATE_BAILOUT_REASON" not in r.description for r in report.results)
 
 

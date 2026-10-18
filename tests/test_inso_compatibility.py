@@ -143,10 +143,10 @@ def test_real_inso_missing_workspace_is_a_report_failure(runtime, tmp_path):
         check=False,
     )
 
-    assert result.returncode == 1
+    assert result.returncode == 3
     payload = json.loads(result.stderr)
-    assert payload["results"][0]["status"] == "FAIL"
-    assert "Inso CLI Error" in payload["results"][0]["description"]
+    assert payload["run_error"]["kind"] == "protocol"
+    assert not payload["complete"]
 
 
 def test_real_inso_iterations_have_unique_ids(runtime):

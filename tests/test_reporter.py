@@ -8,6 +8,8 @@ from insomnia_run.models import (
     InsoStatus,
     InsoResult,
     InsoRunReport,
+    RequestExecution,
+    RunError,
 )
 
 
@@ -489,7 +491,7 @@ def test_hostile_long_reports_fit_comments_without_losing_full_details(
     assert "Insomnia Collection Failed" in markdown
     assert "250 more results omitted" in markdown
     result_lines = [
-        line for line in markdown.splitlines() if line.startswith("- \u2705 **")
+        line for line in markdown.splitlines() if line.startswith("- \u274c **")
     ]
     assert len(result_lines) == 50
     assert all(len(line.encode("utf-8")) < 600 for line in result_lines)
@@ -587,3 +589,304 @@ class TestReporterJUnitGeneration:
 
         assert suite.attrib["tests"] == "0"
         assert suite.findall("testcase") == []
+
+
+def test_native_requests_are_grouped_by_occurrence_with_failures_first():
+    report = InsoRunReport(
+        source="native",
+        plan_end=3,
+        executions=[
+            RequestExecution(
+                id=1,
+                request_id="same",
+                name="GET users",
+                iteration=0,
+                status_code=200,
+                duration_seconds=0.125,
+            ),
+            RequestExecution(
+                id=2,
+                request_id="same",
+                name="GET users",
+                iteration=1,
+                status_code=503,
+                status="Unavailable",
+                duration_seconds=1.25,
+            ),
+        ],
+        results=[
+            InsoResult(
+                id=1,
+                status=InsoStatus.PASS,
+                description="first request",
+                execution_id=1,
+            ),
+            InsoResult(
+                id=2, status=InsoStatus.PASS, description="status check", execution_id=2
+            ),
+            InsoResult(
+                id=3,
+                status=InsoStatus.FAIL,
+                description="body check",
+                execution_id=2,
+                message="expected a JSON body",
+                duration_seconds=0.002,
+            ),
+        ],
+    )
+
+    markdown = Reporter().generate_markdown(report)
+
+    assert markdown.index("Execution 2") < markdown.index("Execution 1")
+    assert markdown.index("body check") < markdown.index("status check")
+    assert "HTTP 503" in markdown
+    assert "1.250 s" in markdown
+    assert "Iteration 2" in markdown
+    assert "expected a JSON body" in markdown
+    assert "**Completed requests:** 2" in markdown
+    assert "requests executed" not in markdown
+    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    details = dom.findall(".//details")
+    assert len(details) == 1
+    assert "Execution 1" in "".join(details[0].find("summary").itertext())
+    assert "first request" in "".join(details[0].itertext())
+
+
+def test_request_without_assertions_and_unattributed_results_are_not_lost():
+    report = InsoRunReport(
+        source="native",
+        plan_end=1,
+        executions=[RequestExecution(id=1, name="health endpoint", status_code=204)],
+        results=[
+            InsoResult(
+                id=1, status=InsoStatus.FAIL, description="unattributed assertion"
+            )
+        ],
+    )
+
+    markdown = Reporter().generate_markdown(report)
+
+    assert "health endpoint" in markdown
+    assert "unattributed assertion" in markdown
+    assert "No assertions recorded" in markdown
+    assert "0.000 s" not in markdown
+
+
+@pytest.mark.parametrize("prior_failure", [False, True])
+def test_run_error_and_incomplete_evidence_remain_visible(prior_failure):
+    report = InsoRunReport(
+        plan_end=int(prior_failure),
+        complete=False,
+        run_error=RunError(kind="timeout", message="execution exceeded its deadline"),
+        results=[
+            InsoResult(id=1, status=InsoStatus.FAIL, description="earlier assertion")
+        ]
+        if prior_failure
+        else [],
+    )
+
+    markdown = Reporter().generate_markdown(report)
+
+    assert "Insomnia Collection Failed" in markdown
+    assert "### Run Error" in markdown
+    assert "execution exceeded its deadline" in markdown
+    assert "Incomplete" in markdown
+    assert "completed results only" in markdown
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "error: mismatch | ACTUAL: a | EXPECTED: b",
+        "error: mismatch | ACTUAL: a | EXPECTED: b | EXPECTED: c",
+        "<img src=x>\n</code></pre></details>\n\n# forged\n![x](https://example.invalid/x)",
+    ],
+)
+def test_failure_messages_remain_literal_without_guessing_actual_expected(message):
+    report = InsoRunReport(
+        plan_end=1,
+        results=[
+            InsoResult(
+                id=1, status=InsoStatus.FAIL, description="assertion", message=message
+            )
+        ],
+    )
+
+    markdown = Reporter().generate_markdown(report)
+    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+
+    assert dom.find(".//pre/code").text == message
+    assert dom.findall(".//h1") == dom.findall(".//img") == dom.findall(".//a") == []
+    assert "**Actual:**" not in markdown
+    assert "**Expected:**" not in markdown
+
+
+def test_hostile_request_metadata_and_headers_are_literal():
+    name = "</summary></details><img src=x> ` @ghost #131"
+    report = InsoRunReport(
+        source="native",
+        plan_end=1,
+        executions=[
+            RequestExecution(
+                id=1,
+                name=name,
+                status_code=200,
+                status="<script>forged</script>",
+                headers={"X-Request-ID": "</code></pre><img src=x>\n# forged"},
+            )
+        ],
+        results=[
+            InsoResult(
+                id=1, status=InsoStatus.PASS, description="passes", execution_id=1
+            )
+        ],
+    )
+
+    markdown = Reporter().generate_markdown(report)
+    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+
+    assert dom.find(".//summary/code").text == name
+    assert len(dom.findall(".//details")) == 1
+    assert (
+        dom.findall(".//img") == dom.findall(".//script") == dom.findall(".//h1") == []
+    )
+    assert "X-Request-ID" in "".join(dom.itertext())
+
+
+def test_markdown_byte_budget_keeps_complete_blocks_and_unabridged_artifacts(tmp_path):
+    reason = "<&\U0001f600" * 2000
+    report = InsoRunReport(
+        source="native",
+        plan_end=300,
+        raw_output="&" * 9000,
+        executions=[RequestExecution(id=1, name="large request", duration_seconds=0.5)],
+        results=[
+            InsoResult(
+                id=index,
+                status=InsoStatus.FAIL,
+                description=f"assertion-{index}",
+                message=reason,
+                execution_id=1,
+                duration_seconds=0.001,
+            )
+            for index in range(1, 301)
+        ],
+    )
+    before = report.model_dump_json()
+    reporter = Reporter()
+
+    markdown = reporter.generate_markdown(report, include_raw_output=True)
+    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    artifact = tmp_path / "junit.xml"
+    artifact.write_text(reporter.generate_junit(report), encoding="utf-8")
+    suite = ElementTree.parse(artifact).getroot()
+
+    assert len(markdown.encode("utf-8")) <= 60000
+    assert "more results omitted" in markdown
+    assert "300 test results" in markdown
+    assert len(dom.findall(".//pre")) == len(dom.findall(".//pre/code"))
+    assert len(suite.findall("testcase")) == 300
+    assert suite.findall("testcase")[-1].find("failure").text == reason
+    assert report.model_dump_json() == before
+
+
+def test_junit_preserves_failure_details_timings_and_separate_run_error(tmp_path):
+    report = InsoRunReport(
+        plan_end=2,
+        target_name="suite",
+        results=[
+            InsoResult(
+                id=1,
+                status=InsoStatus.FAIL,
+                description="assertion",
+                message="actual < expected\x00",
+                duration_seconds=0.125,
+            ),
+            InsoResult(
+                id=2,
+                status=InsoStatus.SKIP,
+                description="not applicable",
+                message="disabled for this environment",
+                duration_seconds=0,
+            ),
+        ],
+        run_error=RunError(
+            kind="execution", message="script failed <after> assertion\x1b"
+        ),
+    )
+    artifact = tmp_path / "junit.xml"
+
+    artifact.write_text(Reporter().generate_junit(report), encoding="utf-8")
+    suite = ElementTree.parse(artifact).getroot()
+    cases = suite.findall("testcase")
+
+    assert suite.attrib["tests"] == "3"
+    assert suite.attrib["failures"] == "1"
+    assert suite.attrib["errors"] == "1"
+    assert suite.attrib["skipped"] == "1"
+    assert cases[0].attrib["time"] == "0.125"
+    assert cases[0].find("failure").text == "actual < expected\ufffd"
+    assert cases[0].find("failure").attrib["message"] == "actual < expected\ufffd"
+    assert cases[1].attrib["time"] == "0"
+    assert cases[1].find("skipped").attrib["message"] == "disabled for this environment"
+    assert cases[2].find("error").attrib["type"] == "execution"
+    assert cases[2].find("error").text == "script failed <after> assertion\ufffd"
+    assert "time" not in cases[2].attrib
+
+
+def test_junit_does_not_invent_missing_timings():
+    report = InsoRunReport(
+        plan_end=1,
+        results=[
+            InsoResult(
+                id=1,
+                status=InsoStatus.PASS,
+                description="unknown duration",
+            )
+        ],
+    )
+
+    suite = ElementTree.fromstring(Reporter().generate_junit(report))
+
+    assert "time" not in suite.find("testcase").attrib
+    assert "time" not in suite.attrib
+
+
+def test_incomplete_success_evidence_is_not_labelled_passed():
+    report = InsoRunReport(
+        plan_end=1,
+        complete=False,
+        results=[
+            InsoResult(
+                id=1,
+                status=InsoStatus.PASS,
+                description="completed assertion",
+            )
+        ],
+    )
+
+    markdown = Reporter().generate_markdown(report)
+
+    assert "Insomnia Collection Incomplete" in markdown
+    assert "Insomnia Collection Passed" not in markdown
+
+
+@pytest.mark.parametrize("duration", [123.123456789, 0.0000000001])
+def test_junit_durations_preserve_measured_precision(duration):
+    report = InsoRunReport(
+        plan_end=1,
+        results=[
+            InsoResult(
+                id=1,
+                status=InsoStatus.PASS,
+                description="timed assertion",
+                duration_seconds=duration,
+            )
+        ],
+    )
+
+    suite = ElementTree.fromstring(Reporter().generate_junit(report))
+
+    assert float(suite.find("testcase").attrib["time"]) == duration
+    assert float(suite.attrib["time"]) == duration
+    assert "e" not in suite.find("testcase").attrib["time"].lower()

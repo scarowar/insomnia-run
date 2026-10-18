@@ -1,9 +1,18 @@
 import importlib.metadata
-from pathlib import Path
+import os
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+import threading
+import time
+from urllib.parse import unquote, urlsplit
 import typer
 from typing import Optional
 
-from .models import InsoCollectionOptions, InsoTestOptions
+from .models import InsoCollectionOptions, InsoRunReport, InsoStatus, InsoTestOptions
+from .native import validate_capture_headers
+from .privacy import Redactor
+from .publication import failure_annotations
+from .report_files import validate_destination, write_report_file
 from .runner import InsoRunner
 from .reporter import Reporter
 
@@ -14,6 +23,7 @@ app = typer.Typer(
 )
 
 SUPPORTED_OUTPUT_FORMATS = {"json"}
+_PROGRESS_INTERVAL_SECONDS = 15
 
 
 def _get_version() -> str:
@@ -51,49 +61,189 @@ def _emit_machine_readable_output(
         typer.echo(json_report, err=True)
 
 
-def _write_junit_output(
-    reporter: Reporter,
-    report,
-    junit_output: Optional[str],
-) -> None:
-    if not junit_output:
-        return
+def _validate_report_destinations(destinations: dict[str, Optional[str]]) -> None:
+    for name, path in destinations.items():
+        if path is None:
+            continue
+        others = [
+            other
+            for other_name, other in destinations.items()
+            if other_name != name and other is not None
+        ]
+        try:
+            validate_destination(path, other_paths=others)
+        except (OSError, ValueError) as error:
+            raise typer.BadParameter(
+                f"Unable to write {name} report. Check destination paths and permissions."
+            ) from error
 
-    output_path = Path(junit_output)
+
+@contextmanager
+def _execution_progress(enabled: bool, *, err: bool) -> Iterator[None]:
+    if not enabled:
+        yield
+        return
+    started = time.monotonic()
+    stopped = threading.Event()
+
+    def heartbeat() -> None:
+        while not stopped.wait(_PROGRESS_INTERVAL_SECONDS):
+            typer.echo(
+                f"Inso is running ({int(time.monotonic() - started)}s elapsed).",
+                err=err,
+            )
+
+    typer.echo("Starting Inso execution.", err=err)
+    worker = threading.Thread(target=heartbeat, name="insomnia-progress", daemon=True)
+    worker.start()
     try:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(reporter.generate_junit(report), encoding="utf-8")
+        yield
+    finally:
+        stopped.set()
+        worker.join()
+        typer.echo(
+            f"Inso execution finished ({int(time.monotonic() - started)}s elapsed).",
+            err=err,
+        )
+
+
+def _execute_report(
+    operation: Callable[[], InsoRunReport], *, progress: bool, json_stderr: bool
+) -> InsoRunReport:
+    try:
+        with _execution_progress(progress, err=not json_stderr):
+            return operation()
     except OSError as error:
         typer.echo(
-            "Unable to write JUnit report. Check the destination path and permissions.",
+            "Unable to execute Inso CLI. Check installation and executable permissions.",
             err=True,
         )
         raise typer.Exit(code=2) from error
+    except ValueError as error:
+        raise typer.BadParameter(
+            "Invalid Inso configuration. Check command options."
+        ) from error
+
+
+def _report_redactor(
+    values: Optional[list[str]],
+    *,
+    env_vars: Optional[list[str]] = None,
+    proxies: tuple[Optional[str], ...] = (),
+) -> Redactor:
+    secrets = list(values or [])
+    proxies += tuple(
+        os.environ.get(name)
+        for name in (
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+        )
+    )
+    for proxy in proxies:
+        if not proxy:
+            continue
+        try:
+            parsed = urlsplit(proxy)
+            secrets.extend(
+                unquote(value) for value in (parsed.username, parsed.password) if value
+            )
+        except ValueError:
+            continue
+    return Redactor(values=secrets, env_vars=env_vars)
 
 
 def _finalize_report(
-    reporter: Reporter,
-    report,
+    report: InsoRunReport,
     *,
     workflow_url: Optional[str],
     include_raw_output: bool,
-    junit_output: Optional[str],
     output_format: Optional[str],
+    destinations: dict[str, Optional[str]],
+    redactor: Redactor,
+    annotations: bool,
 ) -> None:
-    markdown = reporter.generate_markdown(
-        report,
-        workflow_url=workflow_url,
-        include_raw_output=include_raw_output,
-    )
-
-    print(markdown)
-    _write_junit_output(reporter, report, junit_output)
+    reporter = Reporter()
+    report = redactor.redact_report(report)
     _emit_machine_readable_output(
         report, output_format, include_raw_output=include_raw_output
     )
+    write_failed = False
+    try:
+        markdown = reporter.generate_markdown(
+            report,
+            workflow_url=redactor.redact(workflow_url) if workflow_url else None,
+            include_raw_output=include_raw_output,
+        )
+    except (OSError, ValueError):
+        markdown = "Unable to generate Markdown report."
+        write_failed = True
+    typer.echo(markdown, nl=False)
+    serializers: dict[str, Callable[[], str]] = {
+        "JUnit": lambda: reporter.generate_junit(report),
+        "JSON": lambda: (
+            report.model_dump_json(
+                indent=2, exclude=None if include_raw_output else {"raw_output"}
+            )
+            + "\n"
+        ),
+        "Markdown": lambda: markdown,
+        "raw": lambda: report.raw_output or "",
+    }
+    files_failed = _write_report_files(
+        destinations, serializers, json_stderr=bool(output_format)
+    )
+    if annotations:
+        _emit_annotations(report, err=not bool(output_format))
+    if write_failed or files_failed:
+        raise typer.Exit(code=2)
+    if report.exit_code:
+        raise typer.Exit(code=report.exit_code)
 
-    if report.failed_count > 0:
-        raise typer.Exit(code=1)
+
+def _write_report_files(
+    destinations: dict[str, Optional[str]],
+    serializers: dict[str, Callable[[], str]],
+    *,
+    json_stderr: bool,
+) -> bool:
+    write_failed = False
+    for name, path in destinations.items():
+        if path is None:
+            continue
+        try:
+            write_report_file(
+                path,
+                serializers[name](),
+                other_paths=[
+                    other
+                    for other_name, other in destinations.items()
+                    if other_name != name and other is not None
+                ],
+            )
+        except (OSError, ValueError):
+            typer.echo(
+                f"Unable to write {name} report. Check destination paths and permissions.",
+                err=not json_stderr,
+            )
+            write_failed = True
+    return write_failed
+
+
+def _emit_annotations(report: InsoRunReport, *, err: bool) -> None:
+    messages = [report.run_error.message] if report.run_error else []
+    messages.extend(
+        f"{result.description}: {result.message}"
+        if result.message
+        else result.description
+        for result in report.results
+        if result.status == InsoStatus.FAIL
+    )
+    for command in failure_annotations(messages):
+        typer.echo(command, err=err)
 
 
 @app.callback(invoke_without_command=True)
@@ -197,15 +347,56 @@ def run_collection(  # NOSONAR - CLI command requires many options
         "--junit-output",
         help="Write a JUnit XML report to this path.",
     ),
+    json_output: Optional[str] = typer.Option(
+        None, "--json-output", help="Write a normalized JSON report to this path."
+    ),
+    markdown_output: Optional[str] = typer.Option(
+        None, "--markdown-output", help="Write a Markdown report to this path."
+    ),
+    raw_output_file: Optional[str] = typer.Option(
+        None, "--raw-output-file", help="Write redacted raw Inso output to this path."
+    ),
+    redact_value: Optional[list[str]] = typer.Option(
+        None, "--redact-value", help="Additional value to redact (repeatable)."
+    ),
+    capture_response_headers: Optional[str] = typer.Option(
+        None,
+        "--capture-response-headers",
+        help="Comma-separated response header names to retain.",
+    ),
+    progress: bool = typer.Option(
+        False, "--progress", help="Show execution stages and elapsed-time heartbeats."
+    ),
+    annotations: bool = typer.Option(
+        False, "--annotations", help="Emit bounded GitHub failure annotations."
+    ),
 ):
     """Run Insomnia collections and generate a markdown report."""
 
     _validate_output_format(output_format)
+    destinations = {
+        "JUnit": junit_output,
+        "JSON": json_output,
+        "Markdown": markdown_output,
+        "raw": raw_output_file,
+    }
+    _validate_report_destinations(destinations)
 
     if env_var:
         for pair in env_var:
             if "=" not in pair:
                 raise typer.BadParameter("Invalid env-var format. Expected KEY=VALUE.")
+
+    try:
+        headers = validate_capture_headers(
+            capture_response_headers.split(",")
+            if capture_response_headers and capture_response_headers.strip()
+            else []
+        )
+    except ValueError as error:
+        raise typer.BadParameter(
+            "Response header names must be explicit and non-credential-bearing."
+        ) from error
 
     options = InsoCollectionOptions(
         working_dir=working_dir,
@@ -227,26 +418,26 @@ def run_collection(  # NOSONAR - CLI command requires many options
         data_folders=data_folders,
         verbose=verbose,
         execution_timeout=execution_timeout,
+        capture_response_headers=headers,
     )
 
     runner = InsoRunner()
-    try:
-        report = runner.run_collection(options)
-    except OSError as error:
-        typer.echo(
-            "Unable to execute Inso CLI. Check installation and executable permissions.",
-            err=True,
-        )
-        raise typer.Exit(code=2) from error
+    report = _execute_report(
+        lambda: runner.run_collection(options),
+        progress=progress,
+        json_stderr=bool(output_format),
+    )
 
-    reporter = Reporter()
     _finalize_report(
-        reporter,
         report,
         workflow_url=workflow_url,
         include_raw_output=include_raw_output,
-        junit_output=junit_output,
         output_format=output_format,
+        destinations=destinations,
+        redactor=_report_redactor(
+            redact_value, env_vars=env_var, proxies=(http_proxy, https_proxy)
+        ),
+        annotations=annotations,
     )
 
 
@@ -317,10 +508,39 @@ def run_test(  # NOSONAR - CLI command requires many options
         "--junit-output",
         help="Write a JUnit XML report to this path.",
     ),
+    json_output: Optional[str] = typer.Option(
+        None, "--json-output", help="Write a normalized JSON report to this path."
+    ),
+    markdown_output: Optional[str] = typer.Option(
+        None, "--markdown-output", help="Write a Markdown report to this path."
+    ),
+    raw_output_file: Optional[str] = typer.Option(
+        None, "--raw-output-file", help="Write redacted raw Inso output to this path."
+    ),
+    redact_value: Optional[list[str]] = typer.Option(
+        None, "--redact-value", help="Additional value to redact (repeatable)."
+    ),
+    progress: bool = typer.Option(
+        False, "--progress", help="Show execution stages and elapsed-time heartbeats."
+    ),
+    annotations: bool = typer.Option(
+        False, "--annotations", help="Emit bounded GitHub failure annotations."
+    ),
 ):
     """Run Insomnia unit tests and generate a markdown report."""
 
     _validate_output_format(output_format)
+    destinations = {
+        "JUnit": junit_output,
+        "JSON": json_output,
+        "Markdown": markdown_output,
+        "raw": raw_output_file,
+    }
+    _validate_report_destinations(destinations)
+    if verbose:
+        raise typer.BadParameter(
+            "Legacy run-test does not support --verbose because script logs can spoof TAP results."
+        )
 
     options = InsoTestOptions(
         working_dir=working_dir,
@@ -340,23 +560,20 @@ def run_test(  # NOSONAR - CLI command requires many options
     )
 
     runner = InsoRunner()
-    try:
-        report = runner.run_test(options)
-    except OSError as error:
-        typer.echo(
-            "Unable to execute Inso CLI. Check installation and executable permissions.",
-            err=True,
-        )
-        raise typer.Exit(code=2) from error
+    report = _execute_report(
+        lambda: runner.run_test(options),
+        progress=progress,
+        json_stderr=bool(output_format),
+    )
 
-    reporter = Reporter()
     _finalize_report(
-        reporter,
         report,
         workflow_url=workflow_url,
         include_raw_output=include_raw_output,
-        junit_output=junit_output,
         output_format=output_format,
+        destinations=destinations,
+        redactor=_report_redactor(redact_value, proxies=(http_proxy, https_proxy)),
+        annotations=annotations,
     )
 
 

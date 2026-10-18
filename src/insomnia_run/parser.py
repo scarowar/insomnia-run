@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass, field
 
-from .models import InsoResult, InsoRunReport, InsoStatus
+from .models import InsoResult, InsoRunReport, InsoStatus, RunError
 
 
 @dataclass
@@ -50,16 +50,14 @@ class _TapState:
     def finish(self, *, require_tap: bool, bailed_out: bool) -> InsoRunReport:
         self.finish_block()
         if bailed_out or self.invalid_tap or (require_tap and not self.saw_plan):
-            self.report.results.append(
-                InsoResult(
-                    id=len(self.report.results) + 1,
-                    status=InsoStatus.FAIL,
-                    description=(
-                        "Inso CLI Error: TAP bailout."
-                        if bailed_out
-                        else "Inso CLI Error: Missing or incomplete TAP output."
-                    ),
-                )
+            self.report.complete = False
+            self.report.run_error = RunError(
+                kind="protocol",
+                message=(
+                    "Inso CLI Error: TAP bailout."
+                    if bailed_out
+                    else "Inso CLI Error: Missing or incomplete TAP output."
+                ),
             )
         self.report.plan_end = max(self.planned_tests, len(self.report.results))
         return self.report
@@ -85,8 +83,28 @@ class TapParser:
     def parse(self, output: str, *, require_tap: bool = False) -> InsoRunReport:
         state = _TapState()
         bailed_out = False
-        for line in output.strip().split("\n"):
-            line = line.strip()
+        previous: InsoResult | None = None
+        diagnostic: list[str] | None = None
+        indent = ""
+        for raw_line in output.splitlines():
+            if diagnostic is not None:
+                if raw_line == indent + "...":
+                    if previous is not None:
+                        previous.message = "\n".join(diagnostic)
+                    diagnostic = None
+                    previous = None
+                    continue
+                if raw_line.startswith(indent):
+                    diagnostic.append(raw_line[len(indent) :])
+                    continue
+                diagnostic = None
+                previous = None
+            start = re.fullmatch(r"([ \t]+)---", raw_line)
+            if start and previous is not None and previous.status == InsoStatus.FAIL:
+                indent, diagnostic = start[1], []
+                continue
+            previous = None
+            line = raw_line.strip()
 
             if re.search(self.BAILOUT, line, re.IGNORECASE):
                 bailed_out = True
@@ -107,5 +125,6 @@ class TapParser:
                 # Collection requests each emit their own TAP plan and restart IDs.
                 result = self._result(match, len(state.report.results) + 1)
                 state.add_result(int(match.group(2)), result)
+                previous = result
 
         return state.finish(require_tap=require_tap, bailed_out=bailed_out)

@@ -62,10 +62,14 @@ def test_cli_errors_keep_arbitrary_diagnostics_only_in_opt_in_raw_output(
 
     result = CliRunner().invoke(app, args)
 
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == 3, result.output
     payload = json.loads(result.stderr)
-    assert any(r["status"] == "FAIL" for r in payload["results"])
+    assert payload["run_error"]["kind"] in {"execution", "protocol"}
+    assert payload["complete"] is False
+    assert len(payload["results"]) == int(has_tap)
+    assert all(r["status"] == "PASS" for r in payload["results"])
     assert all(secret not in r["description"] for r in payload["results"])
+    assert secret not in payload["run_error"]["message"]
     assert (secret in result.stdout) is include_raw
     assert (secret in result.stderr) is include_raw
     assert ("raw_output" in payload) is include_raw
@@ -101,8 +105,11 @@ def test_successful_process_with_missing_or_incomplete_tap_fails_cli(
         app, [command, "-w", "fixture", "--output-format", "json"]
     )
 
-    assert result.exit_code == 1, result.output
-    assert any(r["status"] == "FAIL" for r in json.loads(result.stderr)["results"])
+    assert result.exit_code == 3, result.output
+    payload = json.loads(result.stderr)
+    assert payload["run_error"]["kind"] == "protocol"
+    assert payload["complete"] is False
+    assert [result["status"] for result in payload["results"]] == ["PASS"]
 
 
 def test_successful_collection_without_assertions_has_a_neutral_empty_report(
@@ -125,8 +132,11 @@ def test_test_suite_requires_tap_even_when_the_process_exits_successfully(fake_i
         app, ["run-test", "-w", "fixture", "--output-format", "json"]
     )
 
-    assert result.exit_code == 1, result.output
-    assert any(r["status"] == "FAIL" for r in json.loads(result.stderr)["results"])
+    assert result.exit_code == 3, result.output
+    payload = json.loads(result.stderr)
+    assert payload["results"] == []
+    assert payload["run_error"]["kind"] == "protocol"
+    assert payload["complete"] is False
 
 
 def test_subprocess_replaces_invalid_utf8_without_losing_valid_unicode():
