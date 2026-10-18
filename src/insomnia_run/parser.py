@@ -115,10 +115,11 @@ class TapParser:
         state = _TapState()
         bailed_out = False
         diagnostics = _TapDiagnostics()
-        for raw_line in output.splitlines():
+        for raw_line in re.split(r"\r\n|\r|\n", output):
             if diagnostics.consume(raw_line):
                 continue
-            line = raw_line.strip()
+            # Mocha TAP12 diagnostics are indented; only column-zero lines are protocol.
+            line = raw_line.rstrip()
 
             if re.search(self.BAILOUT, line, re.IGNORECASE):
                 bailed_out = True

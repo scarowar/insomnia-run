@@ -210,3 +210,39 @@ def test_description_starting_with_a_hyphen_is_preserved():
 
     assert report.failed_count == 0
     assert report.results[0].description == "-prefixed assertion"
+
+
+@pytest.mark.parametrize(
+    "output,expected_results",
+    [
+        ("ok 1 - real result\n  1..1\n", 1),
+        ("1..1\n  ok 1 - not a result\n", 0),
+        ("  TAP version 13\n  1..1\n  ok 1 - not a result\n", 0),
+        ("TAP version 13\n1..2\nok 1 - real result\n\t1..1\n", 1),
+    ],
+)
+def test_indented_protocol_cannot_complete_missing_top_level_evidence(
+    output, expected_results
+):
+    report = TapParser().parse(output, require_tap=True)
+
+    assert report.exit_code == 3
+    assert not report.complete
+    assert report.run_error.kind == "protocol"
+    assert report.total_tests == expected_results
+
+
+@pytest.mark.parametrize(
+    "protocol",
+    ["Bail out!", "ok 2 - extra", "not ok 2 - extra", "1..0", "1..2", "TAP version 13"],
+)
+def test_top_level_protocol_errors_after_diagnostics_still_fail_closed(protocol):
+    report = TapParser().parse(
+        "not ok 1 Suite fails\n  Error: ordinary assertion failure\n"
+        f"{protocol}\n# tests 1\n# pass 0\n# fail 1\n1..1\n",
+        require_tap=True,
+    )
+
+    assert report.exit_code == 3
+    assert not report.complete
+    assert report.run_error.kind == "protocol"
