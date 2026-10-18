@@ -104,9 +104,10 @@ def test_setup_uv_pins_installed_uv_version():
         if not step.get("uses", "").startswith("astral-sh/setup-uv@"):
             continue
 
-        assert step.get("with", {}).get("version") == "0.11.15", (
+        assert step.get("with", {}).get("version") == "0.13.1", (
             f"{path}:{job_name} setup-uv does not pin uv version"
         )
+        assert step["with"].get("checksum"), f"{path}:{job_name} uv digest missing"
 
 
 def test_ci_checks_lockfile_freshness_before_installing():
