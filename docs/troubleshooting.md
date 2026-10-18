@@ -2,151 +2,118 @@
 
 ## Collection/Test Not Found
 
-**Error:** `No collection/test suite found`
+Check that `identifier` matches the intended collection/suite and that the workspace contains it. Use an explicit export path such as `insomnia-export.yaml`. For legacy `.insomnia/Workspace/` data, pass the parent repository root, not `.insomnia`.
 
-**Fix:**
-- Verify `working-directory` path is correct
-- Check `identifier` matches exactly (case-sensitive)
-- For legacy Git Sync data under `.insomnia/Workspace/`, pass the parent repository root (`working-directory: .`), not `.insomnia`
-- For a YAML export or a file-based Git Sync project, pass the explicit file path, such as `working-directory: insomnia-export.yaml`
+A missing target is an execution/configuration problem, not an assertion failure. Keep the parsed run-error details and installation diagnostics when reporting the issue; do not attach credentials or raw exports.
 
 ## Environment Not Found
 
-**Error:** `No environment identified`
-
-**Fix:**
-- Check environment name matches exactly
-- Ensure environment is included in export file
+Check the name/ID and whether the environment is included in the export. Runner `env:` values do not automatically populate Insomnia environments. Collections need explicit `env-var` mappings; legacy suites need an Insomnia environment or the supported vault integration.
 
 ## PR Comments Not Appearing
 
-**Checklist:**
-- For pull requests, use the `pull_request` event and set `permissions: pull-requests: write`
-- For manual, deployment, scheduled, or push workflows, set `comment-issue-number`
-- For issue comments, set `permissions: issues: write`
-- `github-token` is provided or the default token has the required permission
+Check `comment-status` before changing permissions:
+
+- `skipped`: comments are disabled, no target/token is available, or the PR is from a fork/Dependabot.
+- `warning`: publication failed. Check instance-token permissions and API availability. Tests still follow their execution result.
+- `stale`: a newer run already owns the comment.
+- `updated` or `unchanged`: the existing comment was reused; a new comment is not expected.
+
+Use `pull-requests: write` for PR comments and `issues: write` for explicit issue comments. Outside PR events, set `comment-issue-number`. Multiple invocations in one job need distinct `comment-tag` values. Serialize matching writers with `cancel-in-progress: false`; see [comment concurrency](reference/inputs.md#comment-identity-and-concurrency).
 
 ## Secrets Not Working
 
-**Fix:**
-- For collections with URL-safe secrets, map them with `env-var`:
-  ```yaml
-  with:
-    env-var: |
-      API_KEY=${{ secrets.API_KEY }}
-  ```
-- For arbitrary values, use the [secret encoding step](guides/secrets.md#collection-overrides). Inso decodes `+`, `%`, and `&`; direct mappings can change credentials containing those characters.
-- Access in Insomnia as `{{ _.API_KEY }}`
-- A runner `env:` block alone does not populate Insomnia environments. For legacy test suites, use an Insomnia environment and Inso's supported external vault integration.
+Inso URL-form decoding turns `+` into a space, decodes percent escapes, and treats `&` as a separator. Use the [encoding step](guides/secrets.md#collection-overrides) for arbitrary values. Access collection variables as `{{ _.API_KEY }}`.
 
-## SSL Certificate Errors
+The `env-var` input is collection-only. For legacy suites, select an Insomnia environment and use the supported vault integration. Add sensitive values to `redact-values` when they are not already known overrides. Redaction does not protect process listings; see [report privacy](guides/secrets.md#report-output).
 
-For self-signed certificates (dev only):
+## TLS and Timeouts
+
+Prefer a trusted certificate chain to `disable-cert-validation`. Disabling certificate verification weakens API transport security.
+
+`request-timeout` is milliseconds per request; `execution-timeout` is positive seconds for the whole run. For example:
+
 ```yaml
-disable-cert-validation: "true"
+request-timeout: "60000"
+execution-timeout: "600"
 ```
 
-## Timeout Errors
-
-**Per-request timeout:** Increase timeout for individual requests:
-```yaml
-request-timeout: "60000"  # 60 seconds per request
-```
-
-**Execution timeout:** Increase timeout for the entire test run:
-```yaml
-execution-timeout: "600"  # 10 minutes total
-```
+The whole-run timeout stops Inso's process group and returns wrapper exit `3`. Reports are incomplete. Completed native evidence or trustworthy nonverbose TAP may be recovered; an interrupted request and its timing are not invented. Verbose stdout cannot be trusted as TAP and is discarded when no native report exists.
 
 ## Rate Limiting
 
 ### GitHub Tool Downloads
 
-The action pins uv to `0.11.15` and reuses a matching preinstalled executable. Pinning avoids latest-version discovery, but a cold setup can still download a manifest and binary. On GitHub.com, `github-token` defaults to the workflow's token; no personal access token is required for public tool downloads.
+The action pins `uv 0.13.1` and reuses that exact installed version. Inso installation uses bundled or caller-supplied trusted SHA-256 digests, with no release-metadata API lookup. Unbundled releases require `inso-sha256`; this is not a request to fetch a checksum automatically.
 
-The default Inso release has bundled checksums, so installation does not query the releases API for its digest. Custom versions without bundled checksums require release metadata. Verified archive caching reduces binary downloads, not every GitHub request.
+Verified archive caching reduces repeat binary downloads. Cold uv/Python setup, archive downloads, dependency actions, caches, comments, and artifact services can still require network requests and remain subject to their own limits. This is not a promise that every present or future rate limit disappears.
 
-Inso metadata and archive requests stop on errors without automatic retries. For `429` or a rate-limited `403`, wait for GitHub's reset window before rerunning. A `403` can also indicate insufficient authorization; check the token and permissions rather than repeatedly retrying. A `404` can indicate an unavailable release. See [GitHub's rate-limit guidance](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+Download errors are not repeatedly retried. For `429` or rate-limited `403`, respect the reset window before rerunning. A `403` can also mean missing authorization; `404` can mean an unavailable asset. See [GitHub rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
 
-Outside GitHub.com, the action does not forward enterprise tokens to public GitHub download endpoints. If public downloads are unavailable, provision the exact uv and verified Inso versions on the runner; see [self-hosted installation](#installation-fails-on-self-hosted-runners).
+On GitHub.com, public downloads can use the workflow token without a separate PAT. On enterprise instances, use a GitHub.com credential only in `github-com-token`, not the instance comment token. Private HTTPS archives use `download-token` plus its exact authorized origin.
 
-### API Requests in Your Collections
+For disconnected runners, provision local materials and select `offline-install: "true"`; see [enterprise installation](reference/inputs.md#enterprise-runners).
 
-To reduce the request rate to the API under test, add a collection delay. This does not affect GitHub's download or API limits:
+### Collection API Requests
+
+`delay-request` slows collection API requests, not GitHub downloads or API calls:
+
 ```yaml
 delay-request: "1000"
 ```
 
+Respect the API-under-test's own rate limits and retry policy.
+
 ## Inso Installation Fails
 
-Insomnia Run uses `inso` from `PATH` only when its version matches `inso-version` exactly. A version mismatch triggers installation of the requested version, even if another Inso binary is available.
+A preinstalled `inso` must match `inso-version` exactly. A mismatch triggers installation; `inso-archive` explicitly selects archive installation even if a matching binary exists.
 
-If the runner cannot download Inso, provision the exact requested version in its image. For a provisioned `13.3.1` binary, select it explicitly:
+Custom/unbundled archives require a trusted `inso-sha256`. Never replace it with the hash of an untrusted download merely to make verification pass. A supplied digest that conflicts with a bundled digest fails. Verify the source, asset platform, and expected version independently.
 
-```yaml
-inso-version: "13.3.1"
-```
-
-Check `inso --version` on the runner before starting the action. If you provision a different version, set `inso-version` to that exact version instead.
-
-## Inso Configuration Not Applied
-
-**Fix:**
-- Set run options through action inputs, not arbitrary `.insorc` defaults
-- Inso 13.3.1 only imports truthy `workingDir`, `ci`, `verbose`, and `printOptions` configuration keys; command options/defaults then take precedence
-- This wrapper does not expose `--config` or run `.insorc` scripts; see [configuration limits](reference/inputs.md#inso-configuration)
+Automatic Inso installation supports Linux x64 and macOS. Apple Silicon requires Rosetta for the official x64 binary. Linux ARM needs compatible provisioned tools; Windows is unsupported.
 
 ## Installation Fails on Self-Hosted Runners
 
-**Fix:**
-- Install Python 3.10 or newer
-- Preinstall exactly `uv 0.11.15`, or allow the action to install that pinned version
-- For offline runs, prepopulate uv's cache with frozen runtime packages and the build backend, then set `UV_OFFLINE=true`; an index override alone does not replace public URLs in the lockfile
-- Ensure the preinstalled Inso binary matches `inso-version` exactly; see [Inso Installation Fails](#inso-installation-fails)
+Provision Python 3.10+ in system mode, or select the reviewed managed `3.14.8` option. The action requires exactly `uv 0.13.1`. Check runner compatibility with the pinned dependency actions.
 
-Automatic Inso installation supports Linux x64 and macOS Intel. Apple Silicon needs Rosetta or a compatible preinstalled Inso. Linux ARM requires a compatible preinstalled Inso. Windows is not supported.
+Default source installation builds this action's wheel with `uv_build 0.13.1` and installs locked dependency wheels. Offline source installation needs the exact cached backend and runtime artifacts. An index override does not redirect public URLs already recorded in `uv.lock`.
 
-Cached and downloaded archives must pass SHA-256 verification. For a custom `inso-version` without an official digest, preinstall and verify that binary in your runner image. Set `cache-inso: "false"` when the Actions cache service is unavailable.
+An explicit runtime bundle needs a trusted archive digest and matching source, lockfile, Python, and platform identities. A mismatch is fatal; the installer does not silently switch modes.
+
+`offline-install` disables installer/cache network access, not collection HTTP traffic, comments, artifact uploads, or GitHub's resolution of dependency actions. Mirror/allowlist those actions through the installation's supported process. Built-in report upload supports GitHub.com/GHEC, not GHES; use a GHES-compatible uploader with `report-directory`.
+
+## Inso Configuration Not Applied
+
+Set run options through action inputs. Inso 13.3.1 imports only truthy `workingDir`, `ci`, `verbose`, and `printOptions` configuration keys before applying command defaults. This wrapper does not expose `--config` or execute `.insorc` scripts. See [configuration limits](reference/inputs.md#inso-configuration).
 
 ## JSON Output Not Appearing
 
-**Problem:** `json-output` is empty
+Use `json-file` for automation. `json-output` is populated only when `output-format: json` is requested and the complete JSON fits the 64 KiB UTF-16 convenience limit. If `json-output-omitted` is `true`, read the file or artifact instead. No truncated JSON is returned.
 
-**Fix:**
-- Ensure `output-format: json` is set:
-  ```yaml
-  output-format: json
-  ```
-- Access via `steps.<id>.outputs.json-output`
+If `json-file` is empty, execution may have failed before producing a report. Inspect wrapper exit `2` and step diagnostics rather than parsing arbitrary stderr.
 
-## Python Version Errors
-
-**Error:** `insomnia-run requires Python 3.10 or higher`
-
-**Fix:**
-- GitHub-hosted runners include Python 3.10+
-- For self-hosted runners, install Python 3.10+:
-  ```bash
-  sudo apt install python3.10
-  ```
+For standalone use, `--json-output path` writes a file. Legacy `--output-format json` uses stderr only for valid report JSON once a report exists; progress and publication diagnostics then go to stdout.
 
 ## Exit Codes
 
 | Code | Meaning |
-|------|---------|
-| `0` | Command succeeded; does not guarantee assertions ran |
-| `1` | Test or execution failure |
-| Other nonzero | CLI or setup error; inspect the step diagnostics |
+| --- | --- |
+| `0` | No assertion/run failure; does not prove assertions ran. |
+| `1` | Assertion/test failure only. |
+| `2` | Wrapper configuration, validation, startup, or report-writing error. |
+| `3` | Inso execution failure, timeout, or reporting-protocol error. |
+
+`fail-on-error: "false"` permits only `1`. Comment API failures warn independently. Installation or artifact/publication failures can fail a workflow separately, before an execution output exists.
 
 ## No Assertions Executed
 
-Empty runs retain exit code `0` and are labeled **No Assertions Executed**, with the summary **No assertions executed**, not **Passed**. This is not successful test validation. Check that collection scripts contain explicit assertions and that test-name filters match the intended tests. Runs containing only skipped results are labeled **Skipped**.
+Check collection after-response scripts, request selection, suite selection, and test filters. A successful HTTP response alone is not an assertion. Empty runs are neutral, not successful test validation; skipped-only results are labeled Skipped.
 
-Report counts are test results, not HTTP requests; results may include assertions, skips, or synthetic execution failures.
+Assertion counts exclude structured run errors. `requests` is completed native execution occurrences, not all attempted HTTP requests, and is empty when TAP cannot provide that evidence.
 
 ## Debug Mode
 
-Raw Inso diagnostics are captured, not streamed to workflow logs. Verbose alone does not expose them in reports. For a trusted debugging run, explicitly enable both options:
+Start with redacted failure reasons, run errors, and trusted progress. For a trusted collection debugging run, opt into raw diagnostics explicitly:
 
 ```yaml
 verbose: "true"
@@ -155,13 +122,10 @@ pr-comment: "false"
 upload-artifact: "false"
 ```
 
-For the standalone CLI, combine `--verbose` with `--include-raw-output`.
+Legacy `command: test` rejects verbose mode. For collections, verbose requires native reporting; when a timeout/bail run has no native file, stdout assertions are discarded to prevent console-log forgery. Timeout remains exit `3`; verbose bail without native evidence is a protocol error, also `3`. Nonverbose assertion bail can recover TAP with exit `1` and incomplete evidence.
 
-Raw output may contain secrets, credentials, URLs, and response bodies. Opting in adds it to Markdown and requested JSON reports, including job summaries, enabled comments, and uploaded report artifacts. Disabling comments and uploads does not remove it from the job summary. Only opt in when everyone with access to those reports may see the output; hiding raw output does not guarantee that parsed result names or error messages are redacted.
-
-The workflow link provides execution details such as installation and step failures; it does not expose captured raw Inso diagnostics by default. Start with the parsed report, check the step diagnostics for CLI or installation errors, and use the explicit raw-output opt-in only when its disclosure is acceptable.
+Standalone collection use can combine `--verbose` and `--include-raw-output`; `--raw-output-file` independently writes redacted diagnostics. Raw output may still disclose secrets, bodies, or URLs unknown to the redactor. Disabling comments/uploads does not remove opted-in raw output from job summaries. Only enable it when everyone with report access may see it.
 
 ## Help
 
-- [Open an issue](https://github.com/scarowar/insomnia-run/issues)
-- [Start a discussion](https://github.com/scarowar/insomnia-run/discussions)
+[Open an issue](https://github.com/scarowar/insomnia-run/issues) with the action/Inso versions, platform, selected inputs without credentials, and a minimal sanitized reproduction. Follow the private reporting instructions in SECURITY.md for vulnerabilities.

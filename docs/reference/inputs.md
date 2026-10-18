@@ -3,224 +3,224 @@
 ## Required
 
 | Input | Description |
-|-------|-------------|
-| `command` | `collection` or `test` |
-| `working-directory` | Explicit YAML export path, or repository root for legacy Git Sync |
+| --- | --- |
+| `command` | `collection` or `test`. |
+| `working-directory` | Export file, legacy Git Sync repository root, or Insomnia app-data directory. |
 
 ## Input Paths
 
-For an exported workspace or a Git Sync project stored as a YAML file, pass that file's explicit path, for example `working-directory: insomnia-export.yaml`.
+For a YAML export or file-based Git Sync project, use the explicit path, such as `working-directory: insomnia-export.yaml`.
 
-For legacy Git Sync data under `.insomnia/Workspace/`, pass the parent repository root, such as `working-directory: .`. Do not pass `.insomnia` itself: Inso appends `.insomnia` when loading this layout and would search for `.insomnia/.insomnia`.
+For legacy data under `.insomnia/Workspace/`, use the parent repository root (`working-directory: .`), not `.insomnia`. Inso appends `.insomnia` when loading this layout.
 
-Paths are relative to the workflow step's current directory unless absolute paths are provided. The action must run after the project files have been checked out.
+Paths resolve from the workflow step's current directory unless absolute. Check out project files before running the action.
 
-## Common
+## Execution
 
-| Input | Default | Description |
-|-------|---------|-------------|
-| `identifier` | — | Collection or test suite name |
-| `environment` | — | Insomnia environment name |
-| `github-token` | — | Token for PR comments and authenticated public GitHub tool downloads |
-| `comment-issue-number` | — | Issue or PR number for comments outside `pull_request` workflows |
-| `pr-comment` | `true` | Post results to a PR or explicit issue |
-| `fail-on-error` | `true` | Fail workflow on failed reports; wrapper validation, startup, and report-write errors always fail |
-| `bail` | `false` | Stop on first failure |
-| `verbose` | `false` | Capture additional Inso diagnostics; requires `include-raw-output` to expose them in reports |
-| `inso-version` | `13.3.1` | Exact Inso CLI version |
-| `cache-inso` | `true` | Cache verified Inso archives between workflow runs |
-| `execution-timeout` | `300` | Positive max execution time in seconds |
-| `output-format` | — | JSON output in addition to Markdown |
-| `include-raw-output` | `false` | Include raw Inso output in Markdown and JSON; logs may contain secrets |
-| `junit-report` | `true` | Generate a JUnit XML report file |
-| `junit-output-file` | — | Custom path for the JUnit XML report |
-| `upload-artifact` | `false` | Upload generated reports on GitHub.com, including test failures |
-| `artifact-name` | `insomnia-run-reports` | Unique artifact name per invocation and matrix job |
-| `artifact-retention-days` | `14` | Retention within repository policy, from 1 to 400 days |
-| `data-folders` | - | Folders Insomnia can read/write, comma-separated; supported for both collection and test commands |
-
-For both collection and test commands, separate `data-folders` paths with commas, for example:
-
-```yaml
-data-folders: "./fixtures,./uploads"
-```
-
-## Collection Only
-
-| Input | Description |
-|-------|-------------|
-| `request-name-pattern` | Regex to filter requests |
-| `item` | Request/folder IDs, comma-separated |
-| `globals` | Global environment file, ID, or name |
-| `delay-request` | Delay between requests (ms) |
-| `iteration-count` | Positive integer; upstream defaults to one iteration |
-| `iteration-data` | CSV/JSON file path or HTTP(S) URL; relative files use the process working directory |
-| `env-var` | Environment variables, `key=value` per line |
-
-## Test Only
+An empty default below means the input is omitted and Inso keeps its default.
 
 | Input | Default | Description |
-|-------|---------|-------------|
-| `test-name-pattern` | — | Literal substring of the full test title in Inso 13.3.1 (Mocha `fgrep`) |
-| `keep-file` | `false` | Keep generated test file |
+| --- | --- | --- |
+| `identifier` | Empty | Collection name/workspace ID, or legacy test suite name/API spec ID. Legacy suites require a target in CI. |
+| `environment` | Empty | Insomnia environment name or ID. |
+| `execution-timeout` | `300` | Positive whole-run timeout in seconds. Stops the Inso process group on expiry. |
+| `request-timeout` | Empty | Nonnegative per-request timeout in milliseconds; `0` disables it. |
+| `bail` | `false` | Stop after the first failed assertion/test. HTTP status alone is not an assertion. |
+| `verbose` | `false` | Additional collection diagnostics; requires native reporting. Rejected for legacy `command: test`. |
+| `data-folders` | Empty | Comma-separated paths accessible to Inso and scripts, for either command. |
+| `disable-cert-validation` | `false` | Disable TLS certificate validation for API requests. Avoid in production. |
+| `https-proxy` | Empty | HTTPS proxy URL for Inso. |
+| `http-proxy` | Empty | HTTP proxy URL for Inso. |
+| `no-proxy` | Empty | Comma-separated hosts that bypass the proxy. |
 
-## Network
+Omitted proxy inputs preserve inherited proxy settings. `item` and `data-folders` trim surrounding whitespace without changing quotes, backslashes, or interior spaces. Their comma-separated action inputs cannot represent a value containing a comma; standalone CLI flags are repeatable.
+
+### Collection Only
 
 | Input | Default | Description |
-|-------|---------|-------------|
-| `request-timeout` | — | Timeout per request (ms) |
-| `disable-cert-validation` | `false` | Skip SSL verification |
-| `https-proxy` | — | HTTPS proxy URL |
-| `http-proxy` | — | HTTP proxy URL |
-| `no-proxy` | — | Hosts to bypass proxy |
+| --- | --- | --- |
+| `request-name-pattern` | Empty | Regex matching request names. |
+| `item` | Empty | Comma-separated request or folder IDs, in order. |
+| `globals` | Empty | Global environment file, ID, or name. |
+| `delay-request` | Empty | Nonnegative delay between requests in milliseconds. |
+| `iteration-count` | Empty | Positive iteration count; upstream defaults to one. |
+| `iteration-data` | Empty | CSV/JSON file path or HTTP(S) URL. Relative files use the process working directory. |
+| `env-var` | Empty | Ordered environment overrides, one `KEY=VALUE` occurrence per line, with Inso URL-form decoding. |
+| `capture-response-headers` | Empty | Comma-separated, explicit, case-insensitive response header names. No wildcards or credential-bearing names. Values exceeding 2,048 UTF-8 bytes are omitted whole. Requires native reporting. |
 
-# Action Outputs
+Header capture privately enables Inso's `--includeFullData redact --acceptRisk`, then retains only the named headers in the normalized report. It does not publish response bodies or the native export. Header values remain subject to redaction and size limits. See [secret handling](../guides/secrets.md#response-headers).
+
+### Test Only
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `test-name-pattern` | Empty | Literal substring of the full test title in Inso 13.3.1, not a regex. |
+| `keep-file` | `false` | Retain Inso's generated legacy test file. |
+
+## Reports and Publication
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `output-format` | Empty | Set `json` to request the bounded `json-output` step output. The JSON file is generated regardless. |
+| `include-raw-output` | `false` | Include redacted raw diagnostics in Markdown/JSON and a raw report file. Still carries disclosure risk. |
+| `redact-values` | Empty | Additional sensitive values, one per line, to remove from published reports. |
+| `progress` | `true` | Trusted start, completion, and elapsed-time heartbeat messages. No inferred live request counts. |
+| `annotations` | `true` | At most ten bounded, escaped failure/run-error annotations. No invented source locations. |
+| `junit-report` | `true` | Generate JUnit XML. |
+| `junit-output-file` | Empty | Optional additional JUnit destination. The upload directory still contains the current run's canonical JUnit file. |
+| `upload-artifact` | `false` | Upload the report directory on GitHub.com or GitHub Enterprise Cloud. GHES needs a separate uploader. |
+| `artifact-name` | `insomnia-run-reports` | Use a distinct name for each action invocation and matrix job. |
+| `artifact-retention-days` | `14` | Integer from 1 to 400, subject to repository policy. |
+| `pr-comment` | `true` | Replace this workflow/job/matrix/tag's report comment when publication is permitted. |
+| `comment-tag` | `default` | Separate multiple action invocations in the same job. |
+| `comment-issue-number` | Empty | Explicit issue/PR target for manual, push, scheduled, or deployment workflows. |
+| `github-token` | `github.token` | Instance token for comments only; not a public-download token. |
+| `fail-on-error` | `true` | Set `false` to permit assertion-failure exit `1` only. Exits `2` and `3` remain fatal. |
+
+Report destinations in Actions must be below the workspace or runner temporary directory. Root destinations, escaping symlinks, colliding reports, and GitHub control files such as `GITHUB_OUTPUT` are rejected. Standalone CLI use supports ordinary local paths.
+
+## Installation
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `inso-version` | `13.3.1` | Exact requested Inso version. A matching preinstalled binary is reused unless `inso-archive` is set. |
+| `inso-sha256` | Empty | Trusted 64-hex-character archive digest. Required when installing an archive with no bundled digest; archive verification rejects conflicts with bundled digests. |
+| `inso-archive` | Empty | Explicit local archive path or HTTPS URL. Requires `inso-sha256`; forces archive verification even if Inso is preinstalled. |
+| `cache-inso` | `true` | Cache verified archives. Identity includes version, platform, digest, and custom archive source. Restores are verified again. |
+| `runtime-bundle` | Empty | Explicit local path or HTTPS URL for a runtime wheelhouse bundle. Omission selects source installation. |
+| `runtime-bundle-sha256` | Empty | Required trusted archive digest when `runtime-bundle` is set. |
+| `download-token` | Empty | Private archive credential restricted to `download-token-origin`. |
+| `download-token-origin` | Empty | Exact HTTPS origin authorized to receive `download-token`. No path or query. |
+| `github-com-token` | Empty | Public GitHub download credential. On GitHub.com the workflow token is the fallback; enterprise instance tokens are not forwarded. |
+| `offline-install` | `false` | Forbid installer/cache network access. Requires provisioned tools and local installation materials. |
+| `python-version` | `system` | Use system Python 3.10+, or select the reviewed managed CPython `3.14.8` build. |
+
+## Action Outputs
+
+Files, not process streams or step-output JSON, are the authoritative reports.
 
 | Output | Description |
-|--------|-------------|
-| `markdown` | Generated Markdown report |
-| `json-output` | Generated JSON report |
-| `junit-file` | Path to the generated JUnit XML report |
-| `exit-code` | `0` = success, nonzero = test or execution failure |
+| --- | --- |
+| `report-directory` | Current invocation's report directory under `RUNNER_TEMP`. |
+| `json-file` | Complete normalized JSON report path, when a report exists. |
+| `markdown` | Bounded Markdown report used for the job summary and comments. |
+| `json-output` | JSON only when requested and within 64 KiB measured as UTF-16. Otherwise empty; never partial JSON. |
+| `json-output-omitted` | `true` when requested JSON exceeds that convenience-output budget. |
+| `junit-file` | Generated JUnit path, or empty if disabled/unavailable. |
+| `raw-file` | Redacted raw diagnostics path only when explicitly enabled. |
+| `total` | Number of assertion/test results. |
+| `passed` | Passing result count. |
+| `failed` | Failing assertion/test count, not a count of run errors. |
+| `skipped` | Skipped result count. |
+| `requests` | Number of completed native execution records. Empty when unknown, including TAP reports. |
+| `run-error` | `true` or `false` when a report exists; empty otherwise. |
+| `exit-code` | Wrapper execution result: `0`, `1`, `2`, or `3`; see below. |
+| `comment-status` | `created`, `updated`, `unchanged`, `skipped`, `stale`, or `warning`. |
+| `comment-id` | Published/existing comment ID when known, otherwise empty. |
 
-Report counts are **test results**, which can include assertions, skips, and synthetic execution failures, not HTTP requests. Empty runs retain exit code `0`, but show **No Assertions Executed** with the summary **No assertions executed**; this is not successful test validation. Runs with only skipped results are labeled **Skipped**. Invalid CLI options can produce a nonzero exit code without a test report.
+Counts are empty when no report exists. GitHub imposes an aggregate job-output budget in addition to this action's convenience-output limit. Prefer `json-file` or report artifacts for downstream processing.
 
-`fail-on-error: "false"` allows wrapper exit `1` (a failed report). Inso 13.3.1 uses exit `1` for both assertion and configuration failures, so upstream configuration or execution failures can also be allowed. Wrapper-detected validation, startup, and report-write errors use exit `2` and remain fatal. Keep the default policy when upstream failures must block the workflow.
+### Exit Codes
 
-Markdown displays at most 50 results and bounds long names to fit GitHub comments. Truncation is marked; summary counts, JSON results, and JUnit cases remain complete. Raw diagnostics in Markdown are limited to 8,192 UTF-8 bytes even when enabled. Requested JSON retains the full raw output, so its disclosure risk is unchanged. Use report artifacts for large machine-readable reports rather than relying on GitHub's limited step-output size.
+| Code | Meaning |
+| --- | --- |
+| `0` | Execution completed without failing assertions or run errors. Zero assertions is not proof of test coverage. |
+| `1` | Assertion/test failures only. |
+| `2` | Wrapper configuration, validation, startup, or report-writing error. |
+| `3` | Inso execution failure, timeout, or invalid/incomplete reporting protocol. |
 
-Raw Inso diagnostics are captured, not streamed to workflow logs. `verbose` alone does not expose them. Explicitly enable `include-raw-output: "true"` to include them in Markdown and requested JSON reports; raw output may contain secrets and is then shared through job summaries, enabled comments, and uploaded report artifacts. See [Debug Mode](../troubleshooting.md#debug-mode) before opting in.
+These are wrapper codes, not an unconditional pass-through of Inso's exit code. Installation and workflow-publication steps can fail separately, sometimes before an `exit-code` output exists. Comment failures warn and do not replace this execution policy.
 
-## Using Outputs
+### JSON Schema and Evidence
 
-Access the exit code and markdown report from subsequent steps:
+The versioned schema is [`schemas/report-v1.schema.json`](https://github.com/scarowar/insomnia-run/blob/main/schemas/report-v1.schema.json), with a [failed collection example](https://github.com/scarowar/insomnia-run/blob/main/schemas/examples/failed-collection.json).
 
-```yaml
-- uses: scarowar/insomnia-run@v0.2.0
-  id: tests
-  with:
-    command: collection
-    working-directory: insomnia-export.yaml
+`schema_version: 1` preserves the flat `results` list and adds `executions`, `source`, `complete`, and `run_error`. Results contain `id`, `status` (`PASS`, `FAIL`, `SKIP`), `description`, nullable `message`, nullable `duration_seconds`, and nullable `execution_id`. Execution records contain an occurrence `id`, original `request_id`, name, zero-based iteration, HTTP status/code, nullable duration in seconds, and selected headers.
 
-- run: |
-    echo "Exit code: ${{ steps.tests.outputs.exit-code }}"
+An execution occurrence ID is not an Insomnia request ID: iterations and jumps may execute one request more than once. Unknown durations are `null`, not fabricated zero timings.
+
+Collections use a private native JSON report when Inso supports it, projecting only permitted fields. Private native reports are limited to 32 MiB; an oversized or malformed file is a protocol error, not a reason to trust stdout instead. Legacy suites, older collection CLIs, and trustworthy timeout recovery use TAP. The `source` field distinguishes them.
+
+`complete: false` marks partial evidence, including timeouts and the Inso 13.3.1 bail path that omits its native file. Completed native evidence or trustworthy nonverbose TAP may be retained. Verbose stdout is never trusted as TAP: without a native file, verbose timeouts have no recovered assertions, and verbose bail is a protocol error. Both exit `3`. Normal nonverbose assertion bail may recover TAP with exit `1`. `requests` counts completed native records only: it does not count an interrupted request omitted by Inso, and it is unknown for TAP. Run errors have a separate `kind` (`execution`, `timeout`, or `protocol`) and message; they are not synthetic failed assertions.
+
+Markdown groups native results by request, puts failures first, and collapses passing groups. It has a 60,000 UTF-8-byte budget, at most 50 displayed results, bounded names/messages, and at most 8,192 bytes of opted-in raw diagnostics. Truncation is marked. JSON and JUnit result lists are not truncated.
+
+### Standalone CLI
+
+```sh
+insomnia-run run-collection -w insomnia-export.yaml \
+  --json-output reports/report.json \
+  --markdown-output reports/report.md \
+  --junit-output reports/junit.xml
 ```
 
-Access json report from subsequent steps:
+`--raw-output-file` explicitly writes redacted raw diagnostics without enabling them in the other formats. `--redact-value` is repeatable. `--capture-response-headers` is collection-only. Standalone progress and annotations default to off; enable `--progress` and `--annotations` explicitly.
+
+Legacy `--output-format json` still writes JSON only to stderr once a report exists. Progress, annotations, and report-write diagnostics then use stdout. Without that legacy option, progress and annotations use stderr; Markdown goes to stdout. The action reads files instead of parsing either stream.
+
+## Comment Identity and Concurrency
+
+The comment identity includes workflow path, job ID, matrix values, and `comment-tag`. It is not one combined comment for the whole matrix. Owned comments are found through paginated lookup and replaced only after verifying their author and exact marker.
+
+Callers must serialize writers sharing an identity. Use a distinct `comment-tag` for multiple invocations in one job. For example:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
-  id: tests
-  with:
-    command: collection
-    working-directory: insomnia-export.yaml
-    output-format: json
+permissions:
+  contents: read
+  pull-requests: write
 
-- name: Save JSON report
-  env:
-    JSON_OUTPUT: ${{ steps.tests.outputs.json-output }}
-  run: |
-    printf '%s' "$JSON_OUTPUT" > test-results.json
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [staging, production]
+    concurrency:
+      group: insomnia-api-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ matrix.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: scarowar/insomnia-run@v0.2.0
+        with:
+          command: collection
+          working-directory: insomnia-export.yaml
+          environment: ${{ matrix.environment }}
+          comment-tag: api
 ```
 
-Use the generated JUnit report with test reporting or artifact upload:
+Include every matrix dimension in the concurrency group, and use a job-specific prefix when copying this example to another job. Keep `cancel-in-progress: false` so an active writer is not interrupted. Generation metadata rejects stale updates under this cooperative serialization. GitHub's comments API provides no atomic upsert or cross-runner exactly-once guarantee. See [GitHub concurrency](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 
-Grant `checks: write` when publishing a GitHub test report.
+Fork and Dependabot PRs skip comment publication. Insufficient permissions, API errors, and ambiguous responses produce a warning rather than failing tests; inspect `comment-status`. Skipping comments does not make untrusted collection scripts safe or grant fork workflows access to secrets. Do not execute untrusted PR code with privileged credentials through `pull_request_target`.
 
-```yaml
-- uses: scarowar/insomnia-run@v0.2.0
-  id: tests
-  with:
-    command: collection
-    working-directory: insomnia-export.yaml
-    fail-on-error: "false"
-
-- name: Publish JUnit report
-  if: always() && steps.tests.outputs.junit-file != ''
-  uses: dorny/test-reporter@a6ddd83ac95ff4586f5d3aceeb314d9a1841db95 # v3.0.0
-  with:
-    name: Insomnia API Tests
-    path: ${{ steps.tests.outputs.junit-file }}
-    reporter: java-junit
-
-- name: Upload JUnit report
-  if: always() && steps.tests.outputs.junit-file != ''
-  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-  with:
-    name: insomnia-run-junit
-    path: ${{ steps.tests.outputs.junit-file }}
-
-- name: Fail workflow on test failures
-  if: steps.tests.outputs.exit-code != '0'
-  run: exit 1
-```
-
-## Conditional Steps
-
-Run steps based on test results:
-
-```yaml
-- uses: scarowar/insomnia-run@v0.2.0
-  id: tests
-  with:
-    command: collection
-    working-directory: insomnia-export.yaml
-    fail-on-error: "false"
-
-- name: Deploy
-  if: steps.tests.outputs.exit-code == '0'
-  run: echo "Deploying..."
-```
-
-## Comments Outside Pull Requests
-
-Pull request workflows are detected automatically. For manual, scheduled, deployment, or push workflows, set `comment-issue-number` to the PR or issue that should receive the report:
-
-```yaml
-- uses: scarowar/insomnia-run@v0.2.0
-  with:
-    command: collection
-    working-directory: insomnia-export.yaml
-    comment-issue-number: "123"
-```
-
-The workflow token needs `issues: write` for issues and `pull-requests: write` for pull requests.
+Automatic PR comments need `pull-requests: write`. Explicit issue comments need `issues: write`; set `comment-issue-number` outside PR events. Disabling comments needs no comment-write permission.
 
 ## Enterprise Runners
 
-Insomnia Run uses `inso` from `PATH` only when its version matches `inso-version`. Otherwise, the action installs the requested version from official Insomnia release assets and verifies the archive's SHA-256 digest before extraction. Cached archives are verified again before use.
+System mode uses an existing Python 3.10+ interpreter. Managed mode selects the reviewed standard CPython 3.14.8 build for Linux x64, macOS Intel, or macOS ARM64; it is not a moving latest-Python selector. The toolchain pins `uv 0.13.1` and `uv_build 0.13.1`. Automatic uv/Inso installation supports Linux x64 and macOS; Apple Silicon needs Rosetta for the official x64 Inso binary. Linux ARM requires provisioned compatible tools; Windows is unsupported. Dependency actions require a compatible Actions Runner (at least 2.327.1 for the pinned Node.js 24 actions).
 
-Automatic installation supports Linux x64 and macOS Intel runners. On Apple Silicon, the official macOS binary requires Rosetta; provision Rosetta or preinstall a compatible Inso binary. Linux ARM requires a compatible preinstalled Inso binary. Windows is not supported.
+These asset targets do not qualify every operating-system revision or Linux distribution. Validate the selected binaries against the runner's OS/runtime requirements. Managed Python uses the reviewed local download manifest and its build hashes; later installation/execution does not implicitly download a different interpreter.
 
-```yaml
-- uses: scarowar/insomnia-run@v0.2.0
-  with:
-    command: collection
-    working-directory: insomnia-export.yaml
-```
+Source installation is the default: build this action's wheel with its pinned backend, install runtime dependencies from the frozen lockfile using wheels only, then install the application without dependency resolution. A bundle is an explicit alternative, not an automatic fallback. Its trusted archive hash, source/lock identity, Python/platform identity, wheel hashes, and manifest must all agree. A bundle built for a different checkout or interpreter is rejected.
 
-The action requires Python 3.10 or newer and uses that interpreter without downloading another Python. Provision exactly `uv 0.11.15` to skip its installer. A different preinstalled uv version triggers setup of the pinned version. Self-hosted runners require Actions Runner 2.327.1 or newer for the pinned Node.js 24 actions.
+`offline-install: "true"` disables installer downloads and remote cache operations. Provision matching Inso and uv, an interpreter (or the reviewed managed build), and either the frozen dependency/backend cache or a compatible local bundle. Public artifact URLs in the lockfile are not redirected merely by setting an index mirror. GitHub must still resolve dependency actions through the installation's supported mirroring/allowlisting. Optional comments and uploads use their own network services; collection HTTP requests are not sandboxed by offline installation.
 
-The default Inso version and previous defaults have bundled digests and do not query the GitHub release API. Other versions require access to `api.github.com` for their official SHA-256 digest. GitHub Enterprise Server tokens are never sent to public GitHub download APIs.
+There are three separate GitHub credential audiences:
 
-Runners without public internet access must preinstall matching Inso and uv versions and prepopulate uv's cache with the exact locked runtime packages and build backend. A frozen lockfile contains public artifact URLs; an index environment variable alone does not redirect those URLs to an internal mirror. Set `UV_OFFLINE=true` after provisioning the cache. Set `cache-inso: "false"` if your runner cannot use the Actions cache service.
+- `github-token`: instance API access for comments.
+- `github-com-token`: GitHub.com tool downloads, not enterprise API access.
+- Runner runtime credentials: artifact services, managed by GitHub, not either input token.
 
-GitHub Enterprise Server installations must also make the pinned dependency actions available through their supported action mirroring or allowlisting process. Preinstalling tools skips their installers, but GitHub still needs to resolve the referenced actions.
+Private archive downloads may additionally use `download-token`, restricted to the exact HTTPS `download-token-origin`. HTTPS redirects are validated and credentials are not forwarded to another origin. Installer credentials are not intended for collection execution; use `env-var` or the supported vault integration for API-test credentials.
 
-Built-in report uploads use `actions/upload-artifact` for GitHub.com. On GitHub Enterprise Server, use the report outputs with an uploader supported by your installation. Artifact uploads occur before `fail-on-error` is applied. Set distinct `artifact-name` values for matrix jobs and multiple invocations; uploads with the same name conflict.
+Built-in uploads support GitHub.com and valid HTTPS `*.ghe.com` GitHub Enterprise Cloud origins. They do not support GitHub Enterprise Server (GHES). Use `report-directory` with an installation-supported uploader on GHES. See [upload-artifact support](https://github.com/actions/upload-artifact#v4---whats-new).
 
-```yaml
-- uses: scarowar/insomnia-run@v0.2.0
-  with:
-    command: collection
-    working-directory: insomnia-export.yaml
-    upload-artifact: "true"
-    artifact-name: api-tests-${{ matrix.environment }}
-    artifact-retention-days: "14"
-```
+Verified archives avoid checksum release-metadata API calls; they do not remove every download or GitHub rate limit. Supply trusted digests for unbundled Inso versions, use verified archive caching, or provision local archives when public downloads are unavailable.
 
 ## Inso Configuration
 
-Inso 13.3.1 attempts automatic configuration discovery starting at `workingDir` (or its process working directory when omitted). Its implementation only imports truthy `workingDir`, `ci`, `verbose`, and `printOptions` keys, then overlays command options and defaults. It does not load arbitrary request or collection defaults from `.insorc`.
+Inso 13.3.1 attempts automatic configuration discovery starting at `workingDir`. Its implementation imports truthy `workingDir`, `ci`, `verbose`, and `printOptions` keys, then overlays command options and defaults. It does not load arbitrary collection defaults from `.insorc`.
 
-Use action inputs for run options. Insomnia Run does not expose `--config`, `--printOptions`, or `inso script`; it does not execute `.insorc` scripts. See [upstream compatibility](compatibility.md) for the complete supported option mapping and known documentation discrepancies.
+Set run options through action inputs. Insomnia Run does not expose `--config`, `--printOptions`, or `inso script`, and does not execute `.insorc` scripts. See [upstream compatibility](compatibility.md).

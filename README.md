@@ -10,7 +10,7 @@
   <a href="https://scorecard.dev/viewer/?uri=github.com/scarowar/insomnia-run"><img src="https://api.scorecard.dev/projects/github.com/scarowar/insomnia-run/badge" alt="OpenSSF Scorecard"></a>
   <a href="https://github.com/scarowar/insomnia-run/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"></a>
   <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-<a href="#contributors-"><img src="https://img.shields.io/badge/all_contributors-3-orange.svg?style=flat-square" alt="All Contributors"></a>
+<a href="#contributors"><img src="https://img.shields.io/badge/all_contributors-3-orange.svg?style=flat-square" alt="All Contributors"></a>
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 </p>
 
@@ -26,16 +26,13 @@ Insomnia Run is an unofficial GitHub Action that wraps the Inso CLI to run Insom
 
 https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 
-## Features
+## Reports and Installation
 
-- GitHub Actions: Configure collection and test runs with YAML
-- Automatic PR Comments: Post test results directly to pull requests
-- Explicit Issue Comments: Send reports to a PR or issue from manual, deployment, or scheduled workflows
-- Markdown, JSON & JUnit Reports: Human-readable comments, automation output, and CI test reports
-- Failure Handling: Control whether test failures fail the workflow
-- Environment Support: Target different Insomnia environments per run
-- Hosted and Self-Hosted Runners: Use the requested Inso version or a preinstalled `inso` binary
-- Configurable Timeouts: Handle slow APIs and large collections
+- Request-grouped Markdown, normalized JSON files, and JUnit reports, with redacted failure reasons and available timings.
+- Per-job/matrix PR comment replacement, bounded annotations, optional artifacts, and separate assertion/run-error outcomes.
+- Verified Inso archive caching, explicit custom archive digests, frozen source installation, and optional verified runtime bundles.
+
+Native collections retain completed request records; legacy suites use TAP. Partial runs are marked, and unknown request counts are not guessed. Redaction is best effort, not a guarantee that arbitrary collection output is secret-free.
 
 ## Quick Start
 
@@ -60,7 +57,7 @@ Examples use `insomnia-export.yaml`. For legacy Git Sync data under `.insomnia/W
     identifier: "My Test Suite"
 ```
 
-## Inputs
+## Common Inputs
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
@@ -70,8 +67,8 @@ Examples use `insomnia-export.yaml`. For legacy Git Sync data under `.insomnia/W
 | `environment` | No | | Insomnia environment to use |
 | `pr-comment` | No | `true` | Post results as PR comment |
 | `comment-issue-number` | No | | Issue or PR number for non-PR workflow comments |
-| `fail-on-error` | No | `true` | Fail workflow on failed reports |
-| `output-format` | No | | Use `json` to get JSON output in addition to Markdown |
+| `fail-on-error` | No | `true` | Set false to permit assertion failures only; execution/report errors remain fatal |
+| `output-format` | No | | Request bounded convenience `json-output`; JSON files do not need this opt-in |
 | `junit-report` | No | `true` | Generate a JUnit XML report file |
 
 Verified Inso archive caching (`cache-inso`) is enabled by default. Report uploads (`upload-artifact`) are disabled by default. See the [migration guide](docs/migration.md) for upgrade details and runner requirements.
@@ -83,9 +80,19 @@ Verified Inso archive caching (`cache-inso`) is enabled by default. Report uploa
 | Output | Description |
 |--------|-------------|
 | `markdown` | Generated test report in Markdown format |
-| `json-output` | Generated JSON report (machine-readable) |
-| `junit-file` | Path to the generated JUnit XML report |
-| `exit-code` | `0` for command success; nonzero for test, execution, or CLI errors |
+| `json-file` | Complete normalized JSON report path |
+| `report-directory` | Current report directory for uploads/downstream tools |
+| `json-output` | Requested JSON within 64 KiB measured as UTF-16; otherwise empty |
+| `json-output-omitted` | Whether requested convenience JSON exceeded that limit |
+| `junit-file` | Generated JUnit XML path, if enabled |
+| `raw-file` | Redacted raw diagnostics path, only when explicitly enabled |
+| `total`, `passed`, `failed`, `skipped` | Assertion/test counts, empty if no report exists |
+| `requests` | Completed native request occurrences; empty when unknown |
+| `run-error` | Whether a report contains a structured execution/timeout/protocol error |
+| `comment-status`, `comment-id` | Comment publication outcome and known comment ID |
+| `exit-code` | `0` success, `1` assertion failures, `2` wrapper/config/report error, `3` Inso execution/timeout/protocol error |
+
+Use `json-file` for automation; JSON step output is optional and never truncated into invalid JSON. See the [full reference](docs/reference/inputs.md) for the schema, privacy limits, comment concurrency, and enterprise installation.
 
 A report saying **No assertions executed** is not successful test validation. Collections need explicit script assertions; check test filters when an expected suite executes no assertions.
 
@@ -130,9 +137,9 @@ Grant `checks: write` when publishing a GitHub test report.
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
-## Contributors ✨
+## Contributors
 
-Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+Thanks to the contributors ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->

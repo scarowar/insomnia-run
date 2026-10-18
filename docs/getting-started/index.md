@@ -1,10 +1,13 @@
 # Getting Started
 
+v0.2.0 is unreleased. Examples use its intended tag; use a reviewed full commit SHA until the release exists, and keep SHA pinning in production.
+
 ## Prerequisites
 
 - A GitHub repository
 - An Insomnia workspace (exported or via Git Sync)
-- Python 3.10+ (pre-installed on GitHub-hosted runners)
+- System Python 3.10+, or the explicit reviewed managed Python option
+- Trusted collection scripts and suitable API credentials
 
 ## Step 1: Export Your Workspace
 
@@ -39,6 +42,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    concurrency:
+      group: insomnia-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -54,11 +60,11 @@ jobs:
 
 ```bash
 git add .github/workflows/api-tests.yml
-git commit -m "Add API tests"
+git commit -m "test: run collection assertions in CI" -m "Check API behavior on pull requests and main branch pushes."
 git push
 ```
 
-Open a pull request to see test results as a comment.
+The run writes a job summary and report files. Trusted same-repository PR runs can also publish a comment; fork/Dependabot PR comments are skipped, and comment API failures warn. Repeated runs replace the same job's owned comment under the configured concurrency group.
 
 Collections need explicit [script assertions](../guides/collections.md#assertions). **No assertions executed** is not successful test validation, even when Inso exits successfully.
 

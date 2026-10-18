@@ -21,7 +21,7 @@ insomnia.test('Status code is 200', () => {
 });
 ```
 
-Empty runs retain exit code `0`, but **No assertions executed** is not successful test validation. Check that requests have supported script assertions and that the selected requests and iterations include them. Report counts are test results, not HTTP requests; results may include assertions, skips, or synthetic execution failures.
+Empty runs retain exit code `0`, but **No assertions executed** is not successful test validation. Check that requests have supported script assertions and that the selected requests and iterations include them. Assertion/test counts are separate from request counts and structured run errors. Native collection reports retain completed request occurrences, available HTTP status/timing, assertion messages, and skip status. Timeouts and bail runs can retain partial evidence; an interrupted request may be absent. See [report evidence](../reference/inputs.md#json-schema-and-evidence).
 
 ## With Environment
 
@@ -116,3 +116,17 @@ Map URL-safe secrets into the collection environment:
 Access in Insomnia templates as `{{ _.API_KEY }}`.
 
 For arbitrary secret values, use the [encoding step](secrets.md#collection-overrides) to preserve reserved characters through Inso's URL decoding.
+
+## Response Headers
+
+Header capture is off by default. Retain only explicit, non-credential header names when troubleshooting a request:
+
+```yaml
+- uses: scarowar/insomnia-run@v0.2.0
+  with:
+    command: collection
+    working-directory: insomnia-export.yaml
+    capture-response-headers: "X-Request-ID, Server"
+```
+
+Names are case-insensitive; wildcards and credential-bearing names are rejected. This enables a private full-data capture upstream, but publishes only selected, bounded, redacted header values. Response bodies and the native payload are not included. See [header privacy](secrets.md#response-headers).

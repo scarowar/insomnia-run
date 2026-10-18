@@ -14,6 +14,8 @@ Run a test suite by name:
 
 The `identifier` is required for test suites. Examples use a YAML export containing the legacy suite. For legacy Git Sync, pass the parent repository root instead; see [input paths](../reference/inputs.md#input-paths).
 
+Legacy suites use TAP rather than native collection JSON. Their request count is unknown; assertion timings are only reported when supported by the evidence. `verbose: "true"` is rejected before execution because script console output can forge TAP results. Incomplete TAP and execution failures produce structured run errors and exit `3`, not synthetic assertion failures.
+
 ## Filter Tests
 
 Inso 13.3.1 filters tests by a literal substring (Mocha `fgrep`), despite the upstream help describing a regex. Run only tests whose full title contains `login`:

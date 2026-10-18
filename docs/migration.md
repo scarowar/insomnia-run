@@ -2,95 +2,60 @@
 
 ## v0.1.x to v0.2.0
 
-The default Inso CLI changes to `13.3.1`. Pin `inso-version` explicitly when you require an older version. Preinstalled binaries must match that version exactly.
+v0.2.0 is unreleased. Use a reviewed full commit SHA until an approved release tag exists; production callers should retain SHA pinning.
 
-Python installation now uses `uv 0.11.15` and frozen dependencies. Offline runners must provide that exact uv version and prepopulate its cache; configuring an index mirror does not redirect URLs recorded in the lockfile.
+### Execution and Failure Policy
 
-JSON reports now omit `raw_output` by default. Enable `include-raw-output: "true"` only when logs are safe to share. Collection result IDs are unique across requests and the TAP plan is aggregated.
+The default Inso CLI is `13.3.1`. A preinstalled binary must match the requested version exactly. Native collection JSON is now the primary report source when available; legacy test suites and older collection CLIs use TAP.
 
-Verified Inso archives are cached by default. Set `cache-inso: "false"` to disable caching. Report uploads are optional through `upload-artifact: "true"` on GitHub.com. Use a distinct `artifact-name` for each invocation and matrix job; the default retention is 14 days.
+Wrapper exits distinguish assertion failures (`1`), configuration/reporting errors (`2`), and Inso execution, timeout, or protocol failures (`3`). `fail-on-error: "false"` permits only `1`. Workflows that previously tolerated execution errors must handle this stricter policy.
 
-For production workflows, pin the action to a release commit SHA.
+Legacy `command: test` rejects `verbose: "true"` before launch because script logs can spoof TAP results. Collection verbose mode requires native reporting. Use assertion messages and run-error details before opting into raw diagnostics.
 
-`fail-on-error: "false"` permits failed reports (wrapper exit code `1`), including upstream execution failures. Inso does not distinguish assertion failures from configuration errors by exit code. Wrapper-detected validation, startup, installation, and report-publication errors still fail the action. See the [failure-policy limits](reference/inputs.md#action-outputs).
+Empty and skipped-only runs do not prove assertions passed. Check `total`, `skipped`, `run-error`, and the selected filters before allowing deployment.
 
-Markdown renders names as literal text and limits displayed results and raw diagnostics. Summary counts and machine-readable results are not truncated; see [report limits](reference/inputs.md#action-outputs).
+### Reports
 
-## Inso Version
+The action always writes normalized JSON and Markdown files. Use `json-file` for automation; `output-format: json` requests only the convenience `json-output`, which is empty when it exceeds 64 KiB measured as UTF-16. Check `json-output-omitted` rather than parsing an empty value.
 
-If your workflow depends on a specific Inso version, set it explicitly:
+The [version 1 report schema](reference/inputs.md#json-schema-and-evidence) retains flat `results` and adds request execution occurrences, messages, nullable seconds timings, source/completeness metadata, and structured run errors. Run errors are no longer synthetic failed assertions. `requests` counts completed native execution records and is empty for TAP; it is not the number of attempted HTTP requests.
 
-```yaml
-- uses: scarowar/insomnia-run@v0.2.0
-  with:
-    command: collection
-    working-directory: insomnia-export.yaml
-    inso-version: "13.3.1"
-```
+Markdown is bounded and may omit groups/results. JSON and JUnit result lists remain complete for the evidence available. Timeouts and bail runs can have partial evidence; consult `complete`.
 
-## Self-Hosted Runners
+JUnit remains enabled by default. A custom `junit-output-file` does not remove the canonical report from `report-directory`. Action report destinations must be under the workspace or runner temp directory, without report collisions, control-file overwrites, or symlink escapes.
 
-Update Actions Runner to at least 2.327.1 for the pinned Node.js 24 dependencies.
+### Privacy
 
-Insomnia Run uses `inso` from `PATH` when its version matches the requested `inso-version`. Otherwise, it installs and verifies the requested official release archive.
+Raw output is off by default. Failure details now appear in redacted reports by default. Known environment override values, explicit `redact-values`, and recognized credential patterns are removed across publication formats. Redaction is best effort, not a guarantee that arbitrary assertion text or response data is secret-free.
 
-Automatic installation supports Linux x64 and macOS Intel. Apple Silicon requires Rosetta for the official macOS binary or a compatible preinstalled Inso. Linux ARM requires a compatible preinstalled Inso. Windows is not supported.
+Header capture is off by default; `capture-response-headers` accepts literal, non-credential header names only. Raw diagnostics still need `include-raw-output: "true"`. They may reach summaries, comments, artifacts, and JSON files.
 
-Runners without public internet access should provide:
+Encoded secrets remain sensitive. CLI arguments can appear in process listings, and collection scripts inherit runner environment variables. Use isolated runners and minimum credentials; see [secret handling](guides/secrets.md).
 
-- Python 3.10 or newer
-- Exactly `uv 0.11.15` on `PATH`
-- A prepopulated uv cache containing the frozen runtime dependencies and build backend
-- The exact requested `inso` version on `PATH`
+### Comments and Artifacts
 
-Set `UV_OFFLINE=true` after provisioning the cache. Disable Inso archive caching with `cache-inso: "false"` if the Actions cache service is unavailable. A preinstalled Inso version mismatch still triggers a download; use the exact requested version or set `inso-version` to the version you provisioned.
+Comments now replace an owned comment per workflow/job/matrix/`comment-tag`. Set distinct tags for repeated invocations and [serialize matching writers](reference/inputs.md#comment-identity-and-concurrency) with `cancel-in-progress: false`. Matrix comments are separate, not aggregated. Fork/Dependabot PR comments are skipped, and comment API failures warn without changing execution results.
 
-## Input Paths
+Progress and at most ten failure annotations are enabled by default in the action; set `progress: "false"` or `annotations: "false"` to disable them. Standalone CLI defaults remain off.
 
-Use an explicit export file such as `working-directory: insomnia-export.yaml`. For legacy Git Sync data under `.insomnia/Workspace/`, use the parent repository root (`working-directory: .`), not `.insomnia`. See [input paths](reference/inputs.md#input-paths).
+Optional `upload-artifact` supports GitHub.com and GitHub Enterprise Cloud, including valid `*.ghe.com` instances. GHES requires its own uploader. Use unique artifact names per matrix job/invocation; default retention is 14 days.
 
-## Inso Configuration
+### Installation
 
-Inso still attempts automatic `.insorc` discovery, but 13.3.1 only imports a limited set of global options before command defaults override them. Set run options through action inputs; `.insorc` does not supply arbitrary run defaults or execute scripts through this wrapper. See [configuration limits](reference/inputs.md#inso-configuration).
+The toolchain pins `uv 0.13.1` and `uv_build 0.13.1`. Source installation with frozen runtime dependencies remains the default. Only this action's application is built from source; runtime dependency source builds are disabled.
 
-## Reports
+Unbundled Inso archives require a trusted `inso-sha256`; checksum discovery no longer calls the release-metadata API. An explicit local/HTTPS `inso-archive` requires that digest and does not skip verification when a matching binary is preinstalled. Bundled digest conflicts fail. Cached archives are verified on restore.
 
-Markdown reports show parsed results by default. Raw Inso output is captured, not streamed to workflow logs, and is not included unless `include-raw-output: "true"` is set. Enable it only in trusted workflows where logs are safe to share. `verbose: "true"` alone does not make it visible; see [Debug Mode](troubleshooting.md#debug-mode) for the explicit opt-in and privacy limits.
+Optional `runtime-bundle` installation requires `runtime-bundle-sha256`, matching source/lock/Python/platform identity, and a valid hashed wheelhouse. It never silently switches from bundle to source mode.
 
-**No assertions executed** is not successful test validation. Collection runs require explicit script assertions, and test-name filters can match no tests even when Inso exits successfully.
+`python-version: system` keeps an existing Python 3.10+ interpreter. The explicit managed option is reviewed CPython `3.14.8`, not latest. Linux x64 and macOS support automatic installation; Apple Silicon still needs Rosetta for the official Inso binary. Linux ARM needs compatible provisioned tools; Windows is unsupported.
 
-JUnit XML report files are generated by default. Use the `junit-file` output when you want to upload the report or publish it with a test reporting action.
+For offline installation, provision tools and caches or local archives/bundles, then set `offline-install: "true"`. This disables installer/cache network access, not API traffic from your collection or network access by comments/uploads. Dependency actions still need approved mirroring/allowlisting. See [enterprise requirements](reference/inputs.md#enterprise-runners).
 
-```yaml
-- uses: scarowar/insomnia-run@v0.2.0
-  id: tests
-  with:
-    command: test
-    working-directory: insomnia-export.yaml
-    identifier: "My Test Suite"
+Keep credentials separate: `github-token` is for instance comments, `github-com-token` is for public GitHub downloads, and artifacts use runner runtime credentials. A private archive token requires an exact `download-token-origin`; enterprise instance credentials are not public-download credentials.
 
-- run: |
-    echo "JUnit report: ${{ steps.tests.outputs.junit-file }}"
-```
+### Input Paths and Configuration
 
-## Comments Outside Pull Requests
+For a YAML export, use `working-directory: insomnia-export.yaml`. For legacy `.insomnia/Workspace/` data, use its parent repository root, not `.insomnia`.
 
-Pull request comments still work automatically on `pull_request` workflows.
-
-For manual, scheduled, deployment, or push workflows, set `comment-issue-number`:
-
-```yaml
-- uses: scarowar/insomnia-run@v0.2.0
-  with:
-    command: collection
-    working-directory: insomnia-export.yaml
-    comment-issue-number: "123"
-```
-
-Set the appropriate permission for comment publishing:
-
-```yaml
-permissions:
-  issues: write         # for issue comments
-  pull-requests: write  # for pull request comments
-```
+Set run options through action inputs. Inso 13.3.1 imports only a limited set of global configuration options before applying command defaults. The wrapper does not execute `.insorc` scripts. See [configuration limits](reference/inputs.md#inso-configuration).

@@ -74,15 +74,46 @@ The `env-var` input is available only for `command: collection`. For legacy `com
 
 Insomnia Run disables Inso CLI telemetry for its child process. It does not change the environment of later workflow steps.
 
-Markdown reports include parsed test results and a link to the workflow run. Raw Inso output is captured, not streamed to workflow logs, and is hidden from Markdown and JSON reports by default. `verbose: "true"` alone does not expose that captured output. For debugging, explicitly combine it with `include-raw-output: "true"`; see [Debug Mode](../troubleshooting.md#debug-mode).
+Failure reasons are included by default after shared redaction. Known encoded/decoded `env-var` values, explicit `redact-values`, proxy credentials, and recognized credential-bearing headers/URLs/query parameters are removed from published names, messages, selected headers, and optional raw diagnostics. JSON, Markdown, JUnit, annotations, comments, and uploaded files use the redacted projection.
 
-Raw output may contain secrets, credentials, URLs, or response bodies. Opting in includes it in Markdown and requested JSON reports, including job summaries, enabled comments, and uploaded report artifacts. Disable comments and uploads during a private debugging run; the job summary still contains the opted-in output. Parsed result names and CLI error messages can also contain sensitive data, so hiding raw output is not a guarantee of redaction.
+Add sensitive values that are not collection overrides, including legacy-suite credentials:
+
+```yaml
+- uses: scarowar/insomnia-run@v0.2.0
+  with:
+    command: collection
+    working-directory: insomnia-export.yaml
+    redact-values: |
+      ${{ secrets.EXTERNAL_CREDENTIAL }}
+```
+
+The action input accepts one value per line. For standalone use, repeat `--redact-value`. Very short values may remove unrelated text. Empty values are ignored. Redaction cannot identify every secret or transformation; do not make assertions that print credentials or sensitive response bodies.
+
+Raw Inso output is captured, not streamed. It is hidden by default. `verbose: "true"` alone does not publish it and is rejected for legacy suites. `include-raw-output: "true"` adds redacted diagnostics to reports and a raw file, including summaries, enabled comments, and uploads. Disabling comments/uploads does not remove them from the job summary. See [Debug Mode](../troubleshooting.md#debug-mode).
+
+Log masks are additional protection for logs, not sanitizers for files, comments, artifacts, or process listings. Percent-encoded and other transformed values remain credentials. The wrapper and Inso receive collection overrides as command-line arguments, and standalone `--redact-value` is also an argument. Other processes with access to process listings may see them. Collection scripts inherit runner environment variables; arbitrary secrets in that environment are not automatically known to the report redactor. Use isolated runners, trusted collections, minimal environment credentials, and explicit redaction values.
+
+## Response Headers
+
+`capture-response-headers` is empty by default. It accepts explicit, case-insensitive names such as `X-Request-ID, Server`; wildcards and credential-bearing names such as Authorization, Cookie, and token/API-key headers are rejected.
+
+The opt-in privately enables Inso's full-data `redact` mode and risk acknowledgement. That native file can still contain sensitive data despite its upstream mode name. Insomnia Run publishes only the selected, bounded, redacted headers and discards the private capture; it does not publish native environments, proxy settings, request/response bodies, or arbitrary metadata. A permitted custom header can still contain a sensitive value: add that value to `redact-values` or omit the header.
+
+## Publication Access
+
+Comments and artifacts have repository-specific access and retention policies. Fork and Dependabot PR comments are skipped, but running a collection still executes its scripts. Never use `pull_request_target` with a privileged token to execute untrusted PR content. A skipped comment is not a sandbox.
+
+Keep instance comment tokens, GitHub.com download credentials, and runner artifact credentials separate. Private archive credentials are scoped to `download-token-origin`; see [enterprise credential routing](../reference/inputs.md#enterprise-runners).
 
 ## Multi-Environment
 
 Use different secrets for different environments:
 
 ```yaml
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   staging:
     runs-on: ubuntu-latest

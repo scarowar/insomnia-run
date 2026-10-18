@@ -1,72 +1,48 @@
 # Changelog
 
-All notable changes to Insomnia Run are documented here.
-
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.2.0] - Unreleased
 
-### Changed
-
-- Default to the verified Inso CLI `13.3.1` release.
-- Install the action package with a pinned `uv` toolchain and frozen lockfile.
-- Pass GitHub authentication to `setup-uv` and disable cache writes for untrusted comment-triggered runs.
-- Refresh locked development dependencies to patched versions.
-- Maintain the uv lockfile with Dependabot's native uv updater.
-- Use Pydantic 2.14.1 for current Python support, with a test matrix covering Python 3.10 through 3.15.
-- Hide raw Inso output from Markdown and JSON reports unless explicitly enabled.
-- Separate getting started, collections, test suites, secrets, examples, reference, migration, and troubleshooting documentation.
-
 ### Added
 
-- SHA-256 verification before extracting official Inso archives, including cache restores.
-- Inso archive caching with version, operating system, and architecture isolation; cache writes are disabled for untrusted comment triggers.
-- Optional report artifact uploads on GitHub.com, with configurable names and retention, including failing test runs.
-- JUnit XML report generation for CI test reporting integrations.
-- Explicit comment targeting for manual, scheduled, deployment, and push workflows.
-- Exact-version detection of preinstalled Inso for self-hosted runners.
-- Security, CodeQL, Dependency Review, Scorecard, pre-commit, and E2E release checks, with SonarQube Cloud GitHub App analysis.
-- Migration guidance for upgrading from v0.1.x.
+- Normalized version 1 JSON reports with request execution occurrences, assertion messages, nullable seconds timings, source/completeness metadata, and structured run errors.
+- JSON/Markdown file outputs, explicit raw-file opt-in, report-directory and count outputs, and a bounded JSON convenience output with an omission flag.
+- Request-grouped Markdown, redacted failure reasons, trusted execution heartbeats, and at most ten failure annotations.
+- Owned comment replacement scoped to workflow, job, matrix, and comment tag, with stale-run detection under caller serialization. Comment API errors warn; fork/Dependabot PR comments are skipped.
+- Optional report uploads for GitHub.com and GitHub Enterprise Cloud. GHES callers can use report files with a compatible uploader.
+- Explicit local/HTTPS Inso archives, caller-supplied digests, origin-scoped download credentials, optional verified runtime bundles, and offline installation.
+- Maintainer-triggered release preparation and signed-tag candidate/publishing workflows with checksums, SBOMs, draft recovery, and OIDC attestations.
+
+### Changed
+
+- Default to Inso CLI `13.3.1` and pin `uv`/`uv_build` to `0.13.1`.
+- Use private native collection JSON when supported; retain TAP for legacy suites, older collection CLIs, and trustworthy partial recovery.
+- Distinguish assertion-only exit `1`, wrapper/configuration/report exit `2`, and Inso execution/timeout/protocol exit `3`. `fail-on-error: "false"` permits only `1`.
+- Reject verbose legacy suites before execution. Verbose collections require native reporting and do not trust stdout TAP when a native report is absent.
+- Keep source installation with frozen runtime dependency wheels as the default; bundles require an explicit trusted digest and matching source/lock/Python/platform identity.
+- Separate instance comment credentials, public GitHub download credentials, and runner artifact credentials.
+- Make unbundled Inso archive digests explicit instead of fetching release checksum metadata. Cache identities include trusted digest and custom archive source.
+- Refresh patched dependency floors/locks and retain CI coverage checks across Python 3.10 through 3.15.
 
 ### Fixed
 
-- Update the uv installer to 0.11.15 to address wheel entry-point path traversal (GHSA-4gg8-gxpx-9rph).
-- Reject malformed action inputs without echoing workflow commands from their values.
-- Check lockfile freshness in CI and scan full fetched history for secrets removed before HEAD.
-- Keep Inso startup failures fatal even when test failures are allowed.
-- Validate complete TAP plans and bailouts, protect option-like target identifiers, and label empty/skipped reports without claiming successful assertions.
-- Stop the Inso process group on timeout and decode diagnostics as UTF-8 with replacement for invalid bytes.
-- Keep execution diagnostics and exception locals out of default reports, including synthetic failures and report-write errors.
-- Reject invalid iteration and timeout bounds before execution while preserving explicit zero request timeouts and delays.
-- Prevent custom JUnit filenames from injecting workflow outputs or republishing stale reports.
-- Preserve the current invocation's selected preinstalled Inso after an earlier installation.
-- Require valid requested JSON output and scan committed content in CI rather than an empty staging area.
-- Stop retrying failed Inso release-metadata and archive requests immediately, including rate-limit and authorization errors.
-- Keep wrapper validation and report-write errors fatal when failed reports are allowed with `fail-on-error: "false"`.
-- Render names and raw diagnostics literally, and limit their Markdown display to fit GitHub comments without truncating JSON or JUnit results.
-- Keep JUnit reports valid when test names contain XML-forbidden characters, and preserve legal attribute whitespace.
-- Preserve nonzero Inso exits as report failures, including diagnostics emitted on stdout or after partial TAP output.
-- Create Inso's package cache directory before invoking the CLI on clean runners.
-- Omit raw logs from JSON unless explicitly requested, matching Markdown privacy defaults.
-- Aggregate per-request TAP plans and assign unique result IDs across collection requests.
-- Fail when action output or job summary publication fails while preserving expected test exit codes.
-- Use the validated runner Python without inheriting the caller's project constraints or downloading another interpreter.
-- Generate output delimiters portably and report macOS Rosetta requirements and unsupported Windows runners clearly.
-- Preserve runner proxy environment variables when no proxy input overrides them.
-- Use the existing token-free Sonar GitHub App integration without a conflicting CI scanner; CI enforces coverage independently.
-- Correct secret-mapping examples and replace a legacy fixture script that silently executed zero assertions.
-- Replace broad default workflow token permissions with explicit read permissions.
+- Preserve completed evidence and report later script/process errors separately from failed assertions.
+- Mark incomplete runs without inventing request records or timings, and preserve native skip status.
+- Stop Inso descendant processes on timeout and retain trustworthy partial output.
+- Keep JSON stderr valid after a report exists, even when another report write fails; use files rather than process-stream parsing in the action.
+- Validate report destinations before execution and writing; reject control-file overwrites, collisions, and escaping symlinks.
+- Keep the current invocation's JUnit report in the upload directory even with a custom destination.
+- Preserve quotes, backslashes, and interior spaces while trimming comma-separated item/folder inputs.
+- Bound Markdown by complete blocks without truncating normalized JSON/JUnit result lists.
 
 ### Security
 
-- Disable Inso CLI telemetry for child processes without changing the caller's environment.
-- Use a pinned setup-uv release with embedded checksums for the selected uv binary.
-- Restrict release downloads and redirects to HTTPS, and confine integrity-helper paths to runner temporary storage.
-- Install runtime dependencies from locked wheels without executing third-party source builds.
-- Third-party GitHub Actions are pinned by full commit SHA.
-- Workflow tokens use least privilege.
-- Security scanning includes dependency audit, Bandit, Zizmor, Gitleaks, actionlint, CodeQL, SonarQube, and SBOM generation.
-- Raw command output is not included in public reports by default.
+- Apply shared best-effort redaction to published reports and explicitly supplied sensitive values; keep raw diagnostics disabled by default.
+- Permit only explicitly named non-credential response headers. Native/full-data captures remain private and are not uploaded.
+- Verify archives before extraction, reverify cache restores, and reject digest/identity conflicts rather than weakening checks.
+- Disable Inso telemetry for child processes and keep runtime dependency source builds disabled.
+- Retain SHA-pinned dependency actions and scoped workflow permissions.
 
 ## [0.1.2] - 2026-01-06
 
