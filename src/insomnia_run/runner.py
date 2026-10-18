@@ -18,6 +18,10 @@ from .native import parse_native_report, validate_capture_headers
 from .parser import TapParser
 
 
+class InsoConfigurationError(ValueError):
+    """A fixed, public-safe diagnostic that must never contain input values."""
+
+
 class InsoRunner:
     @staticmethod
     def _run_command(cmd: list[str], timeout: int):
@@ -63,21 +67,18 @@ class InsoRunner:
     def _supports_native_report(self) -> bool:
         try:
             # Capability discovery never runs a collection or interprets script logs.
-            result = subprocess.run(  # nosec B603 B607
-                ["inso", "run", "collection", "--help"],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=15,
-                check=False,
-                env={**os.environ, "INSO_TELEMETRY_DISABLED": "1"},
+            result = self._run_command(["inso", "run", "collection", "--help"], 15)
+        except subprocess.TimeoutExpired as error:
+            raise InsoConfigurationError(
+                "Inso capability discovery timed out. Check that "
+                "'inso run collection --help' completes, then retry."
+            ) from error
+        if result.returncode != 0:
+            raise InsoConfigurationError(
+                "Inso capability discovery failed. Check that "
+                "'inso run collection --help' succeeds, then retry."
             )
-        except (OSError, subprocess.TimeoutExpired):
-            return False
-        return result.returncode == 0 and bool(
-            re.search(r"^\s+--output(?:\s|$)", result.stdout, re.M)
-        )
+        return bool(re.search(r"^\s+--output(?:\s|$)", result.stdout, re.M))
 
     @staticmethod
     def _base_cmd(run_type: RunType, working_dir: str):
@@ -278,8 +279,10 @@ class InsoRunner:
         self._apply_collection_options(cmd, options)
         native = self._supports_native_report()
         if not native and (options.verbose or headers):
-            raise ValueError(
-                "Native collection reporting is required for verbose or response header capture."
+            raise InsoConfigurationError(
+                "Native collection reporting is required for verbose or response header capture. "
+                "Use an Inso version with --output support, or disable --verbose and "
+                "--capture-response-headers."
             )
         with tempfile.TemporaryDirectory(prefix="insomnia-run-private-") as directory:
             path = Path(directory) / "native.json" if native else None
@@ -293,7 +296,9 @@ class InsoRunner:
 
     def run_test(self, options: InsoTestOptions) -> InsoRunReport:
         if options.verbose:
-            raise ValueError("verbose is unsafe for legacy test TAP reporting.")
+            raise InsoConfigurationError(
+                "Legacy run-test does not support --verbose because script logs can spoof TAP results."
+            )
         cmd = self._base_cmd(RunType.TEST, options.working_dir)
         self._apply_common_options(cmd, options)
         self._apply_test_options(cmd, options)

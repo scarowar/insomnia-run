@@ -13,7 +13,7 @@ from .native import validate_capture_headers
 from .privacy import Redactor
 from .publication import failure_annotations
 from .report_files import validate_destination, write_report_file
-from .runner import InsoRunner
+from .runner import InsoConfigurationError, InsoRunner
 from .reporter import Reporter
 
 app = typer.Typer(
@@ -119,6 +119,8 @@ def _execute_report(
             err=True,
         )
         raise typer.Exit(code=2) from error
+    except InsoConfigurationError as error:
+        raise typer.BadParameter(str(error)) from error
     except ValueError as error:
         raise typer.BadParameter(
             "Invalid Inso configuration. Check command options."

@@ -1,5 +1,7 @@
 import json
 import os
+import subprocess
+import sys
 import threading
 from urllib.parse import quote
 from xml.etree import ElementTree
@@ -146,14 +148,202 @@ def test_known_url_is_redacted_whole_across_publication_formats(
         assert "token-value" not in published
 
 
-def test_legacy_verbose_is_rejected_before_execution(monkeypatch, report):
+@pytest.mark.parametrize("legacy_json", [False, True])
+def test_legacy_verbose_is_rejected_before_execution(monkeypatch, report, legacy_json):
     observed = stub_runner(monkeypatch, report, command="run_test")
-
-    result = CliRunner().invoke(app, ["run-test", "-w", "fixture", "--verbose"])
+    args = ["run-test", "-w", "private-working-directory", "--verbose"]
+    if legacy_json:
+        args.extend(["--output-format", "json"])
+    result = CliRunner().invoke(app, args)
 
     assert result.exit_code == 2
     assert observed == []
-    assert "verbose" in result.output.lower()
+    assert "Legacy run-test does not support --verbose" in result.stderr
+    assert "logs can spoof TAP results" in " ".join(result.stderr.split())
+    assert "private-working-directory" not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("legacy_json", [False, True])
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--verbose"],
+        ["--capture-response-headers", "X-Request-ID"],
+        ["--verbose", "--capture-response-headers", "X-Request-ID"],
+    ],
+)
+def test_unsupported_native_options_have_safe_actionable_cli_errors(
+    tmp_path, monkeypatch, flags, legacy_json
+):
+    def forbidden(*args):
+        pytest.fail("Inso must not execute without required native reporting")
+
+    monkeypatch.setattr(
+        "insomnia_run.runner.InsoRunner._supports_native_report", lambda self: False
+    )
+    monkeypatch.setattr("insomnia_run.runner.InsoRunner._run_command", forbidden)
+    destination = tmp_path / "report.json"
+    args = [
+        "run-collection",
+        "-w",
+        "private-working-directory",
+        "--env-var",
+        "TOKEN=private-environment-value",
+        "--http-proxy",
+        "https://private-user:private-password@proxy.invalid",
+        "--json-output",
+        str(destination),
+        *flags,
+    ]
+    if legacy_json:
+        args.extend(["--output-format", "json"])
+
+    result = CliRunner().invoke(app, args)
+
+    assert result.exit_code == 2
+    diagnostic = " ".join(result.stderr.split())
+    assert "Native collection reporting is required" in diagnostic
+    assert "--output" in diagnostic
+    assert "--verbose" in diagnostic
+    assert "--capture-response-headers" in diagnostic
+    assert "Invalid Inso configuration" not in diagnostic
+    for value in (
+        "private-working-directory",
+        "private-environment-value",
+        "private-user",
+        "private-password",
+        str(destination),
+    ):
+        assert value not in result.stdout + result.stderr
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("legacy_json", [False, True])
+@pytest.mark.parametrize("failure", ["missing", "permission", "format"])
+@pytest.mark.parametrize(
+    "flags",
+    [
+        [],
+        ["--verbose"],
+        ["--capture-response-headers", "X-Request-ID"],
+        ["--verbose", "--capture-response-headers", "X-Request-ID"],
+    ],
+)
+def test_capability_probe_startup_failures_have_safe_cli_diagnostics(
+    tmp_path, flags, failure, legacy_json
+):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    if failure != "missing":
+        executable = bin_dir / "inso"
+        executable.write_text("not an executable\n")
+        executable.chmod(0o644 if failure == "permission" else 0o755)
+    destination = tmp_path / "report.json"
+    destination.write_text("previous report")
+    secret = "CAPABILITY_STARTUP_PRIVATE_SENTINEL"
+    args = [
+        "run-collection",
+        "-w",
+        f"private-working-directory-{secret}",
+        "--env-var",
+        f"TOKEN={secret}",
+        "--http-proxy",
+        f"https://user:{secret}@proxy.invalid",
+        "--json-output",
+        str(destination),
+        *flags,
+    ]
+    if legacy_json:
+        args.extend(["--output-format", "json"])
+
+    result = subprocess.run(
+        [sys.executable, "-m", "insomnia_run.main", *args],
+        env={**os.environ, "PATH": str(bin_dir)},
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "Unable to execute Inso CLI" in result.stderr
+    assert "Native collection reporting is required" not in result.stderr
+    assert "Traceback" not in result.stderr
+    assert secret not in result.stdout + result.stderr
+    assert str(destination) not in result.stdout + result.stderr
+    assert destination.read_text() == "previous report"
+
+
+@pytest.mark.parametrize("legacy_json", [False, True])
+@pytest.mark.parametrize(
+    "failure", ["os-error", "timeout", "nonzero", "nonzero-with-output"]
+)
+@pytest.mark.parametrize(
+    "flags",
+    [
+        [],
+        ["--verbose"],
+        ["--capture-response-headers", "X-Request-ID"],
+        ["--verbose", "--capture-response-headers", "X-Request-ID"],
+    ],
+)
+def test_failed_capability_probes_never_publish_private_data_or_execute(
+    tmp_path, monkeypatch, flags, failure, legacy_json
+):
+    secret = "CAPABILITY_PROBE_PRIVATE_SENTINEL"
+
+    def probe(cmd, timeout):
+        assert cmd == ["inso", "run", "collection", "--help"]
+        if failure == "os-error":
+            raise OSError(secret)
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(
+                [*cmd, secret], 15, output=secret, stderr=secret
+            )
+        stdout = secret
+        if failure == "nonzero-with-output":
+            stdout += "\n  --output <file>\n"
+        return subprocess.CompletedProcess(cmd, 1, stdout, secret)
+
+    monkeypatch.setattr(
+        "insomnia_run.runner.InsoRunner._run_command", staticmethod(probe)
+    )
+    destination = tmp_path / "report.json"
+    args = [
+        "run-collection",
+        "-w",
+        secret,
+        "--env-var",
+        f"TOKEN={secret}",
+        "--http-proxy",
+        f"https://user:{secret}@proxy.invalid",
+        "--json-output",
+        str(destination),
+        "--include-raw-output",
+        "--progress",
+        *flags,
+    ]
+    if legacy_json:
+        args.extend(["--output-format", "json"])
+
+    result = CliRunner().invoke(app, args)
+
+    assert result.exit_code == 2
+    diagnostic = " ".join(result.stderr.replace("\u2502", "").split())
+    if failure == "os-error":
+        assert "Unable to execute Inso CLI" in diagnostic
+    else:
+        assert "Inso capability discovery" in diagnostic
+        assert ("timed out" if failure == "timeout" else "failed") in diagnostic
+        assert "inso run collection --help" in diagnostic
+        assert "retry" in diagnostic
+    assert "Native collection reporting is required" not in diagnostic
+    assert "Invalid Inso configuration" not in diagnostic
+    assert "Traceback" not in result.stdout + result.stderr
+    assert secret not in result.stdout + result.stderr
+    assert str(destination) not in result.stdout + result.stderr
+    assert not destination.exists()
 
 
 def test_colliding_output_files_are_rejected_before_execution(
@@ -341,18 +531,32 @@ def test_progress_never_enters_json_or_markdown_files(tmp_path, monkeypatch, rep
     assert "Starting Inso" not in markdown.read_text()
 
 
+@pytest.mark.parametrize("command", ["run-collection", "run-test"])
+@pytest.mark.parametrize("legacy_json", [False, True])
+@pytest.mark.parametrize(
+    "message",
+    ["private sentinel", "Native collection reporting is required: private sentinel"],
+)
 def test_runner_validation_error_is_configuration_error_without_private_details(
-    monkeypatch,
+    monkeypatch, command, legacy_json, message
 ):
     def invalid(self, options):
-        raise ValueError("private" + " sentinel")
+        raise ValueError(message)
 
-    monkeypatch.setattr("insomnia_run.main.InsoRunner.run_collection", invalid)
-    result = CliRunner().invoke(app, ["run-collection", "-w", "fixture"])
+    monkeypatch.setattr(
+        f"insomnia_run.main.InsoRunner.{command.replace('-', '_')}", invalid
+    )
+    args = [command, "-w", "fixture"]
+    if legacy_json:
+        args.extend(["--output-format", "json"])
+    result = CliRunner().invoke(app, args)
 
     assert result.exit_code == 2
-    assert "private sentinel" not in result.output
-    assert "Invalid Inso" in result.output
+    assert "private sentinel" not in result.stdout + result.stderr
+    assert "Native collection reporting is required" not in result.stderr
+    assert "Invalid Inso configuration. Check command options." in " ".join(
+        result.stderr.split()
+    )
 
 
 @pytest.mark.parametrize("command", ["run-collection", "run-test"])
@@ -489,7 +693,11 @@ def test_annotations_are_bounded_escaped_and_separate_from_json(
         line for line in annotations.splitlines() if line.startswith("::error ")
     ]
     assert len(commands) == 10
-    assert "%25%2C%3A%0D%0A%3A%3Awarning%3A%3Aspoof" in commands[0]
+    assert "%25,:%0D%0A::warning::spoof" in commands[0]
+    _, header, data = commands[0].split("::", 2)
+    assert header == "error title=Insomnia Run"
+    decoded = data.replace("%0D", "\r").replace("%0A", "\n").replace("%25", "%")
+    assert decoded == "bad%,:\r\n::warning::spoof: reason"
     if legacy_json:
         assert json.loads(result.stderr)["schema_version"] == 1
 

@@ -12,7 +12,7 @@ import pytest
 from typer.testing import CliRunner
 
 from insomnia_run.main import app
-from insomnia_run.runner import InsoRunner
+from insomnia_run.runner import InsoConfigurationError, InsoRunner
 
 
 @pytest.fixture
@@ -21,6 +21,9 @@ def fake_inso(tmp_path, monkeypatch):
     binary.write_text(
         f"#!{sys.executable}\n"
         "import os, sys\n"
+        "if sys.argv[1:] == ['run', 'collection', '--help']:\n"
+        "    print('Usage: inso run collection [options]\\n  --reporter <reporter>')\n"
+        "    sys.exit(0)\n"
         "os.write(1, bytes.fromhex(os.environ.get('FAKE_INSO_STDOUT', '')))\n"
         "os.write(2, bytes.fromhex(os.environ.get('FAKE_INSO_STDERR', '')))\n"
         "sys.exit(int(os.environ.get('FAKE_INSO_EXIT', '0')))\n",
@@ -176,7 +179,8 @@ def test_subprocess_decoding_does_not_depend_on_parent_locale():
     assert result.returncode == 0, result.stderr
 
 
-def test_timeout_stops_descendant_processes(tmp_path):
+@pytest.mark.parametrize("capability_probe", [False, True])
+def test_timeout_stops_descendant_processes(tmp_path, monkeypatch, capability_probe):
     lock = tmp_path / "child.lock"
     ready = tmp_path / "child.ready"
     child = (
@@ -189,11 +193,25 @@ def test_timeout_stops_descendant_processes(tmp_path):
         f"subprocess.Popen([sys.executable, '-c', {child!r}, sys.argv[1], sys.argv[2]]); "
         "time.sleep(30)"
     )
+    if capability_probe:
+        executable = tmp_path / "inso"
+        executable.write_text(
+            f"#!{sys.executable}\n"
+            "import subprocess, sys, time\n"
+            f"subprocess.Popen([sys.executable, '-c', {child!r}, {str(lock)!r}, {str(ready)!r}])\n"
+            "time.sleep(30)\n"
+        )
+        executable.chmod(0o755)
+        monkeypatch.setenv("PATH", str(tmp_path))
     try:
-        with pytest.raises(subprocess.TimeoutExpired):
-            InsoRunner._run_command(
-                [sys.executable, "-c", parent, str(lock), str(ready)], 1
-            )
+        if capability_probe:
+            with pytest.raises(InsoConfigurationError, match="discovery timed out"):
+                InsoRunner()._supports_native_report()
+        else:
+            with pytest.raises(subprocess.TimeoutExpired):
+                InsoRunner._run_command(
+                    [sys.executable, "-c", parent, str(lock), str(ready)], 1
+                )
 
         assert ready.exists(), "Descendant did not start before the timeout"
         with lock.open() as handle:
