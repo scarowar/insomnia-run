@@ -191,7 +191,7 @@ jobs:
           uv sync --frozen --no-dev --group test --no-build --no-install-project
           requirement="$(python -c 'import hashlib, os; from pathlib import Path; wheel, = (Path(os.environ["RUNNER_TEMP"]) / "insomnia-run-compat-wheel").glob("*.whl"); print(f"{wheel.resolve().as_uri()} --hash=sha256:{hashlib.sha256(wheel.read_bytes()).hexdigest()}")')"
           uv pip install --no-build --no-deps --no-index --require-hashes --python "${UV_PROJECT_ENVIRONMENT}/bin/python" -r <(printf '%s\n' "$requirement")
-          uv run --frozen --no-sync --no-build pytest -q tests/test_inso_compatibility.py tests/test_native_compatibility.py
+          uv run --frozen --no-sync --no-build pytest -q --basetemp "${RUNNER_TEMP}/insomnia-run-compat-tests" tests/test_inso_compatibility.py tests/test_native_compatibility.py
 
   test-failure-handling:
     name: Test Failure Handling

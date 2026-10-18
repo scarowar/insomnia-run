@@ -197,6 +197,9 @@ def test_e2e_checks_the_verified_binary_against_the_compatibility_suite():
     assert "--no-build --no-install-project" in compatibility["run"]
     assert "--require-hashes" in compatibility["run"]
     assert "uv run --frozen --no-sync --no-build pytest" in compatibility["run"]
+    assert (
+        '--basetemp "${RUNNER_TEMP}/insomnia-run-compat-tests"' in compatibility["run"]
+    )
 
 
 def test_docs_deploy_runs_only_for_docs_surface_changes():
@@ -283,3 +286,5 @@ def test_ci_enforces_coverage_independently_of_automatic_analysis():
     ci = load_yaml(ROOT / ".github/workflows/ci.yml")
     commands = "\n".join(s.get("run", "") for s in ci["jobs"]["test"]["steps"])
     assert "--cov-fail-under=95" in commands
+    assert '--basetemp "${RUNNER_TEMP}/insomnia-run-unit-tests"' in commands
+    assert "pytest -q" in commands

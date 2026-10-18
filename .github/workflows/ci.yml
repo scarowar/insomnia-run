@@ -67,7 +67,7 @@ jobs:
       - name: Run tests
         env:
           INSOMNIA_RUN_UV_BINARY: ${{ steps.uv.outputs.uv-path }}
-        run: uv run --frozen --no-sync --no-build pytest -v --tb=short --cov=insomnia_run --cov-report=term-missing --cov-fail-under=95
+        run: uv run --frozen --no-sync --no-build pytest -q --basetemp "${RUNNER_TEMP}/insomnia-run-unit-tests" --tb=short --cov=insomnia_run --cov-report=term-missing --cov-fail-under=95
 
   lint:
     name: Lint
