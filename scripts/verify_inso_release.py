@@ -12,7 +12,7 @@ import tempfile
 import zipfile
 
 from install_runtime import download_archive
-from runtime_bundle import extract_verified, require_digest, runner_path
+from runtime_bundle import extract_verified, require_digest, runner_path, sha256_file
 
 
 def expected_digest(asset: str, manifest: Path, supplied: str = "") -> str:
@@ -104,6 +104,10 @@ def main() -> None:
             args.inso_archive
             or f"https://github.com/Kong/insomnia/releases/download/core%40{match[2]}/{args.asset}"
         )
+        if args.archive_path.exists() and sha256_file(args.archive_path) != digest:
+            if args.offline_install:
+                raise ValueError("Inso archive failed SHA-256 verification")
+            args.archive_path.unlink()
         if not args.archive_path.exists():
             download_archive(
                 location,
@@ -115,8 +119,6 @@ def main() -> None:
         if args.install_dir:
             install_inso(args.archive_path, digest, args.install_dir)
         else:
-            from runtime_bundle import sha256_file
-
             if sha256_file(args.archive_path) != digest:
                 raise ValueError("Inso archive failed SHA-256 verification")
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:

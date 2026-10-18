@@ -810,6 +810,7 @@ def test_inso_cli_verify_only_and_runner_temp_scope(tmp_path, monkeypatch):
         str(archive),
         "--inso-sha256",
         sha256_file(archive),
+        "--offline-install",
     ]
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setattr(sys, "argv", args)

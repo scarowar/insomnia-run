@@ -95,7 +95,10 @@ def _download_https(
     current = location
     for attempt in range(6):
         _, current_origin = _https_url(current)
-        headers = {"User-Agent": "insomnia-run-installer"}
+        headers = {
+            "User-Agent": "insomnia-run-installer",
+            "Accept": "application/octet-stream",
+        }
         if token and current_origin == allowed_origin:
             headers["Authorization"] = "Bearer " + token
         try:
