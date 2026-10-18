@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import tarfile
+from typing import BinaryIO
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -61,6 +62,54 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def _copy_download(source: BinaryIO, output: BinaryIO, max_bytes: int) -> None:
+    total = 0
+    for block in iter(lambda: source.read(1024 * 1024), b""):
+        total += len(block)
+        if total > max_bytes:
+            raise ValueError("Download size limit exceeded")
+        output.write(block)
+
+
+def _redirect_location(error: HTTPError, current: str, attempt: int) -> str:
+    if error.code not in (301, 302, 303, 307, 308):
+        error.close()
+        raise ValueError(
+            f"Archive download failed (HTTP {error.code}); not retried"
+        ) from None
+    location = error.headers.get("Location")
+    error.close()
+    if not location or attempt == 5:
+        raise ValueError("Invalid or excessive archive redirects") from None
+    return urljoin(current, location)
+
+
+def _download_https(
+    location: str,
+    output: BinaryIO,
+    token: str,
+    allowed_origin: tuple[str, int] | None,
+    max_bytes: int,
+) -> None:
+    opener = build_opener(_NoRedirect())
+    current = location
+    for attempt in range(6):
+        _, current_origin = _https_url(current)
+        headers = {"User-Agent": "insomnia-run-installer"}
+        if token and current_origin == allowed_origin:
+            headers["Authorization"] = "Bearer " + token
+        try:
+            response = opener.open(Request(current, headers=headers), timeout=60)
+        except HTTPError as error:
+            current = _redirect_location(error, current, attempt)
+            continue
+        except URLError:
+            raise ValueError("Archive download failed; check network access") from None
+        with closing(response):
+            _copy_download(response, output, max_bytes)
+        break
+
+
 def download_archive(
     location: str,
     destination: Path,
@@ -92,51 +141,11 @@ def download_archive(
         staged = Path(scratch) / "archive"
         with staged.open("xb") as output:
             os.chmod(staged, 0o600)
-
-            def copy(source):
-                total = 0
-                for block in iter(lambda: source.read(1024 * 1024), b""):
-                    total += len(block)
-                    if total > max_bytes:
-                        raise ValueError("Download size limit exceeded")
-                    output.write(block)
-
             if not parsed.scheme:
                 with regular_file(Path(location)) as source:
-                    copy(source)
+                    _copy_download(source, output, max_bytes)
             else:
-                opener = build_opener(_NoRedirect())
-                current = location
-                for attempt in range(6):
-                    _, current_origin = _https_url(current)
-                    headers = {"User-Agent": "insomnia-run-installer"}
-                    if token and current_origin == allowed_origin:
-                        headers["Authorization"] = "Bearer " + token
-                    try:
-                        response = opener.open(
-                            Request(current, headers=headers), timeout=60
-                        )
-                    except HTTPError as error:
-                        if error.code not in (301, 302, 303, 307, 308):
-                            error.close()
-                            raise ValueError(
-                                f"Archive download failed (HTTP {error.code}); not retried"
-                            ) from None
-                        location_header = error.headers.get("Location")
-                        error.close()
-                        if not location_header or attempt == 5:
-                            raise ValueError(
-                                "Invalid or excessive archive redirects"
-                            ) from None
-                        current = urljoin(current, location_header)
-                        continue
-                    except URLError:
-                        raise ValueError(
-                            "Archive download failed; check network access"
-                        ) from None
-                    with closing(response):
-                        copy(response)
-                    break
+                _download_https(location, output, token, allowed_origin, max_bytes)
         # Hard linking is an atomic no-clobber publication on the same filesystem.
         os.link(staged, destination)
 

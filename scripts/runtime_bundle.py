@@ -15,13 +15,16 @@ import sys
 import sysconfig
 import tarfile
 import tempfile
-from typing import BinaryIO, Iterator
+from typing import BinaryIO, Callable, Iterator
 import zipfile
 from urllib.parse import unquote, urlsplit
 
 
 MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 10_000
+MANIFEST_NAME = "manifest.json"
+LOCK_NAME = "uv.lock"
+REQUIREMENTS_NAME = "requirements.txt"
 
 
 def runner_path(path: Path, runner_temp: Path) -> Path:
@@ -90,6 +93,54 @@ def _write_member(stream: BinaryIO, destination: Path, size: int) -> None:
             raise ValueError("Archive member exceeds its declared size")
 
 
+def _extract_zip(
+    archive: Path, target: Callable[[str, int, bool], Path], max_members: int
+) -> None:
+    with zipfile.ZipFile(archive) as source:
+        for count, member in enumerate(source.infolist(), 1):
+            if count > max_members:
+                raise ValueError("Archive member limit exceeded")
+            if member.is_dir() and member.filename in (".", "./"):
+                continue
+            mode = member.external_attr >> 16
+            if stat.S_IFMT(mode) not in (0, stat.S_IFREG, stat.S_IFDIR):
+                raise ValueError(
+                    "Archives may contain only directories and regular files"
+                )
+            output = target(member.filename, member.file_size, member.is_dir())
+            if member.is_dir():
+                output.mkdir(parents=True, exist_ok=True, mode=0o700)
+            else:
+                with source.open(member) as stream:
+                    _write_member(stream, output, member.file_size)
+
+
+def _extract_tar(
+    archive: Path, target: Callable[[str, int, bool], Path], max_members: int
+) -> None:
+    with tarfile.open(archive, "r|*") as source:
+        for count, member in enumerate(source, 1):
+            if count > max_members:
+                raise ValueError("Archive member limit exceeded")
+            if member.isdir() and member.name in (".", "./"):
+                continue
+            if not member.isdir() and not member.isfile():
+                raise ValueError(
+                    "Archives may contain only directories and regular files"
+                )
+            if member.sparse is not None:
+                raise ValueError("Sparse archive members are not supported")
+            output = target(member.name, member.size, member.isdir())
+            if member.isdir():
+                output.mkdir(parents=True, exist_ok=True, mode=0o700)
+                continue
+            stream = source.extractfile(member)
+            if stream is None:
+                raise ValueError("Missing archive member data")
+            with stream:
+                _write_member(stream, output, member.size)
+
+
 def _extract(archive: Path, root: Path, max_bytes: int, max_members: int) -> None:
     seen: dict[str, bool] = {}
     total = 0
@@ -113,45 +164,9 @@ def _extract(archive: Path, root: Path, max_bytes: int, max_members: int) -> Non
         return root.joinpath(*path.parts)
 
     if zipfile.is_zipfile(archive):
-        with zipfile.ZipFile(archive) as source:
-            for count, member in enumerate(source.infolist(), 1):
-                if count > max_members:
-                    raise ValueError("Archive member limit exceeded")
-                if member.is_dir() and member.filename in (".", "./"):
-                    continue
-                mode = member.external_attr >> 16
-                if stat.S_IFMT(mode) not in (0, stat.S_IFREG, stat.S_IFDIR):
-                    raise ValueError(
-                        "Archives may contain only directories and regular files"
-                    )
-                output = target(member.filename, member.file_size, member.is_dir())
-                if member.is_dir():
-                    output.mkdir(parents=True, exist_ok=True, mode=0o700)
-                else:
-                    with source.open(member) as stream:
-                        _write_member(stream, output, member.file_size)
+        _extract_zip(archive, target, max_members)
     else:
-        with tarfile.open(archive, "r|*") as source:
-            for count, member in enumerate(source, 1):
-                if count > max_members:
-                    raise ValueError("Archive member limit exceeded")
-                if member.isdir() and member.name in (".", "./"):
-                    continue
-                if not member.isdir() and not member.isfile():
-                    raise ValueError(
-                        "Archives may contain only directories and regular files"
-                    )
-                if member.sparse is not None:
-                    raise ValueError("Sparse archive members are not supported")
-                output = target(member.name, member.size, member.isdir())
-                if member.isdir():
-                    output.mkdir(parents=True, exist_ok=True, mode=0o700)
-                else:
-                    stream = source.extractfile(member)
-                    if stream is None:
-                        raise ValueError("Missing archive member data")
-                    with stream:
-                        _write_member(stream, output, member.size)
+        _extract_tar(archive, target, max_members)
 
 
 def extract_verified(
@@ -233,10 +248,8 @@ class VerifiedBundle:
     application: Path
 
 
-def verify_bundle(
-    root: Path, project: Path, python_tag: str, platform_tag: str
-) -> VerifiedBundle:
-    manifest_path = root / "manifest.json"
+def _load_manifest(root: Path) -> dict:
+    manifest_path = root / MANIFEST_NAME
     if manifest_path.stat().st_size > 1024 * 1024:
         raise ValueError("Runtime manifest is too large")
     manifest = json.loads(
@@ -258,13 +271,10 @@ def verify_bundle(
         or manifest["schema_version"] != 1
     ):
         raise ValueError("Unsupported runtime manifest schema")
-    if manifest["source_sha256"] != source_digest(project) or manifest[
-        "lock_sha256"
-    ] != sha256_file(project / "uv.lock"):
-        raise ValueError("Runtime bundle source/lock identity mismatch")
-    if manifest["python_tag"] != python_tag or manifest["platform"] != platform_tag:
-        raise ValueError("Runtime bundle Python/platform identity mismatch")
-    files = manifest["files"]
+    return manifest
+
+
+def _verify_bundle_files(root: Path, files: dict) -> None:
     if not isinstance(files, dict) or not files or len(files) > MAX_ARCHIVE_MEMBERS:
         raise ValueError("Invalid runtime bundle file manifest")
     actual = {
@@ -272,12 +282,12 @@ def verify_bundle(
     }
     if any(path.is_symlink() for path in root.rglob("*")):
         raise ValueError("Runtime bundle must not contain symlinks")
-    if actual != set(files) | {"manifest.json"}:
+    if actual != set(files) | {MANIFEST_NAME}:
         raise ValueError("Runtime bundle contains missing or unlisted files")
     for name, digest in files.items():
         path = _member_path(name)
         if path.as_posix() != name or (
-            name != "requirements.txt"
+            name != REQUIREMENTS_NAME
             and (
                 len(path.parts) != 2
                 or path.parts[0] != "wheels"
@@ -289,16 +299,9 @@ def verify_bundle(
             digest
         ):
             raise ValueError("Runtime bundle file failed SHA-256 verification")
-    application = manifest["application"]
-    if (
-        not isinstance(application, str)
-        or application not in files
-        or not application.startswith("wheels/insomnia_run-")
-    ):
-        raise ValueError("Runtime bundle application wheel is missing")
-    requirements = root / "requirements.txt"
-    if "requirements.txt" not in files or requirements.stat().st_size > 1024 * 1024:
-        raise ValueError("Runtime bundle requirements are missing or too large")
+
+
+def _wheel_hashes(files: dict) -> dict[tuple[str, str], str]:
     wheels = {}
     for name in files:
         if name.endswith(".whl"):
@@ -309,6 +312,10 @@ def verify_bundle(
             if key in wheels:
                 raise ValueError("Duplicate runtime wheel package")
             wheels[key] = files[name]
+    return wheels
+
+
+def _requirement_hashes(requirements: Path) -> dict[tuple[str, str], str]:
     entries = {}
     for line in requirements.read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
@@ -325,9 +332,72 @@ def verify_bundle(
         if key in entries:
             raise ValueError("Duplicate runtime requirement")
         entries[key] = match[3]
-    if entries != wheels:
+    return entries
+
+
+def verify_bundle(
+    root: Path, project: Path, python_tag: str, platform_tag: str
+) -> VerifiedBundle:
+    manifest = _load_manifest(root)
+    if manifest["source_sha256"] != source_digest(project) or manifest[
+        "lock_sha256"
+    ] != sha256_file(project / LOCK_NAME):
+        raise ValueError("Runtime bundle source/lock identity mismatch")
+    if manifest["python_tag"] != python_tag or manifest["platform"] != platform_tag:
+        raise ValueError("Runtime bundle Python/platform identity mismatch")
+    files = manifest["files"]
+    _verify_bundle_files(root, files)
+    application = manifest["application"]
+    if (
+        not isinstance(application, str)
+        or application not in files
+        or not application.startswith("wheels/insomnia_run-")
+    ):
+        raise ValueError("Runtime bundle application wheel is missing")
+    requirements = root / REQUIREMENTS_NAME
+    if REQUIREMENTS_NAME not in files or requirements.stat().st_size > 1024 * 1024:
+        raise ValueError("Runtime bundle requirements are missing or too large")
+    wheels = _wheel_hashes(files)
+    if _requirement_hashes(requirements) != wheels:
         raise ValueError("Runtime requirements do not match the wheelhouse")
     return VerifiedBundle(root, requirements, root / application)
+
+
+def _select_locked_wheel(requirement, lock: dict, supported: dict) -> tuple[str, dict]:
+    from packaging.utils import canonicalize_name, parse_wheel_filename
+
+    if requirement.url or requirement.extras or len(requirement.specifier) != 1:
+        raise ValueError("Bundle dependencies must use exact registry wheel versions")
+    specifier = next(iter(requirement.specifier))
+    if specifier.operator != "==" or "*" in specifier.version:
+        raise ValueError("Bundle dependencies must use exact registry wheel versions")
+    packages = [
+        package
+        for package in lock["package"]
+        if canonicalize_name(package["name"]) == canonicalize_name(requirement.name)
+        and package["version"] == specifier.version
+    ]
+    if len(packages) != 1:
+        raise ValueError(
+            "Runtime dependency does not match exactly one lockfile package"
+        )
+    candidates = []
+    for wheel in packages[0].get("wheels", []):
+        filename = unquote(PurePosixPath(urlsplit(wheel["url"]).path).name)
+        name, version, _, tags = parse_wheel_filename(filename)
+        ranks = [supported[tag] for tag in tags if tag in supported]
+        if (
+            ranks
+            and name == canonicalize_name(requirement.name)
+            and str(version) == specifier.version
+        ):
+            candidates.append((min(ranks), filename, wheel))
+    if not candidates:
+        raise ValueError(
+            "Locked runtime dependency has no wheel for the build platform"
+        )
+    _, filename, selected = min(candidates, key=lambda item: (item[0], item[1]))
+    return filename, selected
 
 
 def build_bundle(project: Path, output: Path, *, uv: str = "uv") -> Path:
@@ -335,13 +405,13 @@ def build_bundle(project: Path, output: Path, *, uv: str = "uv") -> Path:
     import tomllib
     from packaging.requirements import Requirement
     from packaging.tags import sys_tags
-    from packaging.utils import canonicalize_name, parse_wheel_filename
+    from packaging.utils import parse_wheel_filename
     from install_runtime import download_archive
 
     project = project.resolve(strict=True)
     source_hash = source_digest(project)
-    lock_hash = sha256_file(project / "uv.lock")
-    lock = tomllib.loads((project / "uv.lock").read_text(encoding="utf-8"))
+    lock_hash = sha256_file(project / LOCK_NAME)
+    lock = tomllib.loads((project / LOCK_NAME).read_text(encoding="utf-8"))
     environment = dict(os.environ, UV_PYTHON_DOWNLOADS="never")
     for name in (
         "INSOMNIA_RUN_DOWNLOAD_TOKEN",
@@ -360,7 +430,7 @@ def build_bundle(project: Path, output: Path, *, uv: str = "uv") -> Path:
             "--no-annotate",
             "--no-header",
             "--format",
-            "requirements.txt",
+            REQUIREMENTS_NAME,
             "--project",
             str(project),
         ],
@@ -380,42 +450,7 @@ def build_bundle(project: Path, output: Path, *, uv: str = "uv") -> Path:
             requirement = Requirement(line)
             if requirement.marker and not requirement.marker.evaluate():
                 continue
-            if requirement.url or requirement.extras or len(requirement.specifier) != 1:
-                raise ValueError(
-                    "Bundle dependencies must use exact registry wheel versions"
-                )
-            specifier = next(iter(requirement.specifier))
-            if specifier.operator != "==" or "*" in specifier.version:
-                raise ValueError(
-                    "Bundle dependencies must use exact registry wheel versions"
-                )
-            packages = [
-                package
-                for package in lock["package"]
-                if canonicalize_name(package["name"])
-                == canonicalize_name(requirement.name)
-                and package["version"] == specifier.version
-            ]
-            if len(packages) != 1:
-                raise ValueError(
-                    "Runtime dependency does not match exactly one lockfile package"
-                )
-            candidates = []
-            for wheel in packages[0].get("wheels", []):
-                filename = unquote(PurePosixPath(urlsplit(wheel["url"]).path).name)
-                name, version, _, tags = parse_wheel_filename(filename)
-                ranks = [supported[tag] for tag in tags if tag in supported]
-                if (
-                    ranks
-                    and name == canonicalize_name(requirement.name)
-                    and str(version) == specifier.version
-                ):
-                    candidates.append((min(ranks), filename, wheel))
-            if not candidates:
-                raise ValueError(
-                    "Locked runtime dependency has no wheel for the build platform"
-                )
-            _, filename, selected = min(candidates, key=lambda item: (item[0], item[1]))
+            filename, selected = _select_locked_wheel(requirement, lock, supported)
             wheel_path = wheels / filename
             if PurePosixPath(filename).name != filename or "\\" in filename:
                 raise ValueError("Invalid locked wheel filename")
@@ -452,10 +487,10 @@ def build_bundle(project: Path, output: Path, *, uv: str = "uv") -> Path:
             requirements.append(
                 f"{name}=={version} --hash=sha256:{sha256_file(wheel)}\n"
             )
-        (root / "requirements.txt").write_text("".join(requirements), encoding="utf-8")
+        (root / REQUIREMENTS_NAME).write_text("".join(requirements), encoding="utf-8")
         files = {
             path.relative_to(root).as_posix(): sha256_file(path)
-            for path in [root / "requirements.txt", *sorted(wheels.iterdir())]
+            for path in [root / REQUIREMENTS_NAME, *sorted(wheels.iterdir())]
         }
         manifest = {
             "schema_version": 1,
@@ -466,7 +501,7 @@ def build_bundle(project: Path, output: Path, *, uv: str = "uv") -> Path:
             "application": application.relative_to(root).as_posix(),
             "files": files,
         }
-        (root / "manifest.json").write_text(
+        (root / MANIFEST_NAME).write_text(
             json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8"
         )
         # The build scratch directory is not itself a payload member.
@@ -477,16 +512,18 @@ def build_bundle(project: Path, output: Path, *, uv: str = "uv") -> Path:
         output.mkdir(parents=True, exist_ok=True)
         filename = f"insomnia-run-runtime-{sys.implementation.cache_tag}-{sysconfig.get_platform()}.tar.gz"
         destination = output / filename
-        with destination.open("xb") as stream:
-            with gzip.GzipFile(
+        with (
+            destination.open("xb") as stream,
+            gzip.GzipFile(
                 filename="", mode="wb", fileobj=stream, mtime=0
-            ) as compressed:
-                with tarfile.open(fileobj=compressed, mode="w") as archive:
-                    for name in sorted(["manifest.json", *files]):
-                        path = root / name
-                        member = tarfile.TarInfo(name)
-                        member.size = path.stat().st_size
-                        member.mode = 0o600
-                        with path.open("rb") as source:
-                            archive.addfile(member, source)
+            ) as compressed,
+            tarfile.open(fileobj=compressed, mode="w") as archive,
+        ):
+            for name in sorted([MANIFEST_NAME, *files]):
+                path = root / name
+                member = tarfile.TarInfo(name)
+                member.size = path.stat().st_size
+                member.mode = 0o600
+                with path.open("rb") as source:
+                    archive.addfile(member, source)
         return destination

@@ -23,7 +23,10 @@ from urllib.parse import quote
 SIGNER_FINGERPRINT = "31B08FE8A3D1BDC6EB69EAE1D18E27CC6E3E2D56"
 REPOSITORY = "scarowar/insomnia-run"
 RULESET_ID = 7137745
-TAG = re.compile(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)")
+TAG = re.compile(r"v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", re.ASCII)
+COMMIT_PATTERN = r"[a-f0-9]{40}"
+PROJECT_FILE = "pyproject.toml"
+SBOM_SUFFIX = ".cyclonedx.json"
 
 
 class NotFound(Exception):
@@ -70,8 +73,8 @@ def validate_version(root: Path, tag: str) -> None:
         raise ValueError("Release tag must be an immutable vMAJOR.MINOR.PATCH tag")
     import tomllib
 
-    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
-    if project["project"]["version"] != tag[1:]:
+    project = tomllib.loads((root / PROJECT_FILE).read_text(encoding="utf-8"))
+    if project["project"]["version"] != tag.removeprefix("v"):
         raise ValueError("Release tag and project version differ")
 
 
@@ -140,7 +143,7 @@ def require_clean_tracked_tree(root: Path) -> None:
         "-z",
         "--",
         "src",
-        "pyproject.toml",
+        PROJECT_FILE,
         "uv.lock",
         "uv.toml",
         ".python-version",
@@ -165,7 +168,7 @@ def tested_commit(root: Path, commit: str) -> str:
             and pr.get("base", {}).get("ref") == "main"
         ):
             head = pr["head"]["sha"]
-            if not re.fullmatch(r"[a-f0-9]{40}", head):
+            if not re.fullmatch(COMMIT_PATTERN, head):
                 continue
             git(root, "fetch", "--no-tags", "origin", head)
             if git(root, "rev-parse", f"{commit}^{{tree}}") == git(
@@ -176,7 +179,7 @@ def tested_commit(root: Path, commit: str) -> str:
 
 
 def verify(root: Path, tag: str, commit: str) -> None:
-    if not re.fullmatch(r"[a-f0-9]{40}", commit):
+    if not re.fullmatch(COMMIT_PATTERN, commit):
         raise ValueError("An exact tested commit SHA is required")
     require_clean_tracked_tree(root)
     validate_version(root, tag)
@@ -262,9 +265,10 @@ def bundle_platform(bundle: Path, project: Path, wheel: Path) -> str:
 def validate_asset_set(directory: Path, tag: str, project: Path | None = None) -> None:
     if not TAG.fullmatch(tag):
         raise ValueError("Invalid release tag")
+    version = tag.removeprefix("v")
     paths = asset_paths(directory)
-    wheel = f"insomnia_run-{tag[1:]}-py3-none-any.whl"
-    source = f"insomnia_run-{tag[1:]}.tar.gz"
+    wheel = f"insomnia_run-{version}-py3-none-any.whl"
+    source = f"insomnia_run-{version}.tar.gz"
     bundles = [
         path
         for path in paths
@@ -273,7 +277,7 @@ def validate_asset_set(directory: Path, tag: str, project: Path | None = None) -
     expected = (
         {wheel, source, "SHA256SUMS"}
         | {path.name for path in bundles}
-        | {path.name + ".cyclonedx.json" for path in bundles}
+        | {path.name + SBOM_SUFFIX for path in bundles}
     )
     if len(bundles) != 3 or {path.name for path in paths} != expected:
         raise ValueError(
@@ -293,13 +297,13 @@ def validate_asset_set(directory: Path, tag: str, project: Path | None = None) -
             raise ValueError("Duplicate runtime bundle platform")
         platforms.add(family)
         sbom = json.loads(
-            (directory / (bundle.name + ".cyclonedx.json")).read_text(encoding="utf-8")
+            (directory / (bundle.name + SBOM_SUFFIX)).read_text(encoding="utf-8")
         )
         component = sbom.get("metadata", {}).get("component", {})
         if (
             sbom.get("bomFormat") != "CycloneDX"
             or component.get("name") != "insomnia-run"
-            or component.get("version") != tag[1:]
+            or component.get("version") != version
         ):
             raise ValueError("Runtime SBOM project identity differs")
 
@@ -345,7 +349,7 @@ def publish_assets(
     if (
         not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository)
         or not TAG.fullmatch(tag)
-        or not re.fullmatch(r"[a-f0-9]{40}", commit)
+        or not re.fullmatch(COMMIT_PATTERN, commit)
     ):
         raise ValueError("Invalid release repository, tag, or commit")
     paths = asset_paths(directory)
@@ -455,12 +459,12 @@ def build(root: Path, output: Path, *, bundle_only: bool = False) -> None:
                 "environment",
                 str(environment),
                 "--pyproject",
-                str(root / "pyproject.toml"),
+                str(root / PROJECT_FILE),
                 "--output-reproducible",
                 "--of",
                 "JSON",
                 "-o",
-                str(output / (bundle.name + ".cyclonedx.json")),
+                str(output / (bundle.name + SBOM_SUFFIX)),
             ],
             cwd=root,
             check=True,

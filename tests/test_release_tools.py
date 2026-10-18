@@ -509,11 +509,14 @@ def test_release_refuses_tracked_changes_before_identity_or_build(
     identity = Mock(side_effect=AssertionError("Dirty source reached bundle identity"))
     monkeypatch.setattr(runtime_bundle, "source_digest", identity)
     output = root / "release-assets"
+    if operation == "verify":
+        release_operation = release.verify
+        arguments = (root, "v0.2.0", commit)
+    else:
+        release_operation = release.build
+        arguments = (root, output)
     with pytest.raises(ValueError, match="tracked"):
-        if operation == "verify":
-            release.verify(root, "v0.2.0", commit)
-        else:
-            release.build(root, output)
+        release_operation(*arguments)
     identity.assert_not_called()
     api.assert_not_called()
     release.tested_commit.assert_not_called()
@@ -854,7 +857,8 @@ def test_runtime_bundle_build_contract(release, tmp_path, monkeypatch):
     archive = output / "runtime.tar.gz"
 
     def build_bundle(root, directory):
-        assert root == tmp_path and directory == output
+        assert root == tmp_path
+        assert directory == output
         archive.write_bytes(b"verified-by-installer-module")
         return archive
 

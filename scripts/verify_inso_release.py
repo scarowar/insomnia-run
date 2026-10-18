@@ -62,6 +62,14 @@ def install_inso(archive: Path, digest: str, destination: Path) -> Path:
         return target
 
 
+def _check_runner_paths(archive_path: Path, install_dir: Path | None) -> None:
+    if os.environ.get("RUNNER_TEMP"):
+        root = Path(os.environ["RUNNER_TEMP"])
+        runner_path(archive_path, root)
+        if install_dir:
+            runner_path(install_dir, root)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--asset", required=True)
@@ -85,11 +93,7 @@ def main() -> None:
         )
         if not match:
             raise ValueError("Invalid Inso release asset name")
-        if os.environ.get("RUNNER_TEMP"):
-            root = Path(os.environ["RUNNER_TEMP"])
-            runner_path(args.archive_path, root)
-            if args.install_dir:
-                runner_path(args.install_dir, root)
+        _check_runner_paths(args.archive_path, args.install_dir)
         digest = expected_digest(args.asset, args.manifest, args.inso_sha256)
         if args.inso_archive and not args.inso_sha256:
             raise ValueError("A custom inso-archive requires explicit inso-sha256")

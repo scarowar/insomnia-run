@@ -81,8 +81,9 @@ def test_archive_rejects_symlinks_before_writing(tmp_path):
         member.type = tarfile.SYMTYPE
         member.linkname = "../outside"
         stream.addfile(member)
+    digest = sha256_file(archive)
     with pytest.raises(ValueError, match="regular files"):
-        extract_verified(archive, sha256_file(archive), tmp_path / "output")
+        extract_verified(archive, digest, tmp_path / "output")
 
 
 def test_verified_zip_has_private_files_and_rejects_existing_destination(tmp_path):
@@ -90,27 +91,28 @@ def test_verified_zip_has_private_files_and_rejects_existing_destination(tmp_pat
     with zipfile.ZipFile(archive, "w") as stream:
         stream.writestr("folder/data", "verified")
     destination = tmp_path / "output"
-    extract_verified(archive, sha256_file(archive), destination)
+    digest = sha256_file(archive)
+    extract_verified(archive, digest, destination)
     assert (destination / "folder/data").read_text() == "verified"
     assert destination.stat().st_mode & 0o777 == 0o700
     assert (destination / "folder/data").stat().st_mode & 0o777 == 0o600
     with pytest.raises(ValueError, match="exist"):
-        extract_verified(archive, sha256_file(archive), destination)
+        extract_verified(archive, digest, destination)
 
 
 def test_archive_budget_and_duplicate_names_are_rejected(tmp_path):
     archive = tmp_path / "archive.zip"
     with zipfile.ZipFile(archive, "w") as stream:
         stream.writestr("a", b"12345")
+    digest = sha256_file(archive)
     with pytest.raises(ValueError, match="size"):
-        extract_verified(
-            archive, sha256_file(archive), tmp_path / "output", max_bytes=4
-        )
+        extract_verified(archive, digest, tmp_path / "output", max_bytes=4)
     with zipfile.ZipFile(archive, "w") as stream:
         stream.writestr("A", "one")
         stream.writestr("a", "two")
+    digest = sha256_file(archive)
     with pytest.raises(ValueError, match="Duplicate"):
-        extract_verified(archive, sha256_file(archive), tmp_path / "output")
+        extract_verified(archive, digest, tmp_path / "output")
 
 
 @pytest.mark.parametrize(
@@ -530,10 +532,12 @@ def test_archive_rejects_file_directory_collisions(tmp_path, members):
 
 
 def test_member_size_must_match_declared_bytes(tmp_path):
+    short_stream = io.BytesIO(b"one")
     with pytest.raises(ValueError, match="shorter"):
-        _write_member(io.BytesIO(b"one"), tmp_path / "short", 4)
+        _write_member(short_stream, tmp_path / "short", 4)
+    long_stream = io.BytesIO(b"longer")
     with pytest.raises(ValueError, match="exceeds"):
-        _write_member(io.BytesIO(b"longer"), tmp_path / "long", 3)
+        _write_member(long_stream, tmp_path / "long", 3)
 
 
 def test_archive_member_count_limit(tmp_path):
@@ -565,17 +569,14 @@ def test_archive_member_budget_counts_ignored_root_entries(
                 output.writestr("./", "")
             output.writestr("inso", "x")
     destination = tmp_path / "out"
+    digest = sha256_file(archive)
     if max_members < 3:
         with pytest.raises(ValueError, match="member limit"):
-            extract_verified(
-                archive, sha256_file(archive), destination, max_members=max_members
-            )
+            extract_verified(archive, digest, destination, max_members=max_members)
         assert not destination.exists()
         assert list(tmp_path.iterdir()) == [archive]
     else:
-        extract_verified(
-            archive, sha256_file(archive), destination, max_members=max_members
-        )
+        extract_verified(archive, digest, destination, max_members=max_members)
         assert (destination / "inso").read_bytes() == b"x"
 
 
@@ -682,8 +683,9 @@ def test_runtime_cli_reports_failure_without_private_path_or_token(
 def test_fifo_is_not_a_regular_installer_input(tmp_path):
     fifo = tmp_path / "fifo"
     os.mkfifo(fifo)
+    file_context = regular_file(fifo)
     with pytest.raises(ValueError, match="regular file"):
-        with regular_file(fifo):
+        with file_context:
             pytest.fail("FIFO was accepted")
 
 
@@ -715,8 +717,9 @@ def test_zip_symlink_is_rejected(tmp_path):
         member.create_system = 3
         member.external_attr = 0o120777 << 16
         output.writestr(member, "outside")
+    digest = sha256_file(archive)
     with pytest.raises(ValueError, match="regular files"):
-        extract_verified(archive, sha256_file(archive), tmp_path / "out")
+        extract_verified(archive, digest, tmp_path / "out")
 
 
 @pytest.mark.parametrize(
