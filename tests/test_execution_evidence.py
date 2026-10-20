@@ -35,9 +35,11 @@ def test_capability_probe_startup_errors_propagate_before_collection_execution(
         raise error
 
     monkeypatch.setattr(InsoRunner, "_run_command", staticmethod(probe))
+    runner = InsoRunner()
+    options = InsoCollectionOptions(working_dir="private")
 
     with pytest.raises(error_type) as raised:
-        InsoRunner().run_collection(InsoCollectionOptions(working_dir="private"))
+        runner.run_collection(options)
 
     assert raised.value is error
 
@@ -56,11 +58,13 @@ def test_failed_capability_probe_does_not_fall_back_to_tap(monkeypatch, failure)
         return CompletedProcess(cmd, 1, stdout, "private stderr")
 
     monkeypatch.setattr(InsoRunner, "_run_command", staticmethod(probe))
+    runner = InsoRunner()
+    options = InsoCollectionOptions(working_dir="private")
 
     with pytest.raises(
         InsoConfigurationError, match="Inso capability discovery"
     ) as error:
-        InsoRunner().run_collection(InsoCollectionOptions(working_dir="private"))
+        runner.run_collection(options)
 
     assert "private" not in str(error.value)
 

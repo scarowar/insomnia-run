@@ -7,6 +7,7 @@ from urllib.parse import quote
 from xml.etree import ElementTree
 
 import pytest
+from click import unstyle
 from typer.testing import CliRunner
 
 from insomnia_run.main import app
@@ -17,6 +18,20 @@ from insomnia_run.models import (
     RequestExecution,
     RunError,
 )
+
+
+@pytest.fixture(params=[False, True], ids=["plain", "color"])
+def terminal_color(request, monkeypatch):
+    if request.param:
+        monkeypatch.setenv("FORCE_COLOR", "1")
+        monkeypatch.delenv("NO_COLOR", raising=False)
+    else:
+        monkeypatch.delenv("FORCE_COLOR", raising=False)
+        monkeypatch.setenv("NO_COLOR", "1")
+
+
+def diagnostic_text(value):
+    return " ".join(unstyle(value).replace("\u2502", "").split())
 
 
 @pytest.fixture
@@ -149,7 +164,9 @@ def test_known_url_is_redacted_whole_across_publication_formats(
 
 
 @pytest.mark.parametrize("legacy_json", [False, True])
-def test_legacy_verbose_is_rejected_before_execution(monkeypatch, report, legacy_json):
+def test_legacy_verbose_is_rejected_before_execution(
+    monkeypatch, report, legacy_json, terminal_color
+):
     observed = stub_runner(monkeypatch, report, command="run_test")
     args = ["run-test", "-w", "private-working-directory", "--verbose"]
     if legacy_json:
@@ -158,8 +175,9 @@ def test_legacy_verbose_is_rejected_before_execution(monkeypatch, report, legacy
 
     assert result.exit_code == 2
     assert observed == []
-    assert "Legacy run-test does not support --verbose" in result.stderr
-    assert "logs can spoof TAP results" in " ".join(result.stderr.split())
+    diagnostic = diagnostic_text(result.stderr)
+    assert "Legacy run-test does not support --verbose" in diagnostic
+    assert "logs can spoof TAP results" in diagnostic
     assert "private-working-directory" not in result.stdout + result.stderr
 
 
@@ -173,7 +191,7 @@ def test_legacy_verbose_is_rejected_before_execution(monkeypatch, report, legacy
     ],
 )
 def test_unsupported_native_options_have_safe_actionable_cli_errors(
-    tmp_path, monkeypatch, flags, legacy_json
+    tmp_path, monkeypatch, flags, legacy_json, terminal_color
 ):
     def forbidden(*args):
         pytest.fail("Inso must not execute without required native reporting")
@@ -201,7 +219,7 @@ def test_unsupported_native_options_have_safe_actionable_cli_errors(
     result = CliRunner().invoke(app, args)
 
     assert result.exit_code == 2
-    diagnostic = " ".join(result.stderr.split())
+    diagnostic = diagnostic_text(result.stderr)
     assert "Native collection reporting is required" in diagnostic
     assert "--output" in diagnostic
     assert "--verbose" in diagnostic
@@ -289,7 +307,7 @@ def test_capability_probe_startup_failures_have_safe_cli_diagnostics(
     ],
 )
 def test_failed_capability_probes_never_publish_private_data_or_execute(
-    tmp_path, monkeypatch, flags, failure, legacy_json
+    tmp_path, monkeypatch, flags, failure, legacy_json, terminal_color
 ):
     secret = "CAPABILITY_PROBE_PRIVATE_SENTINEL"
 
@@ -330,7 +348,7 @@ def test_failed_capability_probes_never_publish_private_data_or_execute(
     result = CliRunner().invoke(app, args)
 
     assert result.exit_code == 2
-    diagnostic = " ".join(result.stderr.replace("\u2502", "").split())
+    diagnostic = diagnostic_text(result.stderr)
     if failure == "os-error":
         assert "Unable to execute Inso CLI" in diagnostic
     else:

@@ -203,10 +203,11 @@ def test_timeout_stops_descendant_processes(tmp_path, monkeypatch, capability_pr
         )
         executable.chmod(0o755)
         monkeypatch.setenv("PATH", str(tmp_path))
+    runner = InsoRunner()
     try:
         if capability_probe:
             with pytest.raises(InsoConfigurationError, match="discovery timed out"):
-                InsoRunner()._supports_native_report()
+                runner._supports_native_report()
         else:
             with pytest.raises(subprocess.TimeoutExpired):
                 InsoRunner._run_command(
