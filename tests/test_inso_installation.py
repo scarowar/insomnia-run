@@ -91,7 +91,7 @@ def test_corrupt_cached_archive_fails_closed_and_preserves_previous_install(
 ):
     run, _ = installation
     assert run().returncode == 0
-    cached = tmp_path / "insomnia-run-download/13.3.1/inso-linux-x64-13.3.1.tar.xz"
+    cached = tmp_path / "insomnia-run-download/13.3.1/archive"
     cached.write_bytes(b"untrusted cache contents")
     second = run()
     assert second.returncode != 0
@@ -105,7 +105,7 @@ def test_corrupt_cached_archive_fails_closed_and_preserves_previous_install(
 def test_online_install_replaces_corrupt_cached_archive(installation, tmp_path):
     run, _ = installation
     assert run().returncode == 0
-    cached = tmp_path / "insomnia-run-download/13.3.1/inso-linux-x64-13.3.1.tar.xz"
+    cached = tmp_path / "insomnia-run-download/13.3.1/archive"
     cached.write_bytes(b"untrusted cache contents")
 
     result = run(OFFLINE_INSTALL="false")
@@ -135,7 +135,8 @@ def test_corrupt_inso_cache_fetches_once_only_when_online(
     manifest = tmp_path / "checksums.json"
     manifest.write_text("{}")
     monkeypatch.setattr(inso_installer, "MANIFEST", manifest)
-    cached = tmp_path / "cached.tar.xz"
+    cached = tmp_path / "cache" / "archive"
+    cached.parent.mkdir()
     cached.write_bytes(b"corrupt cache")
     destination = tmp_path / "bin"
     destination.mkdir()
@@ -150,8 +151,8 @@ def test_corrupt_inso_cache_fetches_once_only_when_online(
         digest,
         "--inso-archive",
         location,
-        "--archive-path",
-        str(cached),
+        "--cache-directory",
+        str(cached.parent),
     ]
     if install:
         args.extend(["--install-dir", str(destination)])
@@ -228,7 +229,8 @@ def test_online_cache_recovery_does_not_remove_nonregular_inputs(
 ):
     original = tmp_path / "original"
     original.write_bytes(b"untrusted contents")
-    cached = tmp_path / "cached"
+    cached = tmp_path / "cache" / "archive"
+    cached.parent.mkdir()
     if kind == "symlink":
         cached.symlink_to(original)
     else:
@@ -246,8 +248,8 @@ def test_online_cache_recovery_does_not_remove_nonregular_inputs(
             "inso-linux-x64-13.3.1.tar.xz",
             "--inso-sha256",
             "a" * 64,
-            "--archive-path",
-            str(cached),
+            "--cache-directory",
+            str(cached.parent),
         ],
     )
 

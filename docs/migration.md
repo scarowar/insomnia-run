@@ -52,9 +52,11 @@ Optional `runtime-bundle` installation requires `runtime-bundle-sha256`, matchin
 
 For offline installation, provision tools and caches or local archives/bundles, then set `offline-install: "true"`. This disables installer/cache network access, not API traffic from your collection or network access by comments/uploads. Dependency actions still need approved mirroring/allowlisting. See [enterprise requirements](reference/inputs.md#enterprise-runners).
 
+Use `inso-archive` and `inso-sha256` for provisioned local Inso archives rather than relying on internal cache filenames. Archive-cache identities change with the cache layout.
+
 Keep credentials separate: `github-token` is for instance comments, `github-com-token` is for public GitHub downloads, and artifacts use runner runtime credentials. A private archive token requires an exact `download-token-origin`; enterprise instance credentials are not public-download credentials.
 
-Inso and runtime-bundle redirects are restricted to the initial HTTPS origin. Downloads starting at GitHub.com or its API may also use GitHub's release-asset host. For mirrors redirecting to a different origin, list each destination in `download-redirect-origins`; credentials remain restricted to `download-token-origin`. See the [download configuration example](reference/inputs.md#enterprise-runners). This restriction does not apply to uv's managed-Python downloads or collection HTTP requests.
+Inso and runtime-bundle downloads allow only GitHub.com, its API, and its release-asset host by default. List a private mirror's initial HTTPS origin and every additional redirect origin in `download-origins`; credentials remain restricted separately to `download-token-origin`. Local archives remain supported without origin authorization. See the [download configuration example](reference/inputs.md#enterprise-runners). This restriction does not apply to uv's managed-Python downloads or collection HTTP requests.
 
 ### Input Paths and Configuration
 

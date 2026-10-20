@@ -91,7 +91,7 @@ Report destinations in Actions must be below the workspace or runner temporary d
 | `runtime-bundle-sha256` | Empty | Required trusted archive digest when `runtime-bundle` is set. |
 | `download-token` | Empty | Private archive credential restricted to `download-token-origin`. |
 | `download-token-origin` | Empty | Exact HTTPS origin authorized to receive `download-token`. No path or query. |
-| `download-redirect-origins` | Empty | Newline-separated exact HTTPS origins allowed for cross-origin Inso/runtime-bundle redirects. No wildcards, paths, or queries. |
+| `download-origins` | Empty | Additional exact HTTPS origins authorized for Inso/runtime-bundle downloads and redirects, one per line. No wildcards, paths, or queries. |
 | `github-com-token` | Empty | Public GitHub download credential. On GitHub.com the workflow token is the fallback; enterprise instance tokens are not forwarded. |
 | `offline-install` | `false` | Forbid installer/cache network access. Requires provisioned tools and local installation materials. |
 | `python-version` | `system` | Use system Python 3.10+, or select the reviewed managed CPython `3.14.8` build. |
@@ -204,11 +204,13 @@ System mode uses an existing Python 3.10+ interpreter. Managed mode selects the 
 
 These asset targets do not qualify every operating-system revision or Linux distribution. Validate the selected binaries against the runner's OS/runtime requirements. Managed Python uses the reviewed local download manifest and its build hashes; later installation/execution does not implicitly download a different interpreter.
 
-On self-hosted runners, use a private `RUNNER_TEMP`. Installer-managed directories must belong to the runner user or root and deny group and other write access. The operating system's sticky temporary root is the only shared-directory exception.
+On self-hosted runners, use a private `RUNNER_TEMP`. Installer-managed directories must belong to the runner user or root and deny group and other write access. Only the standard `/tmp` and `/var/tmp` sticky roots receive a shared-directory exception. A custom `TMPDIR` must satisfy the ordinary ownership and permission checks.
 
 Source installation is the default: build this action's wheel with its pinned backend, install runtime dependencies from the frozen lockfile using wheels only, then install the application without dependency resolution. A bundle is an explicit alternative, not an automatic fallback. Its trusted archive hash, source/lock identity, Python/platform identity, wheel hashes, and manifest must all agree. A bundle built for a different checkout or interpreter is rejected.
 
 `offline-install: "true"` disables installer downloads and remote cache operations. Provision matching Inso and uv, an interpreter (or the reviewed managed build), and either the frozen dependency/backend cache or a compatible local bundle. Public artifact URLs in the lockfile are not redirected merely by setting an index mirror. GitHub must still resolve dependency actions through the installation's supported mirroring/allowlisting. Optional comments and uploads use their own network services; collection HTTP requests are not sandboxed by offline installation.
+
+For offline Inso provisioning, use an exact-version preinstalled binary or set `inso-archive` to a local archive with its trusted `inso-sha256`. Internal archive-cache filenames and keys may change; the explicit archive input is the supported provisioning interface.
 
 There are three separate GitHub credential audiences:
 
@@ -218,17 +220,18 @@ There are three separate GitHub credential audiences:
 
 Private archive downloads may additionally use `download-token`, restricted to the exact HTTPS `download-token-origin` on every request, including redirects. Other origins never receive it. Installer credentials are not intended for collection execution; use `env-var` or the supported vault integration for API-test credentials.
 
-Inso and runtime-bundle downloads follow same-origin HTTPS redirects. Downloads starting at `https://github.com` or `https://api.github.com` may also redirect to GitHub's `https://release-assets.githubusercontent.com` asset host. A custom mirror that redirects to another origin must explicitly allow that destination:
+Inso and runtime-bundle downloads allow `https://github.com`, `https://api.github.com`, and `https://release-assets.githubusercontent.com` by default. A private mirror requires explicit authorization of its origin and each redirect destination:
 
 ```yaml
 with:
   inso-archive: https://mirror.example.org/inso.tar.xz
   inso-sha256: ${{ vars.INSO_ARCHIVE_SHA256 }}
-  download-redirect-origins: |
+  download-origins: |
+    https://mirror.example.org
     https://assets.example.org
 ```
 
-Each entry authorizes an HTTPS origin, including its port, rather than a URL prefix. The initial archive origin is already permitted. Redirect chains are limited to six requests; an unlisted origin is rejected before connecting. This policy does not control uv's managed-Python downloads or collection HTTP requests.
+Each entry authorizes an HTTPS origin, including its port, rather than a URL prefix. The initial URL does not authorize its own origin. Initial requests and redirects to unlisted origins are rejected before connecting; chains are limited to six requests. Local archives need no network origin authorization. This policy does not control uv's managed-Python downloads or collection HTTP requests.
 
 Built-in uploads support GitHub.com and valid HTTPS `*.ghe.com` GitHub Enterprise Cloud origins. They do not support GitHub Enterprise Server (GHES). Use `report-directory` with an installation-supported uploader on GHES. See [upload-artifact support](https://github.com/actions/upload-artifact#v4---whats-new).
 

@@ -62,10 +62,10 @@ def token_origin(value: str) -> tuple[str, int]:
     return origin
 
 
-def redirect_origin(value: str) -> tuple[str, int]:
+def download_origin(value: str) -> tuple[str, int]:
     parsed, origin = _https_url(value)
     if parsed.path or parsed.query or "*" in parsed.hostname:
-        raise ValueError("Download redirect origin must be an exact HTTPS origin")
+        raise ValueError("Download origin must be an exact HTTPS origin")
     return origin
 
 
@@ -102,15 +102,16 @@ def _download_https(
     token: str,
     allowed_origin: tuple[str, int] | None,
     max_bytes: int,
-    redirect_origins: tuple[str, ...] = (),
+    download_origins: tuple[str, ...] = (),
 ) -> None:
-    initial_origin = _https_url(location)[1]
     permitted = {
-        initial_origin,
-        *(redirect_origin(value) for value in redirect_origins),
+        ("github.com", 443),
+        ("api.github.com", 443),
+        ("release-assets.githubusercontent.com", 443),
+        *(download_origin(value) for value in download_origins),
     }
-    if initial_origin in {("github.com", 443), ("api.github.com", 443)}:
-        permitted.add(("release-assets.githubusercontent.com", 443))
+    if _https_url(location)[1] not in permitted:
+        raise ValueError("Archive download origin is not permitted")
     opener = build_opener(_NoRedirect())
     current = location
     for attempt in range(6):
@@ -164,15 +165,15 @@ def download_archive(
     origin: str = "",
     offline: bool = False,
     max_bytes: int = MAX_ARCHIVE_BYTES,
-    redirect_origins: tuple[str, ...] = (),
+    download_origins: tuple[str, ...] = (),
     expected_sha256: str = "",
     replace: bool = False,
     dir_fd: int | None = None,
 ) -> None:
     """Copy a local archive or fetch HTTPS with origin-scoped authentication."""
     allowed_origin = _download_token_origin(token, origin)
-    for value in redirect_origins:
-        redirect_origin(value)
+    for value in download_origins:
+        download_origin(value)
     if expected_sha256:
         expected_sha256 = require_digest(expected_sha256)
     if replace and not expected_sha256:
@@ -205,7 +206,7 @@ def download_archive(
                         token,
                         allowed_origin,
                         max_bytes,
-                        redirect_origins,
+                        download_origins,
                     )
                 output.flush()
                 os.fsync(output.fileno())
@@ -258,7 +259,7 @@ def install_runtime(
     token: str = "",
     origin: str = "",
     offline: bool = False,
-    redirect_origins: tuple[str, ...] = (),
+    download_origins: tuple[str, ...] = (),
 ) -> None:
     python = sys.executable
     if bool(bundle) != bool(bundle_sha256):
@@ -289,7 +290,7 @@ def install_runtime(
                 token=token,
                 origin=origin,
                 offline=offline,
-                redirect_origins=redirect_origins,
+                download_origins=download_origins,
             )
             extracted = root / "verified"
             extract_verified(archive, bundle_sha256, extracted)
@@ -383,7 +384,7 @@ def main() -> None:
     parser.add_argument("--runtime-bundle", default="")
     parser.add_argument("--runtime-bundle-sha256", default="")
     parser.add_argument("--download-token-origin", default="")
-    parser.add_argument("--download-redirect-origin", action="append", default=[])
+    parser.add_argument("--download-origin", action="append", default=[])
     parser.add_argument("--offline-install", action="store_true")
     args = parser.parse_args()
     try:
@@ -398,7 +399,7 @@ def main() -> None:
             token=os.environ.get("INSOMNIA_RUN_DOWNLOAD_TOKEN", ""),
             origin=args.download_token_origin,
             offline=args.offline_install,
-            redirect_origins=tuple(args.download_redirect_origin),
+            download_origins=tuple(args.download_origin),
         )
     except (
         OSError,

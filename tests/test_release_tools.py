@@ -802,15 +802,29 @@ def test_release_build_allows_untracked_assets_before_bundle_identity(
     build.assert_called_once()
 
 
-def test_release_metadata_requires_tag_version_and_commit_identity(release, tmp_path):
-    if sys.version_info < (3, 11):
-        pytest.skip("Release tooling runs on Python 3.14; tomllib requires 3.11")
-    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "0.2.0"\n')
-    release.validate_version(tmp_path, "v0.2.0")
-    with pytest.raises(ValueError, match="version"):
-        release.validate_version(tmp_path, "v0.3.0")
-    with pytest.raises(ValueError, match="tag"):
-        release.validate_version(tmp_path, "v0.2.0;evil")
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="Release requires tomllib")
+@pytest.mark.parametrize(
+    "tag,error",
+    [
+        ("v0.2.0", None),
+        ("v0.3.0", "version"),
+        ("v0.2.0;evil", "tag"),
+        ("--exec=evil", "tag"),
+        ("v0.2.0\n", "tag"),
+        ("v０.2.0", "tag"),
+    ],
+)
+def test_release_requires_matching_semantic_version_tag(
+    release, release_checkout, tag, error
+):
+    root, _, commit, api = release_checkout
+    if error is None:
+        release.verify(root, tag, commit)
+        assert api.call_count == 3
+    else:
+        with pytest.raises(ValueError, match=error):
+            release.verify(root, tag, commit)
+        api.assert_not_called()
 
 
 def test_gh_client_does_not_treat_permission_error_as_absent(release, monkeypatch):

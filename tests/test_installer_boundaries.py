@@ -15,6 +15,49 @@ import verify_inso_release
 import runtime_bundle
 
 
+@pytest.mark.parametrize(
+    "location",
+    ["https://unlisted.example/archive", "https://github.com:444/archive"],
+)
+def test_unlisted_initial_origin_never_constructs_opener(
+    tmp_path, monkeypatch, location
+):
+    monkeypatch.setattr(
+        install_runtime, "build_opener", lambda *args: pytest.fail("network setup")
+    )
+    with pytest.raises(ValueError, match="origin"):
+        install_runtime.download_archive(
+            location,
+            tmp_path / "archive",
+            token="credential",
+            origin=location.rsplit("/", 1)[0],
+        )
+
+
+def test_cache_directory_publishes_fixed_archive_name(tmp_path, monkeypatch):
+    source = tmp_path / "input"
+    source.write_bytes(b"verified archive")
+    cache = tmp_path / "cache"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "verify_inso_release.py",
+            "--asset",
+            "inso-linux-x64-99.0.0.tar.xz",
+            "--cache-directory",
+            str(cache),
+            "--inso-archive",
+            str(source),
+            "--inso-sha256",
+            hashlib.sha256(source.read_bytes()).hexdigest(),
+        ],
+    )
+    verify_inso_release.main()
+    assert [item.name for item in cache.iterdir()] == ["archive"]
+    assert (cache / "archive").read_bytes() == source.read_bytes()
+
+
 @pytest.mark.parametrize("mode", [0o770, 0o777])
 @pytest.mark.parametrize("operation", ["download", "install"])
 @pytest.mark.parametrize("existing_destination", [False, True])
@@ -167,7 +210,9 @@ def test_redirect_requires_explicit_destination_before_connection(
     monkeypatch.setattr(install_runtime, "build_opener", lambda handler: Opener())
     with pytest.raises(ValueError, match="origin"):
         install_runtime.download_archive(
-            "https://mirror.example/archive", tmp_path / "out"
+            "https://mirror.example/archive",
+            tmp_path / "out",
+            download_origins=("https://mirror.example",),
         )
     assert requests == ["https://mirror.example/archive"]
     assert not (tmp_path / "out").exists()
@@ -186,8 +231,8 @@ def test_failed_cache_replacement_preserves_original(tmp_path, monkeypatch):
             "verify_inso_release.py",
             "--asset",
             "inso-linux-x64-13.3.1.tar.xz",
-            "--archive-path",
-            str(cached),
+            "--cache-directory",
+            str(cached.parent),
             "--inso-archive",
             str(source),
             "--inso-sha256",
@@ -231,8 +276,8 @@ def test_cache_parent_swap_cannot_delete_outside_file(tmp_path, monkeypatch):
             "verify_inso_release.py",
             "--asset",
             "inso-linux-x64-13.3.1.tar.xz",
-            "--archive-path",
-            str(cached),
+            "--cache-directory",
+            str(cached.parent),
         ],
     )
     with pytest.raises(SystemExit):
@@ -272,7 +317,7 @@ def test_installer_rejects_redundant_authority_options(script, tmp_path):
         else [
             "--asset",
             "inso-linux-x64-13.3.1.tar.xz",
-            "--archive-path",
+            "--cache-directory",
             str(tmp_path / "archive"),
         ]
     )
@@ -360,7 +405,7 @@ def test_redirect_origin_validation_precedes_network(tmp_path, monkeypatch, orig
         install_runtime.download_archive(
             "https://mirror.example/archive",
             tmp_path / "out",
-            redirect_origins=(origin,),
+            download_origins=(origin,),
         )
 
 
@@ -382,23 +427,39 @@ def test_redirect_origin_validation_precedes_network(tmp_path, monkeypatch, orig
         (
             "https://github.com:444/archive",
             "https://release-assets.githubusercontent.com/a",
-            (),
-            False,
+            ("https://github.com:444",),
+            True,
         ),
         (
             "https://mirror.example/archive",
             "https://release-assets.githubusercontent.com/a",
-            (),
-            False,
+            ("https://mirror.example",),
+            True,
+        ),
+        (
+            "https://10.0.0.1/archive",
+            "/another",
+            ("https://10.0.0.1",),
+            True,
         ),
         (
             "https://mirror.example/archive",
             "https://cdn.internal.example:444/a",
-            ("https://cdn.internal.example:444",),
+            ("https://mirror.example", "https://cdn.internal.example:444"),
             True,
         ),
-        ("https://mirror.example/archive", "/another", (), True),
-        ("https://mirror.example/archive", "https://mirror.example:444/a", (), False),
+        (
+            "https://mirror.example/archive",
+            "/another",
+            ("https://mirror.example",),
+            True,
+        ),
+        (
+            "https://mirror.example/archive",
+            "https://mirror.example:444/a",
+            ("https://mirror.example",),
+            False,
+        ),
     ],
 )
 def test_redirect_policy_and_auth_are_independent(
@@ -425,7 +486,7 @@ def test_redirect_policy_and_auth_are_independent(
             return io.BytesIO(b"archive")
 
     monkeypatch.setattr(install_runtime, "build_opener", lambda handler: Opener())
-    kwargs = dict(token=credential, origin=token_origin, redirect_origins=origins)
+    kwargs = dict(token=credential, origin=token_origin, download_origins=origins)
     if allowed:
         install_runtime.download_archive(initial, tmp_path / "out", **kwargs)
         assert (tmp_path / "out").read_bytes() == b"archive"
@@ -450,7 +511,7 @@ def test_redirect_chain_cannot_extend_allowed_origins(tmp_path, monkeypatch):
             target = (
                 "https://github.com/download"
                 if len(requests) == 1
-                else "https://release-assets.githubusercontent.com/archive"
+                else "https://unlisted.example/archive"
             )
             raise HTTPError(
                 request.full_url, 302, "Found", {"Location": target}, io.BytesIO()
@@ -461,7 +522,7 @@ def test_redirect_chain_cannot_extend_allowed_origins(tmp_path, monkeypatch):
         install_runtime.download_archive(
             "https://mirror.example/archive",
             tmp_path / "out",
-            redirect_origins=("https://github.com",),
+            download_origins=("https://mirror.example",),
         )
     assert requests == ["https://mirror.example/archive", "https://github.com/download"]
 
@@ -478,6 +539,6 @@ def test_offline_rejects_before_network_setup_with_allowed_origins(
         install_runtime.download_archive(
             "https://mirror.example/archive",
             tmp_path / "out",
-            redirect_origins=("https://cdn.example",),
+            download_origins=("https://cdn.example",),
             offline=True,
         )

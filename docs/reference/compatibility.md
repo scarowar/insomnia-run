@@ -69,7 +69,7 @@ A collection can execute requests without assertions. This yields **No Assertion
 
 `execution-timeout` is a wrapper-only positive timeout in seconds (default `300`). Numeric validation is stricter than Inso's permissive parsing. `workflow-url`, `output-format`, `include-raw-output`, `junit-output`, `json-output`, `markdown-output`, `raw-output-file`, `redact-value`, `progress`, and `annotations` are wrapper reporting options, not Inso flags. Action equivalents include `junit-report`, `junit-output-file`, and multiline `redact-values`. Progress reports trusted stages/elapsed time, never live counts inferred from stdout.
 
-Action-only installation controls are `inso-version`, `inso-sha256`, `inso-archive`, `cache-inso`, `runtime-bundle`, `runtime-bundle-sha256`, `python-version`, `offline-install`, `github-com-token`, `download-token`, `download-token-origin`, and `download-redirect-origins`.
+Action-only installation controls are `inso-version`, `inso-sha256`, `inso-archive`, `cache-inso`, `runtime-bundle`, `runtime-bundle-sha256`, `python-version`, `offline-install`, `github-com-token`, `download-token`, `download-token-origin`, and `download-origins`.
 
 Publication/policy controls are `github-token`, `pr-comment`, `comment-tag`, `comment-issue-number`, `fail-on-error`, `upload-artifact`, `artifact-name`, and `artifact-retention-days`. These interfaces belong to this action, not Inso. See [all inputs and outputs](inputs.md) and the [JSON schema/evidence contract](inputs.md#json-schema-and-evidence).
 

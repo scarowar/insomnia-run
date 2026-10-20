@@ -43,8 +43,8 @@ inputs:
   download-token-origin:
     description: "Exact HTTPS origin authorized to receive download-token, including after redirects. Other origins never receive it."
     required: false
-  download-redirect-origins:
-    description: "Additional exact HTTPS origins allowed for Inso and runtime-bundle redirects, one per line."
+  download-origins:
+    description: "Additional exact HTTPS origins authorized for Inso and runtime-bundle downloads and redirects, one per line."
     default: ""
   offline-install:
     description: "Forbid installer and cache network access. Requires provisioned tools and installation materials. Does not restrict collection HTTP traffic."
@@ -359,8 +359,8 @@ runs:
           macOS-X64|macOS-ARM64) asset="inso-macos-${INSO_VERSION}.zip" ;;
           *) echo "::error::Preinstall Inso on this platform; automatic installation supports Linux x64 and macOS."; exit 1 ;;
         esac
-        archive_path="${RUNNER_TEMP}/insomnia-run-download/${INSO_VERSION}/${asset}"
-        key="$("$PYTHON_BIN" "${ACTION_PATH}/scripts/verify_inso_release.py" --asset "$asset" --archive-path "$archive_path" --inso-sha256 "$INSO_SHA256" --inso-archive "$INSO_ARCHIVE" --cache-key)"
+        cache_directory="${RUNNER_TEMP}/insomnia-run-download/${INSO_VERSION}"
+        key="$("$PYTHON_BIN" "${ACTION_PATH}/scripts/verify_inso_release.py" --asset "$asset" --cache-directory "$cache_directory" --inso-sha256 "$INSO_SHA256" --inso-archive "$INSO_ARCHIVE" --cache-key)"
         printf 'asset=%s\nkey=%s\n' "$asset" "$key" >> "$GITHUB_OUTPUT"
 
     - name: Restore Inso archive
@@ -384,15 +384,15 @@ runs:
         OFFLINE_INSTALL: ${{ inputs.offline-install }}
         CUSTOM_DOWNLOAD_TOKEN: ${{ inputs.download-token }}
         CUSTOM_DOWNLOAD_ORIGIN: ${{ inputs.download-token-origin }}
-        DOWNLOAD_REDIRECT_ORIGINS: ${{ inputs.download-redirect-origins }}
+        DOWNLOAD_ORIGINS: ${{ inputs.download-origins }}
         PUBLIC_DOWNLOAD_TOKEN: ${{ inputs.github-com-token || (github.server_url == 'https://github.com' && github.token) || '' }}
       run: |
         set -euo pipefail
         mkdir -p "${HOME}/.cache/pkg"
-        args=(--asset "$INSO_ASSET" --archive-path "${RUNNER_TEMP}/insomnia-run-download/${INSO_VERSION}/${INSO_ASSET}" --inso-sha256 "$INSO_SHA256" --inso-archive "$INSO_ARCHIVE" --install-dir "${RUNNER_TEMP}/insomnia-run-inso/bin")
+        args=(--asset "$INSO_ASSET" --cache-directory "${RUNNER_TEMP}/insomnia-run-download/${INSO_VERSION}" --inso-sha256 "$INSO_SHA256" --inso-archive "$INSO_ARCHIVE" --install-dir "${RUNNER_TEMP}/insomnia-run-inso/bin")
         while IFS= read -r origin; do
-          [[ -z "$origin" ]] || args+=(--download-redirect-origin "$origin")
-        done <<< "${DOWNLOAD_REDIRECT_ORIGINS:-}"
+          [[ -z "$origin" ]] || args+=(--download-origin "$origin")
+        done <<< "${DOWNLOAD_ORIGINS:-}"
         if [[ -n "$CUSTOM_DOWNLOAD_TOKEN" ]]; then
           export INSOMNIA_RUN_DOWNLOAD_TOKEN="$CUSTOM_DOWNLOAD_TOKEN"
           args+=(--download-token-origin "$CUSTOM_DOWNLOAD_ORIGIN")
@@ -454,7 +454,7 @@ runs:
         RUNTIME_BUNDLE_SHA256: ${{ inputs.runtime-bundle-sha256 }}
         INSOMNIA_RUN_DOWNLOAD_TOKEN: ${{ inputs.download-token }}
         DOWNLOAD_TOKEN_ORIGIN: ${{ inputs.download-token-origin }}
-        DOWNLOAD_REDIRECT_ORIGINS: ${{ inputs.download-redirect-origins }}
+        DOWNLOAD_ORIGINS: ${{ inputs.download-origins }}
         OFFLINE_INSTALL: ${{ inputs.offline-install }}
       run: |
         set -euo pipefail
@@ -463,8 +463,8 @@ runs:
         rmdir "$INSOMNIA_RUN_VENV"
         args=(--project "$ACTION_PATH" --venv "$INSOMNIA_RUN_VENV" --runtime-bundle "$RUNTIME_BUNDLE" --runtime-bundle-sha256 "$RUNTIME_BUNDLE_SHA256" --download-token-origin "$DOWNLOAD_TOKEN_ORIGIN")
         while IFS= read -r origin; do
-          [[ -z "$origin" ]] || args+=(--download-redirect-origin "$origin")
-        done <<< "${DOWNLOAD_REDIRECT_ORIGINS:-}"
+          [[ -z "$origin" ]] || args+=(--download-origin "$origin")
+        done <<< "${DOWNLOAD_ORIGINS:-}"
         [[ "$OFFLINE_INSTALL" == "true" ]] && args+=(--offline-install)
         "$PYTHON_BIN" "${ACTION_PATH}/scripts/install_runtime.py" "${args[@]}"
         printf 'venv=%s\n' "$INSOMNIA_RUN_VENV" >> "$GITHUB_OUTPUT"

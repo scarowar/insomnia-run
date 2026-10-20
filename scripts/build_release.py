@@ -65,16 +65,6 @@ def gh_api(path, method="GET", data=None, upload=None):
     return json.loads(result.stdout)
 
 
-def validate_version(root: Path, tag: str) -> None:
-    if not TAG.fullmatch(tag):
-        raise ValueError("Release tag must be an immutable vMAJOR.MINOR.PATCH tag")
-    import tomllib
-
-    project = tomllib.loads((root / PROJECT_FILE).read_text(encoding="utf-8"))
-    if project["project"]["version"] != tag.removeprefix("v"):
-        raise ValueError("Release tag and project version differ")
-
-
 def validate_signature(status: str) -> None:
     signatures = [
         line.split()
@@ -181,7 +171,13 @@ def verify(root: Path, tag: str, commit: str) -> None:
     if not re.fullmatch(COMMIT_PATTERN, commit):
         raise ValueError("An exact tested commit SHA is required")
     require_clean_tracked_tree(root)
-    validate_version(root, tag)
+    if not TAG.fullmatch(tag):
+        raise ValueError("Release tag must be an immutable vMAJOR.MINOR.PATCH tag")
+    import tomllib
+
+    project = tomllib.loads((root / PROJECT_FILE).read_text(encoding="utf-8"))
+    if project["project"]["version"] != tag.removeprefix("v"):
+        raise ValueError("Release tag and project version differ")
     tag_ref = f"refs/tags/{tag}"
     if (
         git(root, "rev-parse", "--verify", "--end-of-options", "HEAD") != commit

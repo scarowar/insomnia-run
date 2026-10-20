@@ -56,11 +56,11 @@ def _check_directory_permissions(descriptor: int, *, temporary_anchor: bool) -> 
 @contextmanager
 def open_directory(path: Path, *, create: bool = False) -> Iterator[int]:
     absolute = Path(os.path.abspath(path))
-    temporary_root = Path(tempfile.gettempdir())
+    system_temporary_roots = {Path("/tmp").resolve(), Path("/var/tmp").resolve()}
     roots = [Path(os.environ["RUNNER_TEMP"])] if os.environ.get("RUNNER_TEMP") else []
-    roots.append(temporary_root)
+    roots.extend([Path("/tmp"), Path("/var/tmp"), *system_temporary_roots])
     if sys.platform == "darwin":
-        roots.extend([Path("/tmp"), Path("/var")])
+        roots.append(Path("/var"))
     root = Path(absolute.anchor)
     relative = absolute.relative_to(root)
     for candidate in roots:
@@ -72,9 +72,7 @@ def open_directory(path: Path, *, create: bool = False) -> Iterator[int]:
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     descriptor = os.open(root, flags)
     try:
-        temporary_anchor = root == temporary_root.resolve(strict=True)
-        if sys.platform == "darwin":
-            temporary_anchor |= root == Path("/tmp").resolve(strict=True)
+        temporary_anchor = root in system_temporary_roots
         _check_directory_permissions(descriptor, temporary_anchor=temporary_anchor)
         for part in relative.parts:
             try:

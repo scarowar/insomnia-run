@@ -310,7 +310,7 @@ def test_https_redirect_never_forwards_token_to_other_origin(tmp_path, monkeypat
         tmp_path / "archive",
         token=token,
         origin="https://mirror.example",
-        redirect_origins=("https://cdn.example",),
+        download_origins=("https://mirror.example", "https://cdn.example"),
     )
     assert requests[0].get_header("Authorization") == "Bearer " + token
     assert requests[1].get_header("Authorization") is None
@@ -332,7 +332,11 @@ def test_https_redirect_rejects_downgrade_before_second_request(tmp_path, monkey
 
     monkeypatch.setattr("install_runtime.build_opener", lambda handler: Opener())
     with pytest.raises(ValueError, match="HTTPS"):
-        download_archive("https://mirror.example/archive", tmp_path / "archive")
+        download_archive(
+            "https://mirror.example/archive",
+            tmp_path / "archive",
+            download_origins=("https://mirror.example",),
+        )
     assert len(requests) == 1
     assert not (tmp_path / "archive").exists()
 
@@ -377,7 +381,7 @@ def test_checksum_cli_rejects_missing_unbundled_digest_without_metadata_request(
             str(ROOT / "scripts/verify_inso_release.py"),
             "--asset",
             "inso-linux-x64-99.0.0.tar.xz",
-            "--archive-path",
+            "--cache-directory",
             str(tmp_path / "archive"),
         ],
         env=environment,
@@ -619,7 +623,7 @@ def test_inso_cli_cache_identity_and_successful_local_install(
         digest,
         "--inso-archive",
         str(archive),
-        "--archive-path",
+        "--cache-directory",
         str(tmp_path / "cached"),
         "--install-dir",
         str(tmp_path / "bin"),
@@ -627,7 +631,7 @@ def test_inso_cli_cache_identity_and_successful_local_install(
     ]
     monkeypatch.setattr(sys, "argv", args + ["--cache-key"])
     inso_installer.main()
-    assert capsys.readouterr().out.startswith("insomnia-run-inso-v2-")
+    assert capsys.readouterr().out.startswith("insomnia-run-inso-v3-")
     monkeypatch.setattr(sys, "argv", args)
     inso_installer.main()
     assert (tmp_path / "bin/inso").read_bytes() == b"executable"
@@ -645,7 +649,7 @@ def test_inso_cli_requires_explicit_custom_archive_digest(
             "inso-linux-x64-13.3.1.tar.xz",
             "--inso-archive",
             str(tmp_path / "source"),
-            "--archive-path",
+            "--cache-directory",
             str(tmp_path / "cached"),
         ],
     )
@@ -798,14 +802,15 @@ def test_inso_refuses_existing_symlink_binary(tmp_path):
 
 
 def test_inso_cli_verify_only_and_runner_temp_scope(tmp_path, monkeypatch):
-    archive = tmp_path / "archive"
+    archive = tmp_path / "cache" / "archive"
+    archive.parent.mkdir()
     archive.write_bytes(b"verified")
     args = [
         "verify_inso_release.py",
         "--asset",
         "inso-linux-x64-99.0.0.tar.xz",
-        "--archive-path",
-        str(archive),
+        "--cache-directory",
+        str(archive.parent),
         "--inso-sha256",
         sha256_file(archive),
         "--offline-install",
