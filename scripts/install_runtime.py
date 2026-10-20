@@ -1,12 +1,14 @@
 """Install the frozen source runtime or an explicitly verified wheel bundle."""
 
 import argparse
-from contextlib import closing
+from contextlib import closing, nullcontext
 import os
 from pathlib import Path
-import json
+import secrets
+import stat
 import subprocess
 import sys
+import sysconfig
 import tempfile
 import tarfile
 from typing import BinaryIO
@@ -19,9 +21,12 @@ from runtime_bundle import (
     MAX_ARCHIVE_BYTES,
     extract_verified,
     regular_file,
+    open_directory,
+    require_directory_identity,
     require_digest,
     runner_path,
     verify_bundle,
+    sha256_file,
 )
 
 
@@ -52,8 +57,15 @@ def _https_url(value: str):
 
 def token_origin(value: str) -> tuple[str, int]:
     parsed, origin = _https_url(value)
-    if parsed.path not in ("", "/") or parsed.query:
+    if parsed.path not in ("", "/") or parsed.query or "*" in parsed.hostname:
         raise ValueError("Download token origin must not include a path or query")
+    return origin
+
+
+def redirect_origin(value: str) -> tuple[str, int]:
+    parsed, origin = _https_url(value)
+    if parsed.path or parsed.query or "*" in parsed.hostname:
+        raise ValueError("Download redirect origin must be an exact HTTPS origin")
     return origin
 
 
@@ -90,11 +102,21 @@ def _download_https(
     token: str,
     allowed_origin: tuple[str, int] | None,
     max_bytes: int,
+    redirect_origins: tuple[str, ...] = (),
 ) -> None:
+    initial_origin = _https_url(location)[1]
+    permitted = {
+        initial_origin,
+        *(redirect_origin(value) for value in redirect_origins),
+    }
+    if initial_origin in {("github.com", 443), ("api.github.com", 443)}:
+        permitted.add(("release-assets.githubusercontent.com", 443))
     opener = build_opener(_NoRedirect())
     current = location
     for attempt in range(6):
         _, current_origin = _https_url(current)
+        if current_origin not in permitted:
+            raise ValueError("Archive redirect origin is not permitted")
         headers = {
             "User-Agent": "insomnia-run-installer",
             "Accept": "application/octet-stream",
@@ -113,6 +135,17 @@ def _download_https(
         break
 
 
+def _check_download_destination(destination: Path, parent: int, replace: bool) -> None:
+    try:
+        existing = os.stat(destination.name, dir_fd=parent, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if not replace:
+        raise FileExistsError("Download destination already exists")
+    if not stat.S_ISREG(existing.st_mode):
+        raise ValueError("Cached archive must be a regular file")
+
+
 def download_archive(
     location: str,
     destination: Path,
@@ -121,6 +154,10 @@ def download_archive(
     origin: str = "",
     offline: bool = False,
     max_bytes: int = MAX_ARCHIVE_BYTES,
+    redirect_origins: tuple[str, ...] = (),
+    expected_sha256: str = "",
+    replace: bool = False,
+    dir_fd: int | None = None,
 ) -> None:
     """Copy a local archive or fetch HTTPS with origin-scoped authentication."""
     if token and (
@@ -130,27 +167,67 @@ def download_archive(
             "A valid download-token-origin is required for a download token"
         )
     allowed_origin = token_origin(origin) if origin else None
+    for value in redirect_origins:
+        redirect_origin(value)
+    if expected_sha256:
+        expected_sha256 = require_digest(expected_sha256)
+    if replace and not expected_sha256:
+        raise ValueError("Replacing a cached archive requires a trusted digest")
     parsed = urlsplit(location)
     if parsed.scheme:
         _https_url(location)
-        if offline:
-            raise ValueError("Installer network access is disabled by offline-install")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    if destination.exists() or destination.is_symlink():
-        raise FileExistsError("Download destination already exists")
-    with tempfile.TemporaryDirectory(
-        prefix=".insomnia-download-", dir=destination.parent
-    ) as scratch:
-        staged = Path(scratch) / "archive"
-        with staged.open("xb") as output:
-            os.chmod(staged, 0o600)
-            if not parsed.scheme:
-                with regular_file(Path(location)) as source:
-                    _copy_download(source, output, max_bytes)
+    if parsed.scheme and offline:
+        raise ValueError("Installer network access is disabled by offline-install")
+    with (
+        open_directory(destination.parent, create=True)
+        if dir_fd is None
+        else nullcontext(dir_fd)
+    ) as parent:
+        _check_download_destination(destination, parent, replace)
+        staged = Path(".insomnia-download-" + secrets.token_hex(12))
+        descriptor = os.open(
+            staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=parent
+        )
+        try:
+            with os.fdopen(descriptor, "wb") as output:
+                os.fchmod(output.fileno(), 0o600)
+                if not parsed.scheme:
+                    with regular_file(Path(location)) as source:
+                        _copy_download(source, output, max_bytes)
+                else:
+                    _download_https(
+                        location,
+                        output,
+                        token,
+                        allowed_origin,
+                        max_bytes,
+                        redirect_origins,
+                    )
+                output.flush()
+                os.fsync(output.fileno())
+            if (
+                expected_sha256
+                and sha256_file(staged, dir_fd=parent) != expected_sha256
+            ):
+                raise ValueError("Inso archive failed SHA-256 verification")
+            require_directory_identity(destination.parent, parent)
+            if replace:
+                os.replace(
+                    staged, destination.name, src_dir_fd=parent, dst_dir_fd=parent
+                )
             else:
-                _download_https(location, output, token, allowed_origin, max_bytes)
-        # Hard linking is an atomic no-clobber publication on the same filesystem.
-        os.link(staged, destination)
+                os.link(
+                    staged,
+                    destination.name,
+                    src_dir_fd=parent,
+                    dst_dir_fd=parent,
+                    follow_symlinks=False,
+                )
+        finally:
+            try:
+                os.unlink(staged, dir_fd=parent)
+            except FileNotFoundError:
+                pass
 
 
 def _child_environment(offline: bool) -> dict[str, str]:
@@ -170,7 +247,6 @@ def _child_environment(offline: bool) -> dict[str, str]:
 def install_runtime(
     project: Path,
     venv: Path,
-    python: str,
     uv: str,
     *,
     bundle: str = "",
@@ -178,7 +254,9 @@ def install_runtime(
     token: str = "",
     origin: str = "",
     offline: bool = False,
+    redirect_origins: tuple[str, ...] = (),
 ) -> None:
+    python = sys.executable
     if bool(bundle) != bool(bundle_sha256):
         raise ValueError(
             "runtime-bundle and runtime-bundle-sha256 must be provided together"
@@ -202,25 +280,21 @@ def install_runtime(
             require_digest(bundle_sha256)
             archive = root / "bundle"
             download_archive(
-                bundle, archive, token=token, origin=origin, offline=offline
+                bundle,
+                archive,
+                token=token,
+                origin=origin,
+                offline=offline,
+                redirect_origins=redirect_origins,
             )
             extracted = root / "verified"
             extract_verified(archive, bundle_sha256, extracted)
-            identity = subprocess.run(
-                [
-                    python,
-                    "-I",
-                    "-S",
-                    "-c",
-                    "import json,sys,sysconfig; print(json.dumps([sys.implementation.cache_tag,sysconfig.get_platform()]))",
-                ],
-                env=environment,
-                text=True,
-                capture_output=True,
-                check=True,
+            verified = verify_bundle(
+                extracted,
+                project,
+                sys.implementation.cache_tag,
+                sysconfig.get_platform(),
             )
-            python_tag, platform_tag = json.loads(identity.stdout)
-            verified = verify_bundle(extracted, project, python_tag, platform_tag)
         run(
             [
                 "venv",
@@ -301,11 +375,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", type=Path, required=True)
     parser.add_argument("--venv", type=Path, required=True)
-    parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--uv", default="uv")
     parser.add_argument("--runtime-bundle", default="")
     parser.add_argument("--runtime-bundle-sha256", default="")
     parser.add_argument("--download-token-origin", default="")
+    parser.add_argument("--download-redirect-origin", action="append", default=[])
     parser.add_argument("--offline-install", action="store_true")
     args = parser.parse_args()
     try:
@@ -314,13 +388,13 @@ def main() -> None:
         install_runtime(
             args.project,
             args.venv,
-            args.python,
             args.uv,
             bundle=args.runtime_bundle,
             bundle_sha256=args.runtime_bundle_sha256,
             token=os.environ.get("INSOMNIA_RUN_DOWNLOAD_TOKEN", ""),
             origin=args.download_token_origin,
             offline=args.offline_install,
+            redirect_origins=tuple(args.download_redirect_origin),
         )
     except (
         OSError,

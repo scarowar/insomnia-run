@@ -44,10 +44,51 @@ def require_digest(value: str) -> str:
 
 
 @contextmanager
-def regular_file(path: Path) -> Iterator[BinaryIO]:
+def open_directory(path: Path, *, create: bool = False) -> Iterator[int]:
+    absolute = Path(os.path.abspath(path))
+    roots = [Path(os.environ["RUNNER_TEMP"])] if os.environ.get("RUNNER_TEMP") else []
+    roots.append(Path(tempfile.gettempdir()))
+    if sys.platform == "darwin":
+        roots.extend([Path("/tmp"), Path("/var")])
+    root = Path(absolute.anchor)
+    relative = absolute.relative_to(root)
+    for candidate in roots:
+        candidate = Path(os.path.abspath(candidate))
+        if absolute.is_relative_to(candidate):
+            root = candidate.resolve(strict=True)
+            relative = absolute.relative_to(candidate)
+            break
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptor = os.open(root, flags)
+    try:
+        for part in relative.parts:
+            try:
+                child = os.open(part, flags, dir_fd=descriptor)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(part, mode=0o700, dir_fd=descriptor)
+                child = os.open(part, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        yield descriptor
+    finally:
+        os.close(descriptor)
+
+
+def require_directory_identity(path: Path, descriptor: int) -> None:
+    if not os.path.samestat(os.fstat(descriptor), path.stat(follow_symlinks=False)):
+        raise ValueError("Installer destination parent changed during writing")
+
+
+@contextmanager
+def regular_file(path: Path, *, dir_fd: int | None = None) -> Iterator[BinaryIO]:
+    if dir_fd is not None and (path.name != str(path) or path.name in ("", ".", "..")):
+        raise ValueError("Managed file must name a single directory entry")
     descriptor = os.open(
         path,
         os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
+        dir_fd=dir_fd,
     )
     with os.fdopen(descriptor, "rb") as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
@@ -55,9 +96,9 @@ def regular_file(path: Path) -> Iterator[BinaryIO]:
         yield stream
 
 
-def sha256_file(path: Path) -> str:
+def sha256_file(path: Path, *, dir_fd: int | None = None) -> str:
     digest = hashlib.sha256()
-    with regular_file(path) as stream:
+    with regular_file(path, dir_fd=dir_fd) as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
@@ -176,6 +217,7 @@ def extract_verified(
     *,
     max_bytes: int = MAX_ARCHIVE_BYTES,
     max_members: int = MAX_ARCHIVE_MEMBERS,
+    archive_dir_fd: int | None = None,
 ) -> None:
     """Hash a private snapshot, then atomically expose its validated contents."""
     checksum = require_digest(checksum)
@@ -189,7 +231,10 @@ def extract_verified(
         snapshot = private / "archive"
         digest = hashlib.sha256()
         size = 0
-        with regular_file(archive) as source, snapshot.open("xb") as output:
+        with (
+            regular_file(archive, dir_fd=archive_dir_fd) as source,
+            snapshot.open("xb") as output,
+        ):
             os.chmod(snapshot, 0o600)
             for block in iter(lambda: source.read(1024 * 1024), b""):
                 size += len(block)

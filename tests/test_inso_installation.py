@@ -134,6 +134,7 @@ def test_corrupt_inso_cache_fetches_once_only_when_online(
     digest = hashlib.sha256(trusted).hexdigest()
     manifest = tmp_path / "checksums.json"
     manifest.write_text("{}")
+    monkeypatch.setattr(inso_installer, "MANIFEST", manifest)
     cached = tmp_path / "cached.tar.xz"
     cached.write_bytes(b"corrupt cache")
     destination = tmp_path / "bin"
@@ -145,8 +146,6 @@ def test_corrupt_inso_cache_fetches_once_only_when_online(
         "verify_inso_release.py",
         "--asset",
         "inso-linux-x64-13.3.1.tar.xz",
-        "--manifest",
-        str(manifest),
         "--inso-sha256",
         digest,
         "--inso-archive",
@@ -168,7 +167,7 @@ def test_corrupt_inso_cache_fetches_once_only_when_online(
             assert not offline, "offline verification attempted network access"
             assert not requests, "corrupt replacement caused another fetch"
             assert request.full_url == location
-            assert not cached.exists(), "corrupt cache was not discarded"
+            assert cached.read_bytes() == b"corrupt cache"
             requests.append(request)
             return io.BytesIO(trusted if replacement_valid else b"bad download")
 
@@ -184,7 +183,7 @@ def test_corrupt_inso_cache_fetches_once_only_when_online(
         assert cached.read_bytes() == trusted
         assert previous.read_bytes() == (binary if install else b"previous install")
     assert len(requests) == (0 if offline else 1)
-    if offline:
+    if offline or not replacement_valid:
         assert cached.read_bytes() == b"corrupt cache"
 
 
@@ -236,6 +235,7 @@ def test_online_cache_recovery_does_not_remove_nonregular_inputs(
         cached.mkdir()
     manifest = tmp_path / "checksums.json"
     manifest.write_text("{}")
+    monkeypatch.setattr(inso_installer, "MANIFEST", manifest)
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setattr(
         sys,
@@ -244,8 +244,6 @@ def test_online_cache_recovery_does_not_remove_nonregular_inputs(
             "verify_inso_release.py",
             "--asset",
             "inso-linux-x64-13.3.1.tar.xz",
-            "--manifest",
-            str(manifest),
             "--inso-sha256",
             "a" * 64,
             "--archive-path",

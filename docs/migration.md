@@ -54,6 +54,8 @@ For offline installation, provision tools and caches or local archives/bundles, 
 
 Keep credentials separate: `github-token` is for instance comments, `github-com-token` is for public GitHub downloads, and artifacts use runner runtime credentials. A private archive token requires an exact `download-token-origin`; enterprise instance credentials are not public-download credentials.
 
+Inso and runtime-bundle redirects are restricted to the initial HTTPS origin. Downloads starting at GitHub.com or its API may also use GitHub's release-asset host. For mirrors redirecting to a different origin, list each destination in `download-redirect-origins`; credentials remain restricted to `download-token-origin`. See the [download configuration example](reference/inputs.md#enterprise-runners). This restriction does not apply to uv's managed-Python downloads or collection HTTP requests.
+
 ### Input Paths and Configuration
 
 For a YAML export, use `working-directory: insomnia-export.yaml`. For legacy `.insomnia/Workspace/` data, use its parent repository root, not `.insomnia`.

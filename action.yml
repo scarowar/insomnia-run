@@ -43,6 +43,9 @@ inputs:
   download-token-origin:
     description: "HTTPS origin authorized to receive download-token. Cross-origin redirects never receive it."
     required: false
+  download-redirect-origins:
+    description: "Additional exact HTTPS origins allowed for Inso and runtime-bundle redirects, one per line."
+    default: ""
   offline-install:
     description: "Forbid installer and cache network access. Requires provisioned tools and installation materials. Does not restrict collection HTTP traffic."
     default: "false"
@@ -381,11 +384,15 @@ runs:
         OFFLINE_INSTALL: ${{ inputs.offline-install }}
         CUSTOM_DOWNLOAD_TOKEN: ${{ inputs.download-token }}
         CUSTOM_DOWNLOAD_ORIGIN: ${{ inputs.download-token-origin }}
+        DOWNLOAD_REDIRECT_ORIGINS: ${{ inputs.download-redirect-origins }}
         PUBLIC_DOWNLOAD_TOKEN: ${{ inputs.github-com-token || (github.server_url == 'https://github.com' && github.token) || '' }}
       run: |
         set -euo pipefail
         mkdir -p "${HOME}/.cache/pkg"
         args=(--asset "$INSO_ASSET" --archive-path "${RUNNER_TEMP}/insomnia-run-download/${INSO_VERSION}/${INSO_ASSET}" --inso-sha256 "$INSO_SHA256" --inso-archive "$INSO_ARCHIVE" --install-dir "${RUNNER_TEMP}/insomnia-run-inso/bin")
+        while IFS= read -r origin; do
+          [[ -z "$origin" ]] || args+=(--download-redirect-origin "$origin")
+        done <<< "${DOWNLOAD_REDIRECT_ORIGINS:-}"
         if [[ -n "$CUSTOM_DOWNLOAD_TOKEN" ]]; then
           export INSOMNIA_RUN_DOWNLOAD_TOKEN="$CUSTOM_DOWNLOAD_TOKEN"
           args+=(--download-token-origin "$CUSTOM_DOWNLOAD_ORIGIN")
@@ -447,13 +454,17 @@ runs:
         RUNTIME_BUNDLE_SHA256: ${{ inputs.runtime-bundle-sha256 }}
         INSOMNIA_RUN_DOWNLOAD_TOKEN: ${{ inputs.download-token }}
         DOWNLOAD_TOKEN_ORIGIN: ${{ inputs.download-token-origin }}
+        DOWNLOAD_REDIRECT_ORIGINS: ${{ inputs.download-redirect-origins }}
         OFFLINE_INSTALL: ${{ inputs.offline-install }}
       run: |
         set -euo pipefail
         # Each invocation owns its environment; no package installation modifies the runner Python.
         INSOMNIA_RUN_VENV="$(mktemp -d "${RUNNER_TEMP}/insomnia-run-venv.XXXXXX")"
         rmdir "$INSOMNIA_RUN_VENV"
-        args=(--project "$ACTION_PATH" --venv "$INSOMNIA_RUN_VENV" --python "$PYTHON_BIN" --runtime-bundle "$RUNTIME_BUNDLE" --runtime-bundle-sha256 "$RUNTIME_BUNDLE_SHA256" --download-token-origin "$DOWNLOAD_TOKEN_ORIGIN")
+        args=(--project "$ACTION_PATH" --venv "$INSOMNIA_RUN_VENV" --runtime-bundle "$RUNTIME_BUNDLE" --runtime-bundle-sha256 "$RUNTIME_BUNDLE_SHA256" --download-token-origin "$DOWNLOAD_TOKEN_ORIGIN")
+        while IFS= read -r origin; do
+          [[ -z "$origin" ]] || args+=(--download-redirect-origin "$origin")
+        done <<< "${DOWNLOAD_REDIRECT_ORIGINS:-}"
         [[ "$OFFLINE_INSTALL" == "true" ]] && args+=(--offline-install)
         "$PYTHON_BIN" "${ACTION_PATH}/scripts/install_runtime.py" "${args[@]}"
         printf 'venv=%s\n' "$INSOMNIA_RUN_VENV" >> "$GITHUB_OUTPUT"

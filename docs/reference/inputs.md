@@ -91,6 +91,7 @@ Report destinations in Actions must be below the workspace or runner temporary d
 | `runtime-bundle-sha256` | Empty | Required trusted archive digest when `runtime-bundle` is set. |
 | `download-token` | Empty | Private archive credential restricted to `download-token-origin`. |
 | `download-token-origin` | Empty | Exact HTTPS origin authorized to receive `download-token`. No path or query. |
+| `download-redirect-origins` | Empty | Newline-separated exact HTTPS origins allowed for cross-origin Inso/runtime-bundle redirects. No wildcards, paths, or queries. |
 | `github-com-token` | Empty | Public GitHub download credential. On GitHub.com the workflow token is the fallback; enterprise instance tokens are not forwarded. |
 | `offline-install` | `false` | Forbid installer/cache network access. Requires provisioned tools and local installation materials. |
 | `python-version` | `system` | Use system Python 3.10+, or select the reviewed managed CPython `3.14.8` build. |
@@ -213,7 +214,19 @@ There are three separate GitHub credential audiences:
 - `github-com-token`: GitHub.com tool downloads, not enterprise API access.
 - Runner runtime credentials: artifact services, managed by GitHub, not either input token.
 
-Private archive downloads may additionally use `download-token`, restricted to the exact HTTPS `download-token-origin`. HTTPS redirects are validated and credentials are not forwarded to another origin. Installer credentials are not intended for collection execution; use `env-var` or the supported vault integration for API-test credentials.
+Private archive downloads may additionally use `download-token`, restricted to the exact HTTPS `download-token-origin`. Credentials are not forwarded to another origin. Installer credentials are not intended for collection execution; use `env-var` or the supported vault integration for API-test credentials.
+
+Inso and runtime-bundle downloads follow same-origin HTTPS redirects. Downloads starting at `https://github.com` or `https://api.github.com` may also redirect to GitHub's `https://release-assets.githubusercontent.com` asset host. A custom mirror that redirects to another origin must explicitly allow that destination:
+
+```yaml
+with:
+  inso-archive: https://mirror.example.org/inso.tar.xz
+  inso-sha256: ${{ vars.INSO_ARCHIVE_SHA256 }}
+  download-redirect-origins: |
+    https://assets.example.org
+```
+
+Each entry authorizes an HTTPS origin, including its port, rather than a URL prefix. The initial archive origin is already permitted. Redirect chains are limited to six requests; an unlisted origin is rejected before connecting. This policy does not control uv's managed-Python downloads or collection HTTP requests.
 
 Built-in uploads support GitHub.com and valid HTTPS `*.ghe.com` GitHub Enterprise Cloud origins. They do not support GitHub Enterprise Server (GHES). Use `report-directory` with an installation-supported uploader on GHES. See [upload-artifact support](https://github.com/actions/upload-artifact#v4---whats-new).
 

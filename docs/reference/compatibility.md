@@ -2,7 +2,7 @@
 
 ## Verified Release
 
-The default is Inso **13.3.1**. Compatibility is scoped to its versioned command interfaces and report formats, not every desktop feature or future CLI release. v0.2.0 is unreleased; new features still need release-candidate and hosted validation.
+The default is Inso **13.3.1**. Compatibility covers its versioned command interfaces and report formats. v0.2.0 is unreleased.
 
 Sources: [official release](https://github.com/Kong/insomnia/releases/tag/core%4013.3.1), [collection reference](https://developer.konghq.com/inso-cli/reference/run_collection/), [test reference](https://developer.konghq.com/inso-cli/reference/run_test/), and [exact-release CLI source](https://github.com/Kong/insomnia/blob/abbf55892e16adafea6eb1d6c12af2fa85d32dc9/packages/insomnia-inso/src/cli.ts). Where published documentation and this release disagree, the verified binary and versioned implementation take precedence.
 
@@ -69,7 +69,7 @@ A collection can execute requests without assertions. This yields **No Assertion
 
 `execution-timeout` is a wrapper-only positive timeout in seconds (default `300`). Numeric validation is stricter than Inso's permissive parsing. `workflow-url`, `output-format`, `include-raw-output`, `junit-output`, `json-output`, `markdown-output`, `raw-output-file`, `redact-value`, `progress`, and `annotations` are wrapper reporting options, not Inso flags. Action equivalents include `junit-report`, `junit-output-file`, and multiline `redact-values`. Progress reports trusted stages/elapsed time, never live counts inferred from stdout.
 
-Action-only installation controls are `inso-version`, `inso-sha256`, `inso-archive`, `cache-inso`, `runtime-bundle`, `runtime-bundle-sha256`, `python-version`, `offline-install`, `github-com-token`, `download-token`, and `download-token-origin`.
+Action-only installation controls are `inso-version`, `inso-sha256`, `inso-archive`, `cache-inso`, `runtime-bundle`, `runtime-bundle-sha256`, `python-version`, `offline-install`, `github-com-token`, `download-token`, `download-token-origin`, and `download-redirect-origins`.
 
 Publication/policy controls are `github-token`, `pr-comment`, `comment-tag`, `comment-issue-number`, `fail-on-error`, `upload-artifact`, `artifact-name`, and `artifact-retention-days`. These interfaces belong to this action, not Inso. See [all inputs and outputs](inputs.md) and the [JSON schema/evidence contract](inputs.md#json-schema-and-evidence).
 

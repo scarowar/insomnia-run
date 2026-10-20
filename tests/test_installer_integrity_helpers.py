@@ -177,7 +177,6 @@ def test_invalid_bundle_fails_before_uv_is_invoked(tmp_path, monkeypatch):
         install_runtime(
             ROOT,
             tmp_path / "venv",
-            sys.executable,
             "uv",
             bundle=str(archive),
             bundle_sha256=digest,
@@ -190,7 +189,6 @@ def test_missing_bundle_digest_is_rejected_without_venv(tmp_path):
         install_runtime(
             ROOT,
             tmp_path / "venv",
-            sys.executable,
             "uv",
             bundle="https://mirror.example/bundle",
         )
@@ -312,6 +310,7 @@ def test_https_redirect_never_forwards_token_to_other_origin(tmp_path, monkeypat
         tmp_path / "archive",
         token=token,
         origin="https://mirror.example",
+        redirect_origins=("https://cdn.example",),
     )
     assert requests[0].get_header("Authorization") == "Bearer " + token
     assert requests[1].get_header("Authorization") is None
@@ -354,7 +353,7 @@ def test_source_install_defaults_to_frozen_sync_and_offline_denies_uv_network(
         return subprocess.CompletedProcess(command, 0)
 
     monkeypatch.setattr(subprocess, "run", run)
-    install_runtime(ROOT, tmp_path / "venv", sys.executable, "uv", offline=True)
+    install_runtime(ROOT, tmp_path / "venv", "uv", offline=True)
     assert len(commands) == 4
     for command, kwargs in commands:
         assert command[:2] == ["uv", "--offline"]
@@ -443,7 +442,6 @@ def test_bundle_install_never_falls_back_to_source_or_index(
     install_runtime(
         project,
         tmp_path / "venv",
-        sys.executable,
         "uv",
         bundle=str(archive),
         bundle_sha256=digest,

@@ -6,17 +6,33 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
+import stat
 import tarfile
 import tempfile
 import zipfile
 
 from install_runtime import download_archive
-from runtime_bundle import extract_verified, require_digest, runner_path, sha256_file
+from runtime_bundle import (
+    extract_verified,
+    require_digest,
+    runner_path,
+    sha256_file,
+    open_directory,
+    regular_file,
+    require_directory_identity,
+)
+
+MANIFEST = Path(__file__).resolve().parents[1] / "inso-checksums.json"
 
 
 def expected_digest(asset: str, manifest: Path, supplied: str = "") -> str:
-    checksums = json.loads(manifest.read_text(encoding="utf-8"))
+    with regular_file(manifest) as stream:
+        contents = stream.read(64 * 1024 + 1)
+    if len(contents) > 64 * 1024:
+        raise ValueError("Bundled SHA-256 manifest is too large")
+    checksums = json.loads(contents)
     if not isinstance(checksums, dict):
         raise ValueError("Invalid bundled SHA-256 manifest")
     bundled = checksums.get(asset, "")
@@ -40,25 +56,53 @@ def cache_identity(version: str, platform: str, digest: str, archive: str = "") 
     return "insomnia-run-inso-v2-" + hashlib.sha256(identity.encode()).hexdigest()
 
 
-def install_inso(archive: Path, digest: str, destination: Path) -> Path:
+def install_inso(
+    archive: Path,
+    digest: str,
+    destination: Path,
+    *,
+    archive_dir_fd: int | None = None,
+) -> Path:
     # Explicit archives always take precedence over preinstalled executables.
     if destination.is_symlink():
         raise ValueError("Inso destination must not be a symlink")
-    destination.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with tempfile.TemporaryDirectory(prefix=".inso-", dir=destination) as scratch:
+    with (
+        open_directory(destination, create=True) as parent,
+        tempfile.TemporaryDirectory(prefix=".inso-") as scratch,
+    ):
         extracted = Path(scratch) / "contents"
-        extract_verified(archive, digest, extracted)
+        extract_verified(archive, digest, extracted, archive_dir_fd=archive_dir_fd)
         binaries = list(extracted.rglob("inso"))
         binaries = [path for path in binaries if path.is_file()]
         if len(binaries) != 1:
             raise ValueError("Verified archive must contain exactly one inso binary")
-        staged = Path(scratch) / "inso"
-        shutil.copyfile(binaries[0], staged)
-        staged.chmod(0o700)
         target = destination / "inso"
-        if target.is_symlink():
-            raise ValueError("Inso destination must not be a symlink")
-        os.replace(staged, target)
+        try:
+            existing = os.stat("inso", dir_fd=parent, follow_symlinks=False)
+        except FileNotFoundError:
+            existing = None
+        if existing is not None and not stat.S_ISREG(existing.st_mode):
+            raise ValueError("Inso destination must be a regular file, not a symlink")
+        staged = ".inso-" + secrets.token_hex(12)
+        descriptor = os.open(
+            staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o700, dir_fd=parent
+        )
+        try:
+            with (
+                os.fdopen(descriptor, "wb") as output,
+                regular_file(binaries[0]) as source,
+            ):
+                os.fchmod(output.fileno(), 0o700)
+                shutil.copyfileobj(source, output)
+                output.flush()
+                os.fsync(output.fileno())
+            require_directory_identity(destination, parent)
+            os.replace(staged, "inso", src_dir_fd=parent, dst_dir_fd=parent)
+        finally:
+            try:
+                os.unlink(staged, dir_fd=parent)
+            except FileNotFoundError:
+                pass
         return target
 
 
@@ -73,16 +117,12 @@ def _check_runner_paths(archive_path: Path, install_dir: Path | None) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--asset", required=True)
-    parser.add_argument(
-        "--manifest",
-        type=Path,
-        default=Path(__file__).resolve().parents[1] / "inso-checksums.json",
-    )
     parser.add_argument("--inso-sha256", default="")
     parser.add_argument("--inso-archive", default="")
     parser.add_argument("--archive-path", type=Path, required=True)
     parser.add_argument("--install-dir", type=Path)
     parser.add_argument("--download-token-origin", default="")
+    parser.add_argument("--download-redirect-origin", action="append", default=[])
     parser.add_argument("--offline-install", action="store_true")
     parser.add_argument("--cache-key", action="store_true")
     args = parser.parse_args()
@@ -94,7 +134,7 @@ def main() -> None:
         if not match:
             raise ValueError("Invalid Inso release asset name")
         _check_runner_paths(args.archive_path, args.install_dir)
-        digest = expected_digest(args.asset, args.manifest, args.inso_sha256)
+        digest = expected_digest(args.asset, MANIFEST, args.inso_sha256)
         if args.inso_archive and not args.inso_sha256:
             raise ValueError("A custom inso-archive requires explicit inso-sha256")
         if args.cache_key:
@@ -104,22 +144,29 @@ def main() -> None:
             args.inso_archive
             or f"https://github.com/Kong/insomnia/releases/download/core%40{match[2]}/{args.asset}"
         )
-        if args.archive_path.exists() and sha256_file(args.archive_path) != digest:
-            if args.offline_install:
-                raise ValueError("Inso archive failed SHA-256 verification")
-            args.archive_path.unlink()
-        if not args.archive_path.exists():
-            download_archive(
-                location,
-                args.archive_path,
-                token=os.environ.get("INSOMNIA_RUN_DOWNLOAD_TOKEN", ""),
-                origin=args.download_token_origin,
-                offline=args.offline_install,
-            )
-        if args.install_dir:
-            install_inso(args.archive_path, digest, args.install_dir)
-        elif sha256_file(args.archive_path) != digest:
-            raise ValueError("Inso archive failed SHA-256 verification")
+        with open_directory(args.archive_path.parent, create=True) as parent:
+            archive = Path(args.archive_path.name)
+            try:
+                cached = sha256_file(archive, dir_fd=parent)
+            except FileNotFoundError:
+                cached = None
+            if cached != digest:
+                if cached is not None and args.offline_install:
+                    raise ValueError("Inso archive failed SHA-256 verification")
+                download_archive(
+                    location,
+                    args.archive_path,
+                    token=os.environ.get("INSOMNIA_RUN_DOWNLOAD_TOKEN", ""),
+                    origin=args.download_token_origin,
+                    offline=args.offline_install,
+                    redirect_origins=tuple(args.download_redirect_origin),
+                    expected_sha256=digest,
+                    replace=cached is not None,
+                    dir_fd=parent,
+                )
+            require_directory_identity(args.archive_path.parent, parent)
+            if args.install_dir:
+                install_inso(archive, digest, args.install_dir, archive_dir_fd=parent)
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
         reason = str(error) if isinstance(error, ValueError) else type(error).__name__
         parser.exit(1, f"Inso installation failed: {reason}\n")
