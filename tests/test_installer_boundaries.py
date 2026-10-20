@@ -25,12 +25,13 @@ def test_unlisted_initial_origin_never_constructs_opener(
     monkeypatch.setattr(
         install_runtime, "build_opener", lambda *args: pytest.fail("network setup")
     )
+    origin = location.rsplit("/", 1)[0]
     with pytest.raises(ValueError, match="origin"):
         install_runtime.download_archive(
             location,
             tmp_path / "archive",
             token="credential",
-            origin=location.rsplit("/", 1)[0],
+            origin=origin,
         )
 
 
