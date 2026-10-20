@@ -57,6 +57,78 @@ def test_manifest_checksum_matches_pre_python_bootstrap_pin():
     )
 
 
+@pytest.mark.parametrize("kind", ["oversized", "symlink"])
+def test_manifest_rejects_unsafe_file(tmp_path, kind):
+    path = tmp_path / "metadata.json"
+    if kind == "symlink":
+        path.symlink_to(ROOT / "python-downloads.json")
+    else:
+        path.write_bytes((ROOT / "python-downloads.json").read_bytes() + b" " * 65536)
+    with pytest.raises((OSError, ValueError)):
+        managed_python.load_manifest(path)
+
+
+def test_cli_rejects_manifest_override(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            str(ROOT / "scripts/managed_python.py"),
+            "--manifest",
+            str(ROOT / "python-downloads.json"),
+            "--target",
+            "cpython-3.14.8-linux-x86_64-gnu",
+            "--install-dir",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "unrecognized arguments: --manifest" in result.stderr
+
+
+@pytest.mark.parametrize("kind", ["fifo", "directory"])
+def test_manifest_rejects_nonregular_files_without_blocking(tmp_path, kind):
+    path = tmp_path / "metadata.json"
+    if kind == "fifo":
+        os.mkfifo(path)
+    else:
+        path.mkdir()
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            "import runpy, sys\n"
+            "from pathlib import Path\n"
+            "module = runpy.run_path(sys.argv[1])\n"
+            "try:\n"
+            "    module['load_manifest'](Path(sys.argv[2]))\n"
+            "except (OSError, ValueError):\n"
+            "    sys.exit(0)\n"
+            "sys.exit(1)\n",
+            str(ROOT / "scripts/managed_python.py"),
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=5,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_manifest_accepts_exact_size_limit(tmp_path):
+    content = (ROOT / "python-downloads.json").read_bytes()
+    path = tmp_path / "metadata.json"
+    path.write_bytes(content + b" " * (65536 - len(content)))
+    assert managed_python.load_manifest(path).keys() == REVIEWED.keys()
+
+
 @pytest.mark.parametrize(
     "field,value",
     [
@@ -206,8 +278,6 @@ def test_cli_failure_is_nonzero_without_traceback(tmp_path):
         [
             sys.executable,
             str(ROOT / "scripts/managed_python.py"),
-            "--manifest",
-            str(tmp_path / "missing.json"),
             "--target",
             "cpython-3.14.8-linux-x86_64-gnu",
             "--install-dir",
@@ -236,12 +306,13 @@ def test_cli_success_prints_only_verified_path(tmp_path, monkeypatch, capsys):
 def test_cli_failure_is_bounded(tmp_path, monkeypatch, capsys):
     key, _ = installed_python(tmp_path, monkeypatch)
     monkeypatch.setattr(
+        managed_python, "MANIFEST", tmp_path / "missing\n::error::injected"
+    )
+    monkeypatch.setattr(
         sys,
         "argv",
         [
             "managed_python.py",
-            "--manifest",
-            str(tmp_path / "missing\n::error::injected"),
             "--target",
             key,
             "--install-dir",

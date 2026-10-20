@@ -593,6 +593,13 @@ def release_checkout(tmp_path, release, monkeypatch):
 
     def run(args, **kwargs):
         if args[:2] == ["git", "verify-tag"]:
+            assert args == [
+                "git",
+                "verify-tag",
+                "--raw",
+                "--",
+                "refs/tags/v0.2.0",
+            ]
             return subprocess.CompletedProcess(args, 0, stderr=signature)
         if args[0] != "git":
             pytest.fail("Release must reject dirty source before running build tools")
@@ -642,6 +649,22 @@ def dirty_release_source(root, git, mutation):
             git("add", "-u")
     else:
         git("mv", "source.py", "renamed.py")
+
+
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="Release requires tomllib")
+@pytest.mark.parametrize("tag_matches", [True, False])
+def test_release_uses_tag_namespace_despite_conflicting_ref(
+    release, release_checkout, tag_matches
+):
+    root, git, commit, _ = release_checkout
+    other = git("commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "Other commit")
+    git("update-ref", "refs/tags/v0.2.0", commit if tag_matches else other)
+    git("update-ref", "refs/v0.2.0", other if tag_matches else commit)
+    if tag_matches:
+        release.verify(root, "v0.2.0", commit)
+    else:
+        with pytest.raises(ValueError, match="must agree"):
+            release.verify(root, "v0.2.0", commit)
 
 
 @pytest.mark.parametrize(

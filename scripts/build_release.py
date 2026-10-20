@@ -1,10 +1,7 @@
 """Verify release identity, build distributions, and recover an unpublished draft.
 
-Publication requires a separately approved maintainer change enabling immutable
-releases in repository settings. The settings GET requires Administration: read;
-the workflow GITHUB_TOKEN cannot request that permission. Unreadable settings
-block publication. This tool never enables immutability or provisions credentials.
-Builds and dry-runs do not require the setting or its read permission.
+Publication requires enabled immutable releases and Administration: read access
+to verify the setting. Builds and dry-runs do not require that access.
 """
 
 import argparse
@@ -171,8 +168,10 @@ def tested_commit(root: Path, commit: str) -> str:
             if not re.fullmatch(COMMIT_PATTERN, head):
                 continue
             git(root, "fetch", "--no-tags", "origin", head)
-            if git(root, "rev-parse", f"{commit}^{{tree}}") == git(
-                root, "rev-parse", f"{head}^{{tree}}"
+            if git(
+                root, "rev-parse", "--verify", "--end-of-options", f"{commit}^{{tree}}"
+            ) == git(
+                root, "rev-parse", "--verify", "--end-of-options", f"{head}^{{tree}}"
             ):
                 return head
     raise ValueError("Release must match the tested tree of a merged main-branch PR")
@@ -183,14 +182,18 @@ def verify(root: Path, tag: str, commit: str) -> None:
         raise ValueError("An exact tested commit SHA is required")
     require_clean_tracked_tree(root)
     validate_version(root, tag)
+    tag_ref = f"refs/tags/{tag}"
     if (
-        git(root, "rev-parse", "HEAD") != commit
-        or git(root, "rev-parse", f"{tag}^{{commit}}") != commit
+        git(root, "rev-parse", "--verify", "--end-of-options", "HEAD") != commit
+        or git(
+            root, "rev-parse", "--verify", "--end-of-options", f"{tag_ref}^{{commit}}"
+        )
+        != commit
     ):
         raise ValueError("Tag, checkout, and tested commit must agree")
-    git(root, "merge-base", "--is-ancestor", commit, "origin/main")
+    git(root, "merge-base", "--is-ancestor", commit, "refs/remotes/origin/main")
     signature = subprocess.run(
-        ["git", "verify-tag", "--raw", tag],
+        ["git", "verify-tag", "--raw", "--", tag_ref],
         cwd=root,
         check=True,
         capture_output=True,
@@ -326,15 +329,11 @@ def require_immutable_releases(repository: str, api=gh_api) -> None:
         settings = api(f"repos/{repository}/immutable-releases")
     except (NotFound, OSError, ValueError, subprocess.SubprocessError):
         raise ValueError(
-            "Cannot verify immutable releases; publication is blocked. The settings GET "
-            "requires Administration: read. The workflow GITHUB_TOKEN cannot request "
-            "that permission; suitable authorization needs separate approval."
+            "Cannot verify immutable releases; publication is blocked. "
+            "Reading the setting requires Administration: read access."
         ) from None
     if not isinstance(settings, dict) or settings.get("enabled") is not True:
-        raise ValueError(
-            "Immutable releases must be enabled before publication. A maintainer must "
-            "separately approve and enable the repository setting; this tool will not change it."
-        )
+        raise ValueError("Immutable releases must be enabled before publication.")
 
 
 def existing_draft(api, endpoint: str, tag: str):

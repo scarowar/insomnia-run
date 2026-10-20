@@ -9,8 +9,10 @@ against the python-build-standalone 20261013 release.
 
 import argparse
 import json
+import os
 from pathlib import Path
 import re
+import stat
 import sys
 import sysconfig
 from typing import Any
@@ -35,9 +37,14 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def load_manifest(path: Path) -> dict[str, dict[str, Any]]:
-    entries = json.loads(
-        path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object
-    )
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError("Python manifest must be a regular file")
+        content = stream.read(65537)
+    if len(content) > 65536:
+        raise ValueError("Python manifest exceeds 64 KiB")
+    entries = json.loads(content.decode("utf-8"), object_pairs_hook=_unique_object)
     if not isinstance(entries, dict) or entries.keys() != DOWNLOADS.keys():
         raise ValueError("Python manifest must contain exactly the reviewed targets")
     for key, triple in DOWNLOADS.items():
@@ -93,12 +100,11 @@ def verify_interpreter(install_dir: Path, target: str) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", type=Path, default=MANIFEST)
     parser.add_argument("--target", choices=TARGETS, required=True)
     parser.add_argument("--install-dir", type=Path, required=True)
     args = parser.parse_args()
     try:
-        load_manifest(args.manifest)
+        load_manifest(MANIFEST)
         print(verify_interpreter(args.install_dir, args.target))
     except (OSError, ValueError):
         parser.exit(1, "Managed Python verification failed.\n")
