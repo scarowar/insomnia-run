@@ -204,6 +204,8 @@ System mode uses an existing Python 3.10+ interpreter. Managed mode selects the 
 
 These asset targets do not qualify every operating-system revision or Linux distribution. Validate the selected binaries against the runner's OS/runtime requirements. Managed Python uses the reviewed local download manifest and its build hashes; later installation/execution does not implicitly download a different interpreter.
 
+On self-hosted runners, use a private `RUNNER_TEMP`. Installer-managed directories must belong to the runner user or root and deny group and other write access. The operating system's sticky temporary root is the only shared-directory exception.
+
 Source installation is the default: build this action's wheel with its pinned backend, install runtime dependencies from the frozen lockfile using wheels only, then install the application without dependency resolution. A bundle is an explicit alternative, not an automatic fallback. Its trusted archive hash, source/lock identity, Python/platform identity, wheel hashes, and manifest must all agree. A bundle built for a different checkout or interpreter is rejected.
 
 `offline-install: "true"` disables installer downloads and remote cache operations. Provision matching Inso and uv, an interpreter (or the reviewed managed build), and either the frozen dependency/backend cache or a compatible local bundle. Public artifact URLs in the lockfile are not redirected merely by setting an index mirror. GitHub must still resolve dependency actions through the installation's supported mirroring/allowlisting. Optional comments and uploads use their own network services; collection HTTP requests are not sandboxed by offline installation.
@@ -214,7 +216,7 @@ There are three separate GitHub credential audiences:
 - `github-com-token`: GitHub.com tool downloads, not enterprise API access.
 - Runner runtime credentials: artifact services, managed by GitHub, not either input token.
 
-Private archive downloads may additionally use `download-token`, restricted to the exact HTTPS `download-token-origin`. Credentials are not forwarded to another origin. Installer credentials are not intended for collection execution; use `env-var` or the supported vault integration for API-test credentials.
+Private archive downloads may additionally use `download-token`, restricted to the exact HTTPS `download-token-origin` on every request, including redirects. Other origins never receive it. Installer credentials are not intended for collection execution; use `env-var` or the supported vault integration for API-test credentials.
 
 Inso and runtime-bundle downloads follow same-origin HTTPS redirects. Downloads starting at `https://github.com` or `https://api.github.com` may also redirect to GitHub's `https://release-assets.githubusercontent.com` asset host. A custom mirror that redirects to another origin must explicitly allow that destination:
 

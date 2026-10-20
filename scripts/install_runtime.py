@@ -146,6 +146,16 @@ def _check_download_destination(destination: Path, parent: int, replace: bool) -
         raise ValueError("Cached archive must be a regular file")
 
 
+def _download_token_origin(token: str, origin: str) -> tuple[str, int] | None:
+    if token and (
+        not origin or any(ord(char) < 32 or ord(char) == 127 for char in token)
+    ):
+        raise ValueError(
+            "A valid download-token-origin is required for a download token"
+        )
+    return token_origin(origin) if origin else None
+
+
 def download_archive(
     location: str,
     destination: Path,
@@ -160,13 +170,7 @@ def download_archive(
     dir_fd: int | None = None,
 ) -> None:
     """Copy a local archive or fetch HTTPS with origin-scoped authentication."""
-    if token and (
-        not origin or any(ord(char) < 32 or ord(char) == 127 for char in token)
-    ):
-        raise ValueError(
-            "A valid download-token-origin is required for a download token"
-        )
-    allowed_origin = token_origin(origin) if origin else None
+    allowed_origin = _download_token_origin(token, origin)
     for value in redirect_origins:
         redirect_origin(value)
     if expected_sha256:

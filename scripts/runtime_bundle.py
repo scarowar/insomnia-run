@@ -43,6 +43,16 @@ def require_digest(value: str) -> str:
     return value.lower()
 
 
+def _check_directory_permissions(descriptor: int, *, temporary_anchor: bool) -> None:
+    metadata = os.fstat(descriptor)
+    if temporary_anchor and metadata.st_mode & stat.S_ISVTX:
+        return
+    if metadata.st_uid not in (0, os.getuid()):
+        raise ValueError("Installer directory must belong to the current user or root")
+    if metadata.st_mode & 0o022:
+        raise ValueError("Installer directory must not be writable by other users")
+
+
 @contextmanager
 def open_directory(path: Path, *, create: bool = False) -> Iterator[int]:
     absolute = Path(os.path.abspath(path))
@@ -61,6 +71,10 @@ def open_directory(path: Path, *, create: bool = False) -> Iterator[int]:
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     descriptor = os.open(root, flags)
     try:
+        temporary_anchor = root == Path(tempfile.gettempdir()).resolve(strict=True)
+        if sys.platform == "darwin":
+            temporary_anchor |= root == Path("/tmp").resolve(strict=True)
+        _check_directory_permissions(descriptor, temporary_anchor=temporary_anchor)
         for part in relative.parts:
             try:
                 child = os.open(part, flags, dir_fd=descriptor)
@@ -71,6 +85,7 @@ def open_directory(path: Path, *, create: bool = False) -> Iterator[int]:
                 child = os.open(part, flags, dir_fd=descriptor)
             os.close(descriptor)
             descriptor = child
+            _check_directory_permissions(descriptor, temporary_anchor=False)
         yield descriptor
     finally:
         os.close(descriptor)

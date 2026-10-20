@@ -41,7 +41,7 @@ inputs:
     description: "Optional credential for the exact HTTPS download-token-origin only."
     required: false
   download-token-origin:
-    description: "HTTPS origin authorized to receive download-token. Cross-origin redirects never receive it."
+    description: "Exact HTTPS origin authorized to receive download-token, including after redirects. Other origins never receive it."
     required: false
   download-redirect-origins:
     description: "Additional exact HTTPS origins allowed for Inso and runtime-bundle redirects, one per line."
