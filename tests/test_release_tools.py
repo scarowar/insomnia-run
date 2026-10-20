@@ -653,12 +653,18 @@ def dirty_release_source(root, git, mutation):
 
 @pytest.mark.skipif(sys.version_info < (3, 11), reason="Release requires tomllib")
 @pytest.mark.parametrize("tag_matches", [True, False])
+@pytest.mark.parametrize("annotated", [False, True])
 def test_release_uses_tag_namespace_despite_conflicting_ref(
-    release, release_checkout, tag_matches
+    release, release_checkout, tag_matches, annotated
 ):
     root, git, commit, _ = release_checkout
     other = git("commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "Other commit")
-    git("update-ref", "refs/tags/v0.2.0", commit if tag_matches else other)
+    target = commit if tag_matches else other
+    if annotated:
+        git("tag", "-f", "-a", "-m", "Release fixture", "v0.2.0", target)
+        assert git("cat-file", "-t", "refs/tags/v0.2.0") == "tag"
+    else:
+        git("update-ref", "refs/tags/v0.2.0", target)
     git("update-ref", "refs/v0.2.0", other if tag_matches else commit)
     if tag_matches:
         release.verify(root, "v0.2.0", commit)
