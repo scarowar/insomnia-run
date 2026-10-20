@@ -47,7 +47,7 @@ Inso 13.3.1 applies URL decoding to overrides: `+` becomes a space, `%` introduc
 
 ## Runner Environment
 
-A GitHub `env:` block sets operating-system variables. It does not automatically create Insomnia variables such as `{{ _.API_KEY }}`. Map the specific values you need into `env-var`:
+A GitHub `env:` block sets operating-system variables. It does not automatically create Insomnia variables such as `{{ _.API_KEY }}`. Map the specific values you need into `env-var`. The direct mapping below requires URL-safe values; otherwise use the encoding step above.
 
 ```yaml
 env:
@@ -101,13 +101,13 @@ The opt-in privately enables Inso's full-data `redact` mode and risk acknowledge
 
 ## Publication Access
 
-Comments and artifacts have repository-specific access and retention policies. Fork and Dependabot PR comments are skipped, but running a collection still executes its scripts. Never use `pull_request_target` with a privileged token to execute untrusted PR content. A skipped comment is not a sandbox.
+Comments and artifacts have repository-specific access and retention policies. Cross-repository and Dependabot PR comments are skipped, but running a collection still executes its scripts. Never use `pull_request_target` with a privileged token to execute untrusted PR content. A skipped comment is not a sandbox.
 
 Keep instance comment tokens, GitHub.com download credentials, and runner artifact credentials separate. Private archive credentials are scoped to `download-token-origin`; see [enterprise credential routing](../reference/inputs.md#enterprise-runners).
 
 ## Multi-Environment
 
-Use different secrets for different environments:
+Use different secrets for different environments. These direct mappings require URL-safe values; otherwise use the encoding step in [Collection Overrides](#collection-overrides) in each job.
 
 ```yaml
 permissions:

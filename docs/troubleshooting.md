@@ -46,7 +46,7 @@ The whole-run timeout stops Inso's process group and returns wrapper exit `3`. R
 
 The action pins `uv 0.13.1` and reuses that exact installed version. Inso installation uses bundled or caller-supplied trusted SHA-256 digests, with no release-metadata API lookup. Unbundled releases require `inso-sha256`; this is not a request to fetch a checksum automatically.
 
-Verified archive caching reduces repeat binary downloads. Cold uv/Python setup, archive downloads, dependency actions, caches, comments, and artifact services can still require network requests and remain subject to their own limits. This is not a promise that every present or future rate limit disappears.
+Verified archive caching reduces repeat binary downloads. Cold uv/Python setup, archive downloads, dependency actions, caches, comments, and artifact services can still require network requests and remain subject to their own limits.
 
 Download errors are not repeatedly retried. For `429` or rate-limited `403`, respect the reset window before rerunning. A `403` can also mean missing authorization; `404` can mean an unavailable asset. See [GitHub rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
 

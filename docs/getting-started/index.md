@@ -9,6 +9,8 @@ v0.2.0 is unreleased. Examples use its intended tag; use a reviewed full commit 
 - System Python 3.10+, or the explicit reviewed managed Python option
 - Trusted collection scripts and suitable API credentials
 
+Automatic installation supports Linux x64 and macOS. Apple Silicon requires Rosetta; Linux ARM requires compatible provisioned tools. Windows is unsupported. See [runner requirements](../reference/inputs.md#enterprise-runners).
+
 ## Step 1: Export Your Workspace
 
 ### Option A: Git Sync
@@ -54,6 +56,7 @@ jobs:
         with:
           command: collection
           working-directory: insomnia-export.yaml
+          upload-artifact: "true"
 ```
 
 ## Step 3: Push and Run
@@ -64,7 +67,7 @@ git commit -m "test: run collection assertions in CI" -m "Check API behavior on 
 git push
 ```
 
-The run writes a job summary and report files. Trusted same-repository PR runs can also publish a comment; fork/Dependabot PR comments are skipped, and comment API failures warn. Repeated runs replace the same job's owned comment under the configured concurrency group.
+The run writes a job summary and uploads JSON, Markdown and JUnit reports to the workflow's Artifacts section, including when assertions fail. Trusted same-repository PR runs can also publish a comment; cross-repository and Dependabot PR comments are skipped, and comment API failures warn. Repeated runs replace the same job's owned comment under the configured concurrency group.
 
 Collections need explicit [script assertions](../guides/collections.md#assertions). **No assertions executed** is not successful test validation, even when Inso exits successfully.
 

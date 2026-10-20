@@ -1,5 +1,7 @@
 # Running Test Suites
 
+Legacy unit tests are hidden by default in Insomnia 13.3+ and are planned for deprecation. For new tests, use [collection scripts](collections.md#assertions) with `command: collection`. See [Kong's CI guidance](https://developer.konghq.com/inso-cli/continuous-integration/).
+
 ## Basic Usage
 
 Run a test suite by name:
@@ -80,6 +82,6 @@ For secret values, configure Inso's supported [external vault integration](https
 
 | | Collection | Test Suite |
 |-|-----------|------------|
-| **Purpose** | Run requests | Run JavaScript tests |
+| **Purpose** | Run requests and script assertions | Run legacy unit tests |
 | **Identifier** | Optional | Required |
 | **Assertions** | Explicit script tests | JavaScript unit tests |

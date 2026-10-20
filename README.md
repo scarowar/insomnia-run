@@ -36,6 +36,8 @@ Native collections retain completed request records; legacy suites use TAP. Part
 
 ## Quick Start
 
+Use Linux or macOS with Python 3.10+, or select the managed Python option. Automatic Inso installation supports Linux x64 and macOS; Apple Silicon requires Rosetta. Linux ARM needs compatible preinstalled tools. Windows is unsupported.
+
 This documentation describes v0.2.0, which is unreleased. Until the tag is available, use a full commit SHA instead of `@v0.2.0` in the examples.
 
 Examples use `insomnia-export.yaml`. For legacy Git Sync data under `.insomnia/Workspace/`, use the parent repository root (`working-directory: .`), not `.insomnia`. See [input paths](docs/reference/inputs.md#input-paths).

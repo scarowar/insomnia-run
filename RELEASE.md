@@ -12,7 +12,7 @@
 
 - Test a cold install, verified cache hit, corrupt-cache recovery, and an exact-version preinstalled Inso.
 - Test offline installation with the required tools and locked packages already cached.
-- Confirm failing Inso runs fail the action unless `fail-on-error` is disabled.
+- Confirm `fail-on-error: false` permits assertion failures only; execution and report errors must still fail the action.
 - Confirm empty and all-skipped runs have neutral summaries, and incomplete TAP fails.
 - Inspect Markdown, JSON, and JUnit reports from passing and failing runs. Verify opt-in artifacts arrive before the final failure step.
 - Check hostile names and raw diagnostics with GitHub's GFM renderer, including long backtick runs, mentions, and HTML. CommonMark-only rendering is not sufficient.
@@ -25,7 +25,7 @@
 - Check the base branch's required checks, CODEOWNERS, review policy, and signature requirements. Do not weaken them to publish a release.
 - Verify dependency-action references are pinned and runtime dependencies still install from locked wheels without source builds.
 
-SonarQube Cloud uses the GitHub App's automatic analysis. Do not add a concurrent CI SonarScanner; it conflicts with automatic analysis. No `SONAR_TOKEN` is needed. CI enforces at least 95% coverage independently.
+SonarQube Cloud uses automatic GitHub App analysis. CI enforces at least 95% coverage separately.
 
 The Python 3.15 test environment permits hash-locked PyYAML 6.0.3 source builds because no compatible wheel is available. This exception does not apply to runtime installation; remove it when a wheel becomes available.
 
