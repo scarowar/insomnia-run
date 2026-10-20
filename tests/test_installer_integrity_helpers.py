@@ -858,6 +858,8 @@ def test_runtime_cli_confines_environment_to_runner_temp(tmp_path, monkeypatch):
         "extras",
         "wildcard",
         "no-application",
+        "unapproved-host",
+        "unapproved-redirect",
     ],
 )
 def test_bundle_builder_and_installer_share_verified_manifest(
@@ -876,10 +878,15 @@ def test_bundle_builder_and_installer_share_verified_manifest(
     wheel.write_bytes(b"locked dependency")
     digest = "a" * 64 if fault == "hash" else sha256_file(wheel)
     version = "2.0" if fault == "unlocked" else "1.0"
+    wheel_origin = (
+        "https://unapproved.example"
+        if fault == "unapproved-host"
+        else "https://files.pythonhosted.org"
+    )
     wheel_entries = (
         ""
         if fault == "no-wheel"
-        else f'{{url="https://files.pythonhosted.org/{wheel.name}",hash="sha256:{digest}"}}'
+        else f'{{url="{wheel_origin}/{wheel.name}",hash="sha256:{digest}"}}'
     )
     lock = f'[[package]]\nname = "dependency"\nversion = "{version}"\nwheels = [{wheel_entries}]\n'
     (project / "uv.lock").write_text(lock)
@@ -906,12 +913,31 @@ def test_bundle_builder_and_installer_share_verified_manifest(
         return subprocess.CompletedProcess(command, 0)
 
     monkeypatch.setattr(subprocess, "run", run)
-    monkeypatch.setattr(
-        "install_runtime.download_archive",
-        lambda url, destination, **kwargs: destination.write_bytes(wheel.read_bytes()),
-    )
+
+    class Opener:
+        def open(self, request, timeout):
+            assert request.full_url == f"https://files.pythonhosted.org/{wheel.name}"
+            assert request.get_header("Authorization") is None
+            if fault == "unapproved-redirect":
+                from urllib.error import HTTPError
+
+                raise HTTPError(
+                    request.full_url,
+                    302,
+                    "Found",
+                    {"Location": "https://unapproved.example/" + wheel.name},
+                    io.BytesIO(),
+                )
+            return io.BytesIO(wheel.read_bytes())
+
+    monkeypatch.setattr("install_runtime.build_opener", lambda handler: Opener())
     if fault:
-        with pytest.raises(ValueError):
+        expected = {
+            "hash": "Locked dependency wheel failed SHA-256 verification",
+            "unapproved-host": "origin is not permitted",
+            "unapproved-redirect": "origin is not permitted",
+        }.get(fault)
+        with pytest.raises(ValueError, match=expected):
             runtime_bundle.build_bundle(project, tmp_path / "dist")
         return
     bundle = runtime_bundle.build_bundle(project, tmp_path / "dist")

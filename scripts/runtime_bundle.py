@@ -513,7 +513,11 @@ def build_bundle(project: Path, output: Path, *, uv: str = "uv") -> Path:
             wheel_path = wheels / filename
             if PurePosixPath(filename).name != filename or "\\" in filename:
                 raise ValueError("Invalid locked wheel filename")
-            download_archive(selected["url"], wheel_path)
+            download_archive(
+                selected["url"],
+                wheel_path,
+                download_origins=("https://files.pythonhosted.org",),
+            )
             if sha256_file(wheel_path) != require_digest(
                 selected["hash"].removeprefix("sha256:")
             ):
