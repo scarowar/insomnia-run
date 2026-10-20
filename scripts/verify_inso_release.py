@@ -118,9 +118,8 @@ def main() -> None:
             )
         if args.install_dir:
             install_inso(args.archive_path, digest, args.install_dir)
-        else:
-            if sha256_file(args.archive_path) != digest:
-                raise ValueError("Inso archive failed SHA-256 verification")
+        elif sha256_file(args.archive_path) != digest:
+            raise ValueError("Inso archive failed SHA-256 verification")
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
         reason = str(error) if isinstance(error, ValueError) else type(error).__name__
         parser.exit(1, f"Inso installation failed: {reason}\n")
