@@ -34,12 +34,13 @@ def test_managed_directory_rejects_other_writers(
         output.addfile(member, io.BytesIO(b"trusted"))
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 
-    with pytest.raises(ValueError, match="directory"):
-        if operation == "download":
+    if operation == "download":
+        with pytest.raises(ValueError, match="directory"):
             install_runtime.download_archive(
                 str(archive), destination / "archive", expected_sha256=digest
             )
-        else:
+    else:
+        with pytest.raises(ValueError, match="directory"):
             verify_inso_release.install_inso(archive, digest, destination)
 
     assert not (destination / "archive").exists()
