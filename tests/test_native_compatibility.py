@@ -108,6 +108,32 @@ PASS = "insomnia.test('passes', () => insomnia.expect(1).to.eql(1));"
 FAIL = "insomnia.test('fails', () => insomnia.expect(1).to.eql(2));"
 
 
+@pytest.mark.parametrize("selection", ["path", "identifier", "environment"])
+def test_real_invalid_selection_has_safe_actionable_guidance(
+    tmp_path, native_runtime, selection
+):
+    path = collection_file(tmp_path, native_runtime, [PASS])
+    missing = "MISSING_SELECTION_PRIVATE"
+    options = ["--redact-value", missing]
+    if selection == "path":
+        path = tmp_path / f"{missing}.yaml"
+    else:
+        options += ["--identifier" if selection == "identifier" else "--env", missing]
+
+    result = run_report(tmp_path, native_runtime, path, *options)
+
+    assert result.returncode == 3
+    report = json.loads((tmp_path / "report.json").read_text())
+    assert report["run_error"]["kind"] == "protocol"
+    assert report["results"] == []
+    for name in ("report.json", "report.md", "junit.xml"):
+        content = (tmp_path / name).read_text()
+        for guidance in ("export path", "collection identifier", "environment"):
+            assert guidance in content
+        assert missing not in content
+    assert missing not in result.stdout + result.stderr
+
+
 def test_script_error_after_assertion_failure_preserves_both_causes(
     tmp_path, native_runtime
 ):

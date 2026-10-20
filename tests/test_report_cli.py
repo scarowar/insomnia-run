@@ -34,6 +34,51 @@ def diagnostic_text(value):
     return " ".join(unstyle(value).replace("\u2502", "").split())
 
 
+@pytest.mark.parametrize("selection", ["path", "identifier", "environment"])
+def test_missing_native_report_explains_selection_checks_without_raw_details(
+    tmp_path, monkeypatch, selection, terminal_color
+):
+    secret = "PRIVATE_UPSTREAM_SELECTION"
+
+    def execute(cmd, timeout):
+        if cmd == ["inso", "run", "collection", "--help"]:
+            return subprocess.CompletedProcess(cmd, 0, "  --output <file>\n", "")
+        return subprocess.CompletedProcess(cmd, 1, "", f"Cannot find {secret}")
+
+    monkeypatch.setattr(
+        "insomnia_run.runner.InsoRunner._run_command", staticmethod(execute)
+    )
+    files = {
+        kind: tmp_path / name
+        for kind, name in (
+            ("json", "report.json"),
+            ("markdown", "report.md"),
+            ("junit", "report.xml"),
+        )
+    }
+    args = ["run-collection", "-w", secret if selection == "path" else "fixture"]
+    if selection != "path":
+        args += ["--identifier" if selection == "identifier" else "--env", secret]
+    args += ["--redact-value", secret]
+    for kind, path in files.items():
+        args += [f"--{kind}-output", str(path)]
+    result = CliRunner().invoke(app, args)
+
+    assert result.exit_code == 3
+    payload = json.loads(files["json"].read_text())
+    message = payload["run_error"]["message"]
+    for guidance in ("export path", "collection identifier", "environment"):
+        assert guidance in message
+        assert guidance in files["markdown"].read_text()
+        assert guidance in files["junit"].read_text()
+        assert guidance in diagnostic_text(result.stdout)
+    assert "Cannot find" not in result.stdout + result.stderr
+    assert secret not in result.stdout + result.stderr
+    assert all(secret not in path.read_text() for path in files.values())
+    assert payload["results"] == []
+    assert not payload["complete"]
+
+
 @pytest.fixture
 def report():
     return InsoRunReport(

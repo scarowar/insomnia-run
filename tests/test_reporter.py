@@ -694,6 +694,37 @@ def test_run_error_and_incomplete_evidence_remain_visible(prior_failure):
     assert "completed results only" in markdown
 
 
+@pytest.mark.parametrize("run_type", [RunType.COLLECTION, RunType.TEST])
+@pytest.mark.parametrize("source", ["tap", "native"])
+@pytest.mark.parametrize("complete", [False, True])
+@pytest.mark.parametrize("has_results", [False, True])
+def test_recovered_collection_tap_explains_missing_native_detail(
+    run_type, source, complete, has_results
+):
+    report = InsoRunReport(
+        run_type=run_type,
+        source=source,
+        complete=complete,
+        plan_end=1,
+        results=[InsoResult(id=1, status=InsoStatus.FAIL, description="fails")]
+        if has_results
+        else [],
+    )
+    markdown = Reporter().generate_markdown(report)
+
+    expected = (
+        run_type == RunType.COLLECTION
+        and source == "tap"
+        and not complete
+        and has_results
+    )
+    assert (
+        "recovered TAP may omit request details and assertion reasons" in markdown
+    ) is expected
+    assert report.failed_count == int(has_results)
+    assert all(result.message is None for result in report.results)
+
+
 @pytest.mark.parametrize(
     "message",
     [

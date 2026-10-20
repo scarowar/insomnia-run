@@ -236,7 +236,11 @@ class InsoRunner:
             and not report.run_error
         ):
             report.run_error = RunError(
-                kind="protocol", message="Inso did not write its native report."
+                kind="protocol",
+                message=(
+                    "Inso did not write its native report. Check the export path, "
+                    "collection identifier, and selected environment."
+                ),
             )
 
     def _execute(

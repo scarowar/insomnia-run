@@ -228,6 +228,15 @@ class Reporter:
             lines.append(f"- **Completed requests:** {report.request_count}")
         if not report.complete:
             lines.append("- **Evidence:** Incomplete; completed results only.")
+            if (
+                report.run_type == RunType.COLLECTION
+                and report.source == "tap"
+                and report.results
+            ):
+                lines.append(
+                    "- Native report unavailable; recovered TAP may omit "
+                    "request details and assertion reasons."
+                )
         prefix = "\n".join(lines) + "\n\n"
         if report.run_error:
             prefix += f"### Run Error\n\n{report.run_error.kind}\n\n"
