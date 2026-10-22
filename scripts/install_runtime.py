@@ -30,11 +30,14 @@ from runtime_bundle import (
 )
 
 
+_INVALID_DOWNLOAD_URL = "Downloads require an unambiguous HTTPS URL"
+
+
 def _split_url(value: str):
     try:
         return urlsplit(value)
     except ValueError:
-        raise ValueError("Downloads require an unambiguous HTTPS URL") from None
+        raise ValueError(_INVALID_DOWNLOAD_URL) from None
 
 
 def _https_url(value: str):
@@ -43,7 +46,7 @@ def _https_url(value: str):
         or any(ord(char) <= 32 or ord(char) == 127 for char in value)
         or "\\" in value
     ):
-        raise ValueError("Downloads require an unambiguous HTTPS URL")
+        raise ValueError(_INVALID_DOWNLOAD_URL)
     parsed = _split_url(value)
     if (
         parsed.scheme != "https"
@@ -52,7 +55,7 @@ def _https_url(value: str):
         or parsed.password is not None
         or parsed.fragment
     ):
-        raise ValueError("Downloads require an unambiguous HTTPS URL")
+        raise ValueError(_INVALID_DOWNLOAD_URL)
     try:
         port = parsed.port if parsed.port is not None else 443
         if port == 0:
@@ -103,7 +106,7 @@ def _redirect_location(error: HTTPError, current: str, attempt: int) -> str:
     try:
         return urljoin(current, location)
     except ValueError:
-        raise ValueError("Downloads require an unambiguous HTTPS URL") from None
+        raise ValueError(_INVALID_DOWNLOAD_URL) from None
 
 
 def _download_https(
