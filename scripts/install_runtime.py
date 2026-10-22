@@ -30,6 +30,13 @@ from runtime_bundle import (
 )
 
 
+def _split_url(value: str):
+    try:
+        return urlsplit(value)
+    except ValueError:
+        raise ValueError("Downloads require an unambiguous HTTPS URL") from None
+
+
 def _https_url(value: str):
     if (
         not value
@@ -37,7 +44,7 @@ def _https_url(value: str):
         or "\\" in value
     ):
         raise ValueError("Downloads require an unambiguous HTTPS URL")
-    parsed = urlsplit(value)
+    parsed = _split_url(value)
     if (
         parsed.scheme != "https"
         or not parsed.hostname
@@ -93,7 +100,10 @@ def _redirect_location(error: HTTPError, current: str, attempt: int) -> str:
     error.close()
     if not location or attempt == 5:
         raise ValueError("Invalid or excessive archive redirects") from None
-    return urljoin(current, location)
+    try:
+        return urljoin(current, location)
+    except ValueError:
+        raise ValueError("Downloads require an unambiguous HTTPS URL") from None
 
 
 def _download_https(
@@ -178,7 +188,7 @@ def download_archive(
         expected_sha256 = require_digest(expected_sha256)
     if replace and not expected_sha256:
         raise ValueError("Replacing a cached archive requires a trusted digest")
-    parsed = urlsplit(location)
+    parsed = _split_url(location)
     if parsed.scheme:
         _https_url(location)
     if parsed.scheme and offline:
