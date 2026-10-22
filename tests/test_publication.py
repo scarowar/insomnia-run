@@ -1032,6 +1032,98 @@ def test_module_entrypoint_uses_report_file_and_publishes_outputs(
     assert capsys.readouterr().out == ""
 
 
+@pytest.mark.parametrize("event_name", ["pull_request", "pull_request_target"])
+def test_entrypoint_fork_skip_emits_notice_without_network(
+    context, action_env, monkeypatch, capsys, event_name
+):
+    event = deepcopy(context.event)
+    event["pull_request"]["head"]["repo"] = {
+        "id": 99,
+        "full_name": "contributor/project",
+    }
+    Path(action_env["GITHUB_EVENT_PATH"]).write_text(json.dumps(event))
+    monkeypatch.setenv("GITHUB_EVENT_NAME", event_name)
+    monkeypatch.setattr(
+        publication, "_https_transport", lambda *args: pytest.fail("network access")
+    )
+
+    assert publication.main() is None
+
+    assert output_values(action_env["GITHUB_OUTPUT"]) == {
+        "comment-status": "skipped",
+        "comment-id": "",
+    }
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert output.out.startswith("::notice::")
+    assert "untrusted target" in output.out
+    assert len(output.out.splitlines()) == 1
+
+
+def test_module_command_fork_skip_succeeds_with_notice(context, action_env):
+    event = deepcopy(context.event)
+    event["pull_request"]["head"]["repo"] = {
+        "id": 99,
+        "full_name": "contributor/project",
+    }
+    Path(action_env["GITHUB_EVENT_PATH"]).write_text(json.dumps(event))
+
+    result = subprocess.run(
+        [sys.executable, "-m", "insomnia_run.publication"],
+        env={**os.environ, **action_env},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout.startswith("::notice::")
+    assert result.stderr == ""
+    assert output_values(action_env["GITHUB_OUTPUT"])["comment-status"] == "skipped"
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [("ACTION_COMMENT_ENABLED", "false"), ("ACTION_COMMENT_TOKEN", "")],
+)
+def test_entrypoint_disabled_or_uncredentialed_fork_stays_silent(
+    context, action_env, monkeypatch, capsys, key, value
+):
+    event = deepcopy(context.event)
+    event["pull_request"]["head"]["repo"] = {
+        "id": 99,
+        "full_name": "contributor/project",
+    }
+    Path(action_env["GITHUB_EVENT_PATH"]).write_text(json.dumps(event))
+    monkeypatch.setenv(key, value)
+    monkeypatch.setattr(
+        publication, "_https_transport", lambda *args: pytest.fail("network access")
+    )
+
+    assert publication.main() is None
+
+    assert output_values(action_env["GITHUB_OUTPUT"])["comment-status"] == "skipped"
+    assert capsys.readouterr().out == ""
+
+
+def test_entrypoint_forbidden_api_warns_without_failing(
+    action_env, monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        publication,
+        "_https_transport",
+        lambda *args: ApiResponse(403, {"private": "body"}),
+    )
+
+    assert publication.main() is None
+
+    assert output_values(action_env["GITHUB_OUTPUT"]) == {
+        "comment-status": "warning",
+        "comment-id": "",
+    }
+    assert capsys.readouterr().out == "::warning::" + COMMENT_WARNING + "\n"
+
+
 def test_entrypoint_matrix_and_workflow_ref_are_stable_across_reruns(
     context, action_env, monkeypatch
 ):

@@ -34,7 +34,7 @@ Encoded secrets remain sensitive. CLI arguments can appear in process listings, 
 
 ### Comments and Artifacts
 
-Comments now replace an owned comment per workflow/job/matrix/`comment-tag`. Set distinct tags for repeated invocations and [serialize matching writers](reference/inputs.md#comment-identity-and-concurrency) with `cancel-in-progress: false`. Matrix comments are separate, not aggregated. Cross-repository and Dependabot PR comments are skipped, and comment API failures warn without changing execution results.
+Comments now replace an owned comment per workflow/job/matrix/`comment-tag`. Set distinct tags for repeated invocations and [serialize matching writers](reference/inputs.md#comment-identity-and-concurrency) with `cancel-in-progress: false`. Matrix comments are separate, not aggregated. Cross-repository and Dependabot PR comments are skipped with a notice, and comment API failures warn without changing execution results.
 
 Progress and at most ten failure annotations are enabled by default in the action; set `progress: "false"` or `annotations: "false"` to disable them. Standalone CLI defaults remain off.
 

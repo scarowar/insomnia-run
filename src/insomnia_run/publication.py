@@ -18,6 +18,7 @@ from .privacy import escape_workflow_command
 COMMENT_WARNING = (
     "Insomnia Run could not publish the report comment; see the workflow report."
 )
+COMMENT_SKIP_NOTICE = "Insomnia Run skipped the report comment for an untrusted target."
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _MAX_COMMENT_BYTES = 65_000
 _MAX_COMMENT_PAGES = 100
@@ -68,6 +69,7 @@ class CommentPublication:
     status: Literal["created", "updated", "unchanged", "skipped", "stale", "warning"]
     comment_id: str = ""
     warning: str = ""
+    notice: str = ""
 
     def outputs(self) -> dict[str, str]:
         return {"comment-status": self.status, "comment-id": self.comment_id}
@@ -279,7 +281,7 @@ def _publish(
         context.actor.lower() in _DEPENDABOT
         or _login(event.get("sender")) in _DEPENDABOT
     ):
-        return CommentPublication("skipped")
+        return CommentPublication("skipped", notice=COMMENT_SKIP_NOTICE)
     if not re.fullmatch(
         r"[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*", context.repository
     ):
@@ -313,7 +315,7 @@ def _publish(
     )
     target = _verified_target(context, issue_number, request, api)
     if target is None:
-        return CommentPublication("skipped")
+        return CommentPublication("skipped", notice=COMMENT_SKIP_NOTICE)
     number, repo_url = target
     author = _authenticated_author(request, graphql)
     return _upsert_comment(
@@ -517,6 +519,8 @@ def main() -> None:
         result = CommentPublication("warning", warning=COMMENT_WARNING)
     if result.warning:
         print("::warning::" + COMMENT_WARNING)
+    elif result.notice:
+        print("::notice::" + escape_workflow_command(result.notice))
 
 
 if __name__ == "__main__":
