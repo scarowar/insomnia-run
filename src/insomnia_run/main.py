@@ -1,6 +1,6 @@
 import importlib.metadata
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 import threading
 import time
@@ -130,7 +130,7 @@ def _execute_report(
 def _report_redactor(
     values: Optional[list[str]],
     *,
-    env_vars: Optional[list[str]] = None,
+    env_vars: list[str] | Mapping[str, str] | None = None,
     proxies: tuple[Optional[str], ...] = (),
 ) -> Redactor:
     secrets = list(values or [])
@@ -167,9 +167,18 @@ def _finalize_report(
     destinations: dict[str, Optional[str]],
     redactor: Redactor,
     annotations: bool,
+    emit_markdown: bool = True,
+    trusted_workflow_url: bool = False,
 ) -> None:
     reporter = Reporter()
+    if not include_raw_output and not destinations.get("raw"):
+        report = report.model_copy(update={"raw_output": None})
     report = redactor.redact_report(report)
+    if report.raw_output:
+        # Redact complete values before a byte boundary can split a credential.
+        report.raw_output = report.raw_output.encode("utf-8")[-1024 * 1024 :].decode(
+            "utf-8", errors="ignore"
+        )
     _emit_machine_readable_output(
         report, output_format, include_raw_output=include_raw_output
     )
@@ -177,13 +186,18 @@ def _finalize_report(
     try:
         markdown = reporter.generate_markdown(
             report,
-            workflow_url=redactor.redact(workflow_url) if workflow_url else None,
+            workflow_url=(
+                workflow_url if trusted_workflow_url else redactor.redact(workflow_url)
+            )
+            if workflow_url
+            else None,
             include_raw_output=include_raw_output,
         )
     except (OSError, ValueError):
         markdown = "Unable to generate Markdown report."
         write_failed = True
-    typer.echo(markdown, nl=False)
+    if emit_markdown:
+        typer.echo(markdown, nl=False)
     serializers: dict[str, Callable[[], str]] = {
         "JUnit": lambda: reporter.generate_junit(report),
         "JSON": lambda: (
@@ -237,13 +251,23 @@ def _write_report_files(
 
 def _emit_annotations(report: InsoRunReport, *, err: bool) -> None:
     messages = [report.run_error.message] if report.run_error else []
-    messages.extend(
-        f"{result.description}: {result.message}"
-        if result.message
-        else result.description
-        for result in report.results
-        if result.status == InsoStatus.FAIL
-    )
+    contexts = {}
+    for execution in report.executions:
+        label = execution.name
+        if execution.iteration is not None:
+            label += f" / Iteration {execution.iteration + 1}"
+        contexts[execution.id] = label
+    for result in report.results:
+        if result.status != InsoStatus.FAIL:
+            continue
+        message = (
+            f"{result.description}: {result.message}"
+            if result.message
+            else result.description
+        )
+        if result.execution_id in contexts:
+            message = f"{contexts[result.execution_id]}: {message}"
+        messages.append(message)
     for command in failure_annotations(messages):
         typer.echo(command, err=err)
 

@@ -26,7 +26,7 @@ JUnit remains enabled by default. A custom `junit-output-file` does not remove t
 
 ### Privacy
 
-Raw output is off by default. Failure details now appear in redacted reports by default. Known environment override values, explicit `redact-values`, and recognized credential patterns are removed across publication formats. Redaction is best effort, not a guarantee that arbitrary assertion text or response data is secret-free.
+Raw output is off by default. Failure details now appear in redacted reports by default. Environment override values are automatically redacted when the key indicates credentials or the decoded value has at least eight characters. Short configuration values remain readable; use explicit `redact-values` for sensitive short values. Explicit values and recognized credential patterns are removed across publication formats. Redaction is best effort, not a guarantee that arbitrary assertion text or response data is secret-free.
 
 Header capture is off by default; `capture-response-headers` accepts literal, non-credential header names only. Raw diagnostics still need `include-raw-output: "true"`. They may reach summaries, comments, artifacts, and JSON files.
 

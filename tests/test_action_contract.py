@@ -264,8 +264,7 @@ def test_comment_adapter_receives_explicit_target_and_scoped_identity():
     comment = step_by_name(load_action(), "Post PR Comment")
     assert comment["env"]["ACTION_COMMENT_ENABLED"] == "${{ inputs.pr-comment }}"
     assert (
-        comment["env"]["ACTION_COMMENT_NUMBER"]
-        == "${{ inputs.comment-issue-number || github.event.pull_request.number }}"
+        comment["env"]["ACTION_COMMENT_NUMBER"] == "${{ inputs.comment-issue-number }}"
     )
     assert (
         comment["env"]["ACTION_COMMENT_TOKEN"]

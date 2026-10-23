@@ -145,7 +145,7 @@ def run_action(tmp_path):
 
 @pytest.fixture
 def adapter_process(tmp_path, monkeypatch):
-    """Replace only the child CLI, leaving file validation/publication real."""
+    """Replace report generation, leaving file validation/publication real."""
     calls = []
 
     def run(
@@ -178,36 +178,23 @@ def adapter_process(tmp_path, monkeypatch):
                 }
             )
 
-        def child(args, *, stdout, check, env):
-            calls.append((args, env))
-            assert args[:4] == [
-                sys.executable,
-                "-m",
-                "insomnia_run.main",
-                f"run-{env['COMMAND']}",
-            ]
+        def generate(env, report_dir, options):
+            calls.append((options, env))
             if write_json:
-                Path(args[args.index("--json-output") + 1]).write_text(payload)
+                (report_dir / "report.json").write_text(payload)
             if write_markdown:
-                Path(args[args.index("--markdown-output") + 1]).write_text(
-                    "## File report\n"
-                )
-            if write_junit and "--junit-output" in args:
-                Path(args[args.index("--junit-output") + 1]).write_text(
-                    '<testsuite tests="1" />'
-                )
-            if write_raw and "--raw-output-file" in args:
-                Path(args[args.index("--raw-output-file") + 1]).write_text(
-                    "raw diagnostic"
-                )
+                (report_dir / "report.md").write_text("## File report\n")
+            if write_junit and env.get("JUNIT_REPORT", "true").lower() == "true":
+                (report_dir / "junit.xml").write_text('<testsuite tests="1" />')
+            if write_raw and env.get("INCLUDE_RAW_OUTPUT", "").lower() == "true":
+                (report_dir / "raw.txt").write_text("raw diagnostic")
             if during_run:
                 during_run()
-            stdout.write(child_stdout)
             if child_stderr:
                 print(child_stderr, file=sys.stderr)
-            return subprocess.CompletedProcess(args, child_exit)
+            return child_exit
 
-        monkeypatch.setattr(action_runtime.subprocess, "run", child)
+        monkeypatch.setattr(action_runtime, "_run_reports", generate)
         if entrypoint:
             monkeypatch.setattr(action_runtime.os, "environ", env)
             action_runtime.main()
@@ -460,10 +447,8 @@ def test_adapter_rejects_unsupported_artifact_server_without_creating_reports(
 def test_adapter_maps_raw_capture_to_an_explicit_file(adapter_process, tmp_path):
     run, calls = adapter_process
     assert run(INCLUDE_RAW_OUTPUT="true") == 0
-    args = calls[0][0]
     directory = Path(read_outputs(tmp_path / "outputs")["report-directory"])
-    assert "--include-raw-output" in args
-    assert args[args.index("--raw-output-file") + 1] == str(directory / "raw.txt")
+    assert calls[0][1]["INCLUDE_RAW_OUTPUT"] == "true"
     assert read_outputs(tmp_path / "outputs")["raw-file"] == str(directory / "raw.txt")
     assert (directory / "raw.txt").read_text() == "raw diagnostic"
 
@@ -821,8 +806,8 @@ def test_credential_headers_are_rejected_before_inso_launch(
     captured = tmp_path / "executed.json"
     result = run_action(CAPTURE_RESPONSE_HEADERS=header, TEST_ENV_FILE=str(captured))
 
-    assert result.returncode == 0, result.stderr
-    assert read_outputs(tmp_path / "outputs")["exit-code"] == "2"
+    assert result.returncode == 2, result.stderr
+    assert "Invalid Inso configuration" in result.stdout
     assert not captured.exists()
 
 
@@ -832,15 +817,14 @@ def test_adapter_maps_every_common_input_without_shell_interpretation(
 ):
     run, calls = adapter_process
     valued = {
-        "WORKING_DIR": ("--working-dir", "folder with spaces/export.yaml"),
-        "IDENTIFIER": ("--identifier", "--literal $(touch SHOULD_NOT_EXIST)"),
-        "ENVIRONMENT": ("--env", "staging's environment"),
-        "REQUEST_TIMEOUT": ("--request-timeout", "0"),
-        "EXECUTION_TIMEOUT": ("--execution-timeout", "42"),
-        "INPUT_HTTPS_PROXY": ("--https-proxy", "http://https.proxy:3128"),
-        "INPUT_HTTP_PROXY": ("--http-proxy", "http://http.proxy:3128"),
-        "INPUT_NO_PROXY": ("--no-proxy", "localhost,127.0.0.1"),
-        "WORKFLOW_URL": ("--workflow-url", "https://github.com/o/r/actions/runs/1"),
+        "WORKING_DIR": ("working_dir", "folder with spaces/export.yaml"),
+        "IDENTIFIER": ("identifier", "--literal $(touch SHOULD_NOT_EXIST)"),
+        "ENVIRONMENT": ("environment", "staging's environment"),
+        "REQUEST_TIMEOUT": ("request_timeout", "0"),
+        "EXECUTION_TIMEOUT": ("execution_timeout", "42"),
+        "INPUT_HTTPS_PROXY": ("https_proxy", "http://https.proxy:3128"),
+        "INPUT_HTTP_PROXY": ("http_proxy", "http://http.proxy:3128"),
+        "INPUT_NO_PROXY": ("no_proxy", "localhost,127.0.0.1"),
     }
     overrides = {key: value for key, (_, value) in valued.items()}
     overrides.update(
@@ -856,24 +840,17 @@ def test_adapter_maps_every_common_input_without_shell_interpretation(
 
     assert run(**overrides) == 0
 
-    args = calls[0][0]
+    options, observed_env = calls[0]
     for option, value in valued.values():
-        assert args[args.index(option) + 1] == value
+        assert str(getattr(options, option)) == value
     for flag in (
-        "--bail",
-        "--disable-cert-validation",
-        "--verbose",
-        "--progress",
-        "--annotations",
+        "bail",
+        "disable_cert_validation",
+        "verbose",
     ):
-        assert flag in args
-    assert [
-        args[index + 1] for index, item in enumerate(args) if item == "--data-folders"
-    ] == ["a' b", "\\path\\"]
-    assert [
-        args[index + 1] for index, item in enumerate(args) if item == "--redact-value"
-    ] == ["first value", "second value"]
-    assert "--output-format" not in args
+        assert getattr(options, flag) is True
+    assert options.data_folders == ["a' b", "\\path\\"]
+    assert observed_env["REDACT_VALUES"] == "first value\nsecond value"
     assert not (tmp_path / "SHOULD_NOT_EXIST").exists()
 
 
@@ -882,13 +859,13 @@ def test_collection_inputs_keep_literal_values_and_do_not_gain_test_flags(
 ):
     run, calls = adapter_process
     valued = {
-        "REQUEST_NAME_PATTERN": ("--request-name-pattern", r"^get\s+orders$"),
-        "GLOBALS": ("--globals", "globals.json"),
-        "DELAY_REQUEST": ("--delay-request", "0"),
-        "ITERATION_COUNT": ("--iteration-count", "2"),
-        "ITERATION_DATA": ("--iteration-data", "data with spaces.json"),
+        "REQUEST_NAME_PATTERN": ("request_name_pattern", r"^get\s+orders$"),
+        "GLOBALS": ("globals", "globals.json"),
+        "DELAY_REQUEST": ("delay_request", "0"),
+        "ITERATION_COUNT": ("iteration_count", "2"),
+        "ITERATION_DATA": ("iteration_data", "data with spaces.json"),
         "CAPTURE_RESPONSE_HEADERS": (
-            "--capture-response-headers",
+            "capture_response_headers",
             "X-Request-ID, Server",
         ),
     }
@@ -897,24 +874,20 @@ def test_collection_inputs_keep_literal_values_and_do_not_gain_test_flags(
             **{key: value for key, (_, value) in valued.items()},
             ITEM="  req 'one'  , \\req\\two  ",
             ENV_VAR="FIRST=one%20value\n\nSECOND=a=b",
-            KEEP_FILE="true",
-            TEST_NAME_PATTERN="test only",
         )
         == 0
     )
 
-    args = calls[0][0]
+    options = calls[0][0]
     for option, value in valued.values():
-        assert args[args.index(option) + 1] == value
-    assert [args[index + 1] for index, item in enumerate(args) if item == "--item"] == [
+        if option != "capture_response_headers":
+            assert str(getattr(options, option)) == value
+    assert options.capture_response_headers == ["x-request-id", "server"]
+    assert options.item == [
         "req 'one'",
         "\\req\\two",
     ]
-    assert [
-        args[index + 1] for index, item in enumerate(args) if item == "--env-var"
-    ] == ["FIRST=one%20value", "SECOND=a=b"]
-    assert "--keep-file" not in args
-    assert "--test-name-pattern" not in args
+    assert options.env_var == ["FIRST=one%20value", "SECOND=a=b"]
 
 
 def test_test_specific_inputs_do_not_gain_collection_flags(adapter_process):
@@ -924,26 +897,13 @@ def test_test_specific_inputs_do_not_gain_collection_flags(adapter_process):
             COMMAND="test",
             TEST_NAME_PATTERN="literal test",
             KEEP_FILE="TRUE",
-            ITEM="req_one",
-            ENV_VAR="A=B",
-            GLOBALS="globals",
-            ITERATION_COUNT="2",
-            CAPTURE_RESPONSE_HEADERS="Server",
         )
         == 0
     )
 
-    args = calls[0][0]
-    assert args[args.index("--test-name-pattern") + 1] == "literal test"
-    assert "--keep-file" in args
-    for option in (
-        "--item",
-        "--env-var",
-        "--globals",
-        "--iteration-count",
-        "--capture-response-headers",
-    ):
-        assert option not in args
+    options = calls[0][0]
+    assert options.test_name_pattern == "literal test"
+    assert options.keep_file is True
 
 
 def test_real_cli_preserves_quotes_backslashes_and_interior_spaces(

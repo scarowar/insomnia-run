@@ -13,7 +13,8 @@ inputs:
     default: "300"
   command:
     description: 'The command to run: "test" or "collection".'
-    required: true
+    required: false
+    default: collection
 
   working-directory:
     description: "Path to an Insomnia export file, legacy Git Sync repository root, or app-data directory."
@@ -185,36 +186,55 @@ inputs:
 
 outputs:
   report-directory:
+    description: Current invocation's report directory under RUNNER_TEMP.
     value: ${{ steps.run-cli.outputs.report-directory }}
   json-file:
+    description: Normalized JSON report path, or empty when unavailable.
     value: ${{ steps.run-cli.outputs.json-file }}
   raw-file:
+    description: Redacted raw diagnostics path when explicitly enabled.
     value: ${{ steps.run-cli.outputs.raw-file }}
   json-output-omitted:
+    description: Whether requested JSON exceeds the convenience output limit.
     value: ${{ steps.run-cli.outputs.json-output-omitted }}
   total:
+    description: Number of assertion or test results.
     value: ${{ steps.run-cli.outputs.total }}
   passed:
+    description: Number of passing results.
     value: ${{ steps.run-cli.outputs.passed }}
   failed:
+    description: Number of failing assertions or tests.
     value: ${{ steps.run-cli.outputs.failed }}
   skipped:
+    description: Number of skipped results.
     value: ${{ steps.run-cli.outputs.skipped }}
   requests:
+    description: Number of completed native request executions, or empty when unknown.
     value: ${{ steps.run-cli.outputs.requests }}
   run-error:
+    description: Whether the report contains an execution, timeout, or protocol error.
     value: ${{ steps.run-cli.outputs.run-error }}
+  complete:
+    description: Whether Inso completed the selected run (true or false).
+    value: ${{ steps.run-cli.outputs.complete }}
   comment-status:
+    description: Comment publication result (created, updated, unchanged, skipped, stale, or warning).
     value: ${{ steps.comment.outputs.comment-status }}
   comment-id:
+    description: Published or existing comment ID, or empty when unavailable.
     value: ${{ steps.comment.outputs.comment-id }}
   markdown:
+    description: Bounded Markdown report used for summaries and comments.
     value: ${{ steps.run-cli.outputs.markdown }}
   json-output:
+    description: Requested normalized JSON within the 64 KiB UTF-16 limit, otherwise empty.
     value: ${{ steps.run-cli.outputs.json-output }}
   junit-file:
+    description: JUnit XML report path, or empty when disabled or unavailable.
     value: ${{ steps.run-cli.outputs.junit-file }}
   exit-code:
+    description: Wrapper result (0 pass, 1 assertion failure, 2 configuration error, 3 execution error).
     value: ${{ steps.run-cli.outputs.exit-code }}
 
 runs:
@@ -520,7 +540,7 @@ runs:
         if [[ "$USE_INSTALLED_INSO" == "true" ]]; then
           export PATH="${RUNNER_TEMP}/insomnia-run-inso/bin:${PATH}"
         fi
-        "${INSOMNIA_RUN_VENV}/bin/python" -m insomnia_run.action_runtime
+        "${INSOMNIA_RUN_VENV}/bin/python" -I -m insomnia_run.action_runtime
 
     - name: Upload report artifact
       if: inputs.upload-artifact == 'true' && steps.run-cli.outputs.report-directory != ''
@@ -540,12 +560,12 @@ runs:
         ACTION_COMMENT_ENABLED: ${{ inputs.pr-comment }}
         ACTION_COMMENT_TOKEN: ${{ inputs.github-token || github.token }}
         ACTION_COMMENT_TAG: ${{ inputs.comment-tag }}
-        ACTION_COMMENT_NUMBER: ${{ inputs.comment-issue-number || github.event.pull_request.number }}
+        ACTION_COMMENT_NUMBER: ${{ inputs.comment-issue-number }}
         ACTION_COMMENT_REPORT: ${{ steps.run-cli.outputs.report-directory }}/report.md
         ACTION_COMMENT_MATRIX: ${{ toJSON(matrix) }}
       run: |
         set -euo pipefail
-        "${INSOMNIA_RUN_VENV}/bin/python" -m insomnia_run.publication
+        "${INSOMNIA_RUN_VENV}/bin/python" -I -m insomnia_run.publication
 
     - name: Check for Failures
       if: ${{ !cancelled() }}

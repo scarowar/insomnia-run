@@ -74,7 +74,7 @@ The `env-var` input is available only for `command: collection`. For legacy `com
 
 Insomnia Run disables Inso CLI telemetry for its child process. It does not change the environment of later workflow steps.
 
-Failure reasons are included by default after shared redaction. Known encoded/decoded `env-var` values, explicit `redact-values`, proxy credentials, and recognized credential-bearing headers/URLs/query parameters are removed from published names, messages, selected headers, and optional raw diagnostics. JSON, Markdown, JUnit, annotations, comments, and uploaded files use the redacted projection.
+Failure reasons are included by default after shared redaction. Environment overrides are automatically redacted and masked when their key names indicate credentials or their decoded values contain at least eight characters. Short configuration values such as `RETRIES=1` and `DEBUG=true` remain readable. Explicit `redact-values` apply regardless of length. Known encoded/decoded values, proxy credentials, and recognized credential-bearing headers/URLs/query parameters are removed from published names, messages, selected headers, and optional raw diagnostics. JSON, Markdown, JUnit, annotations, comments, and uploaded files use the redacted projection.
 
 Add sensitive values that are not collection overrides, including legacy-suite credentials:
 
@@ -91,7 +91,7 @@ The action input accepts one value per line. For standalone use, repeat `--redac
 
 Raw Inso output is captured, not streamed. It is hidden by default. `verbose: "true"` alone does not publish it and is rejected for legacy suites. `include-raw-output: "true"` adds redacted diagnostics to reports and a raw file, including summaries, enabled comments, and uploads. Disabling comments/uploads does not remove them from the job summary. See [Debug Mode](../troubleshooting.md#debug-mode).
 
-Log masks are additional protection for logs, not sanitizers for files, comments, artifacts, or process listings. Percent-encoded and other transformed values remain credentials. The wrapper and Inso receive collection overrides as command-line arguments, and standalone `--redact-value` is also an argument. Other processes with access to process listings may see them. Collection scripts inherit runner environment variables; arbitrary secrets in that environment are not automatically known to the report redactor. Use isolated runners, trusted collections, minimal environment credentials, and explicit redaction values.
+Log masks are additional protection for logs, not sanitizers for files, comments, artifacts, or process listings. Percent-encoded and other transformed values remain credentials. Inso receives collection overrides as command-line arguments, and standalone `--redact-value` is also an argument. Other processes with access to process listings may see them. The action calls the runner in-process, keeping `redact-values` out of child Python command lines. Before starting Inso, it removes action inputs, internal action variables, `GITHUB_TOKEN`, `GH_TOKEN`, and runner OIDC credentials from the child environment. Other runner environment variables remain available to collection scripts and are not automatically known to the report redactor. Use isolated runners, trusted collections, minimal environment credentials, and explicit redaction values.
 
 ## Response Headers
 

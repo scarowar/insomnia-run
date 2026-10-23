@@ -4,7 +4,6 @@
 
 | Input | Description |
 | --- | --- |
-| `command` | `collection` or `test`. |
 | `working-directory` | Export file, legacy Git Sync repository root, or Insomnia app-data directory. |
 
 ## Input Paths
@@ -21,6 +20,7 @@ An empty default below means the input is omitted and Inso keeps its default.
 
 | Input | Default | Description |
 | --- | --- | --- |
+| `command` | `collection` | `collection` or `test`. |
 | `identifier` | Empty | Collection name/workspace ID, or legacy test suite name/API spec ID. Legacy suites require a target in CI. |
 | `environment` | Empty | Insomnia environment name or ID. |
 | `execution-timeout` | `300` | Positive whole-run timeout in seconds. Stops the Inso process group on expiry. |
@@ -115,6 +115,7 @@ Files, not process streams or step-output JSON, are the authoritative reports.
 | `skipped` | Skipped result count. |
 | `requests` | Number of completed native execution records. Empty when unknown, including TAP reports. |
 | `run-error` | `true` or `false` when a report exists; empty otherwise. |
+| `complete` | `true` when the selected run completed, `false` for partial evidence, or empty when no report exists. Check this when using `bail` or `fail-on-error: false`. |
 | `exit-code` | Wrapper execution result: `0`, `1`, `2`, or `3`; see below. |
 | `comment-status` | `created`, `updated`, `unchanged`, `skipped`, `stale`, or `warning`. |
 | `comment-id` | Published/existing comment ID when known, otherwise empty. |

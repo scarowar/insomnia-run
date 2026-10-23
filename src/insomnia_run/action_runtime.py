@@ -3,11 +3,13 @@
 import os
 from pathlib import Path
 import secrets
-import subprocess  # nosec B404
-import sys
 import tempfile
 
-from .models import InsoRunReport
+import typer
+
+from .models import InsoCollectionOptions, InsoRunReport, InsoTestOptions
+from .native import validate_capture_headers
+from .runner import InsoRunner
 
 _JSON_REPORT = "report.json"
 _MARKDOWN_REPORT = "report.md"
@@ -38,89 +40,143 @@ def write_outputs(path: Path, values: dict[str, str]) -> None:
 
 
 _COMMON = {
-    "IDENTIFIER": "--identifier",
-    "ENVIRONMENT": "--env",
-    "REQUEST_TIMEOUT": "--request-timeout",
-    "EXECUTION_TIMEOUT": "--execution-timeout",
-    "INPUT_HTTPS_PROXY": "--https-proxy",
-    "INPUT_HTTP_PROXY": "--http-proxy",
-    "INPUT_NO_PROXY": "--no-proxy",
-    "WORKFLOW_URL": "--workflow-url",
+    "IDENTIFIER": "identifier",
+    "ENVIRONMENT": "environment",
+    "REQUEST_TIMEOUT": "request_timeout",
+    "EXECUTION_TIMEOUT": "execution_timeout",
+    "INPUT_HTTPS_PROXY": "https_proxy",
+    "INPUT_HTTP_PROXY": "http_proxy",
+    "INPUT_NO_PROXY": "no_proxy",
 }
 _COLLECTION = {
-    "REQUEST_NAME_PATTERN": "--request-name-pattern",
-    "GLOBALS": "--globals",
-    "DELAY_REQUEST": "--delay-request",
-    "ITERATION_COUNT": "--iteration-count",
-    "ITERATION_DATA": "--iteration-data",
-    "CAPTURE_RESPONSE_HEADERS": "--capture-response-headers",
+    "REQUEST_NAME_PATTERN": "request_name_pattern",
+    "GLOBALS": "globals",
+    "DELAY_REQUEST": "delay_request",
+    "ITERATION_COUNT": "iteration_count",
+    "ITERATION_DATA": "iteration_data",
 }
+_BOOLEAN_INPUTS = (
+    "BAIL",
+    "DISABLE_CERT_VALIDATION",
+    "VERBOSE",
+    "PROGRESS",
+    "ANNOTATIONS",
+    "KEEP_FILE",
+    "INCLUDE_RAW_OUTPUT",
+    "JUNIT_REPORT",
+    "UPLOAD_ARTIFACT",
+)
 
 
-def command_args(env: dict[str, str], report_dir: Path) -> list[str]:
-    command = env.get("COMMAND", "")
+def _validate_inputs(env: dict[str, str]) -> None:
+    command = env.get("COMMAND", "collection")
     if command not in {"collection", "test"}:
         raise ValueError("Invalid command. Must be collection or test.")
     output_format = env.get("OUTPUT_FORMAT", "").lower()
     if output_format not in {"", "json"}:
         raise ValueError("Invalid output format. Only json is supported.")
-    args = [
-        f"run-{command}",
-        "--working-dir",
-        env.get("WORKING_DIR", ""),
-        "--json-output",
-        str(report_dir / _JSON_REPORT),
-        "--markdown-output",
-        str(report_dir / _MARKDOWN_REPORT),
-    ]
+    for variable in _BOOLEAN_INPUTS:
+        if env.get(variable, "").lower() not in {"", "true", "false"}:
+            raise ValueError(
+                f"{variable.lower().replace('_', '-')} must be true or false."
+            )
+    incompatible = (
+        (*_COLLECTION, "ENV_VAR", "ITEM", "CAPTURE_RESPONSE_HEADERS")
+        if command == "test"
+        else ("TEST_NAME_PATTERN",)
+    )
+    if any(env.get(variable) for variable in incompatible) or (
+        command == "collection" and env.get("KEEP_FILE", "").lower() == "true"
+    ):
+        raise ValueError("Input is not supported by the selected command.")
+
+
+def _action_options(env: dict[str, str]) -> InsoCollectionOptions | InsoTestOptions:
+    command = env.get("COMMAND", "collection")
     valued = {
         **_COMMON,
         **(
             _COLLECTION
             if command == "collection"
-            else {"TEST_NAME_PATTERN": "--test-name-pattern"}
+            else {"TEST_NAME_PATTERN": "test_name_pattern"}
         ),
     }
-    for variable, option in valued.items():
-        if env.get(variable):
-            args.extend([option, env[variable]])
-    for variable, option in {
-        "BAIL": "--bail",
-        "DISABLE_CERT_VALIDATION": "--disable-cert-validation",
-        "VERBOSE": "--verbose",
-        "PROGRESS": "--progress",
-        "ANNOTATIONS": "--annotations",
-    }.items():
-        if env.get(variable, "").lower() == "true":
-            args.append(option)
-    if command == "test" and env.get("KEEP_FILE", "").lower() == "true":
-        args.append("--keep-file")
-    args.extend(_selection_args(env, command))
-    if env.get("INCLUDE_RAW_OUTPUT", "").lower() == "true":
-        args.extend(
-            ["--include-raw-output", "--raw-output-file", str(report_dir / _RAW_REPORT)]
-        )
-    if env.get("JUNIT_REPORT", "true").lower() == "true":
-        args.extend(["--junit-output", str(report_dir / _JUNIT_REPORT)])
-    return args
-
-
-def _selection_args(env: dict[str, str], command: str) -> list[str]:
-    args: list[str] = []
-    for variable, option in {
-        "DATA_FOLDERS": "--data-folders",
-        **({"ITEM": "--item"} if command == "collection" else {}),
-    }.items():
-        for item in split_list(env.get(variable, "")):
-            args.extend([option, item])
+    values: dict[str, object] = {
+        field: env[variable] for variable, field in valued.items() if env.get(variable)
+    }
+    values.update(
+        working_dir=env.get("WORKING_DIR", ""),
+        data_folders=split_list(env.get("DATA_FOLDERS", "")),
+        **{
+            key.lower(): env.get(key, "").lower() == "true"
+            for key in ("BAIL", "DISABLE_CERT_VALIDATION", "VERBOSE")
+        },
+    )
     if command == "collection":
-        for pair in env.get("ENV_VAR", "").splitlines():
-            if pair:
-                args.extend(["--env-var", pair])
-    for value in env.get("REDACT_VALUES", "").splitlines():
-        if value:
-            args.extend(["--redact-value", value])
-    return args
+        pairs = [pair for pair in env.get("ENV_VAR", "").splitlines() if pair]
+        if any("=" not in pair for pair in pairs):
+            raise ValueError("Invalid env-var format. Expected KEY=VALUE.")
+        values.update(
+            env_var=pairs,
+            item=split_list(env.get("ITEM", "")),
+            capture_response_headers=validate_capture_headers(
+                split_list(env.get("CAPTURE_RESPONSE_HEADERS", ""))
+            ),
+        )
+        return InsoCollectionOptions.model_validate(values)
+    values["keep_file"] = env.get("KEEP_FILE", "").lower() == "true"
+    return InsoTestOptions.model_validate(values)
+
+
+def _run_reports(
+    env: dict[str, str],
+    report_dir: Path,
+    options: InsoCollectionOptions | InsoTestOptions,
+) -> int:
+    from .main import _execute_report, _finalize_report, _report_redactor
+
+    raw = env.get("INCLUDE_RAW_OUTPUT", "").lower() == "true"
+    try:
+        runner = InsoRunner()
+        report = _execute_report(
+            lambda: (
+                runner.run_collection(options)
+                if isinstance(options, InsoCollectionOptions)
+                else runner.run_test(options)
+            ),
+            progress=env.get("PROGRESS", "").lower() == "true",
+            json_stderr=False,
+        )
+        _finalize_report(
+            report,
+            workflow_url=env.get("WORKFLOW_URL"),
+            trusted_workflow_url=True,
+            include_raw_output=raw,
+            output_format=None,
+            emit_markdown=False,
+            destinations={
+                "JSON": str(report_dir / _JSON_REPORT),
+                "Markdown": str(report_dir / _MARKDOWN_REPORT),
+                "JUnit": str(report_dir / _JUNIT_REPORT)
+                if env.get("JUNIT_REPORT", "true").lower() == "true"
+                else None,
+                "raw": str(report_dir / _RAW_REPORT) if raw else None,
+            },
+            redactor=_report_redactor(
+                env.get("REDACT_VALUES", "").splitlines(),
+                env_vars=options.env_var
+                if isinstance(options, InsoCollectionOptions)
+                else None,
+                proxies=(options.http_proxy, options.https_proxy),
+            ),
+            annotations=env.get("ANNOTATIONS", "").lower() == "true",
+        )
+    except typer.Exit as error:
+        return error.exit_code
+    except typer.BadParameter as error:
+        print(f"::error::{error}")
+        return 2
+    return 0
 
 
 def _artifact_options_valid(env: dict[str, str]) -> bool:
@@ -220,6 +276,7 @@ def _report_outputs(
         "skipped": "",
         "requests": "",
         "run-error": "",
+        "complete": "",
     }
     if not report:
         return outputs
@@ -235,6 +292,7 @@ def _report_outputs(
             if report.request_count is not None
             else "",
             "run-error": str(bool(report.run_error)).lower(),
+            "complete": str(report.complete).lower(),
         }
     )
     if env.get("JUNIT_REPORT", "true").lower() == "true" and junit.is_file():
@@ -254,13 +312,22 @@ def run_action(env: dict[str, str]) -> int:
         ).values
         for command in mask_commands(secrets_to_mask):
             print(command, flush=True)
+    try:
+        _validate_inputs(env)
+    except ValueError as error:
+        print(f"::error::{error}")
+        return 2
     if not _artifact_options_valid(env):
         return 2
     report_dir = Path(
         tempfile.mkdtemp(prefix="insomnia-run-reports.", dir=env["RUNNER_TEMP"])
     )
     try:
-        args = command_args(env, report_dir)
+        options = _action_options(env)
+    except ValueError:
+        print("::error::Invalid Inso configuration. Check command options.")
+        return 2
+    try:
         if (
             env.get("JUNIT_OUTPUT_FILE")
             and env.get("JUNIT_REPORT", "true").lower() == "true"
@@ -275,17 +342,8 @@ def run_action(env: dict[str, str]) -> int:
     except ValueError as error:
         print(f"::error::{error}")
         return 2
-    # CLI stdout can contain untrusted names. Do not replay it as workflow commands.
-    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stdout:
-        process = subprocess.run(  # nosec B603
-            [sys.executable, "-m", "insomnia_run.main", *args],
-            stdout=stdout,
-            check=False,
-            env=env,
-        )
-    report, payload, markdown, code = _read_action_report(
-        env, report_dir, process.returncode
-    )
+    code = _run_reports(env, report_dir, options)
+    report, payload, markdown, code = _read_action_report(env, report_dir, code)
     json_value, omitted = convenience_json(
         payload if report else "",
         requested=env.get("OUTPUT_FORMAT", "").lower() == "json",
