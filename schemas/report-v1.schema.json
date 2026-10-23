@@ -1,0 +1,299 @@
+{
+  "$defs": {
+    "InsoResult": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/InsoStatus"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "duration_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Seconds"
+        },
+        "execution_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Id"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "description"
+      ],
+      "title": "InsoResult",
+      "type": "object"
+    },
+    "InsoStatus": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "SKIP"
+      ],
+      "title": "InsoStatus",
+      "type": "string"
+    },
+    "RequestExecution": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Id"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "iteration": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Iteration"
+        },
+        "status_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status Code"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "duration_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Seconds"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Headers",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "RequestExecution",
+      "type": "object"
+    },
+    "RunError": {
+      "properties": {
+        "kind": {
+          "enum": [
+            "execution",
+            "timeout",
+            "protocol"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "message"
+      ],
+      "title": "RunError",
+      "type": "object"
+    },
+    "RunType": {
+      "enum": [
+        "collection",
+        "test"
+      ],
+      "title": "RunType",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "run_type": {
+      "$ref": "#/$defs/RunType",
+      "default": "collection"
+    },
+    "target_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Name"
+    },
+    "raw_output": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Raw Output"
+    },
+    "duration_seconds": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Duration Seconds"
+    },
+    "tap_version": {
+      "default": 13,
+      "title": "Tap Version",
+      "type": "integer"
+    },
+    "plan_start": {
+      "default": 1,
+      "title": "Plan Start",
+      "type": "integer"
+    },
+    "plan_end": {
+      "title": "Plan End",
+      "type": "integer"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/InsoResult"
+      },
+      "title": "Results",
+      "type": "array"
+    },
+    "executions": {
+      "items": {
+        "$ref": "#/$defs/RequestExecution"
+      },
+      "title": "Executions",
+      "type": "array"
+    },
+    "source": {
+      "default": "tap",
+      "enum": [
+        "native",
+        "tap"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "complete": {
+      "default": true,
+      "title": "Complete",
+      "type": "boolean"
+    },
+    "run_error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunError"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "plan_end"
+  ],
+  "title": "InsoRunReport",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/scarowar/insomnia-run/main/schemas/report-v1.schema.json"
+}

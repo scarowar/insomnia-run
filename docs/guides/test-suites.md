@@ -1,41 +1,47 @@
 # Running Test Suites
 
+Legacy unit tests are hidden by default in Insomnia 13.3+ and are planned for deprecation. For new tests, use [collection scripts](collections.md#assertions) with `command: collection`. See [Kong's CI guidance](https://developer.konghq.com/inso-cli/continuous-integration/).
+
 ## Basic Usage
 
 Run a test suite by name:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     identifier: "My Test Suite"
 ```
 
-The `identifier` is required for test suites.
+The `identifier` is required for test suites. Examples use a YAML export containing the legacy suite. For legacy Git Sync, pass the parent repository root instead; see [input paths](../reference/inputs.md#input-paths).
+
+Legacy suites use TAP rather than native collection JSON. Their request count is unknown; assertion timings are only reported when supported by the evidence. `verbose: "true"` is rejected before execution because script console output can forge TAP results. Incomplete TAP and execution failures produce structured run errors and exit `3`, not synthetic assertion failures.
 
 ## Filter Tests
 
-Run only tests matching a pattern:
+Inso 13.3.1 filters tests by a literal substring (Mocha `fgrep`), despite the upstream help describing a regex. Run only tests whose full title contains `login`:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     identifier: "My Test Suite"
-    test-name-pattern: ".*login.*"
+    test-name-pattern: "login"
 ```
+
+If the filter matches no tests, Inso can exit successfully without running assertions. **No assertions executed** is not successful test validation; check the pattern and suite contents before relying on the result.
 
 ## Stop on Failure
 
 Stop execution immediately when a test fails:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     identifier: "My Test Suite"
     bail: "true"
 ```
@@ -45,10 +51,10 @@ Stop execution immediately when a test fails:
 Set a timeout for individual requests:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     identifier: "My Test Suite"
     request-timeout: "60000"
     execution-timeout: "600"
@@ -59,22 +65,23 @@ Set a timeout for individual requests:
 
 ## With Secrets
 
-Pass secrets via environment variables:
+Select an Insomnia environment for the suite:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: test
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     identifier: "My Test Suite"
-  env:
-    API_KEY: ${{ secrets.API_KEY }}
+    environment: CI
 ```
+
+For secret values, configure Inso's supported [external vault integration](https://developer.konghq.com/insomnia/external-vault/). A runner `env:` block alone does not populate Insomnia environment variables. The `env-var` input is collection-only; see [Handling Secrets](secrets.md).
 
 ## Test vs Collection
 
 | | Collection | Test Suite |
 |-|-----------|------------|
-| **Purpose** | Run requests | Run JavaScript tests |
+| **Purpose** | Run requests and script assertions | Run legacy unit tests |
 | **Identifier** | Optional | Required |
-| **Assertions** | Status codes | Any response data |
+| **Assertions** | Explicit script tests | JavaScript unit tests |

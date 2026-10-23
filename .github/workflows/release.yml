@@ -1,0 +1,224 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing maintainer-signed vMAJOR.MINOR.PATCH tag
+        required: true
+        type: string
+      commit:
+        description: Exact approved and tested 40-character commit SHA
+        required: true
+        type: string
+      publish:
+        description: Publish after verifying all draft assets (false builds only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'scarowar/insomnia-run' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+      statuses: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: Verify dispatch commit
+        env:
+          RELEASE_COMMIT: ${{ inputs.commit }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          if [[ ! "$RELEASE_COMMIT" =~ ^[a-f0-9]{40}$ || "$RELEASE_COMMIT" != "$WORKFLOW_SHA" ]]; then
+            echo "::error::Release commit must match the exact workflow dispatch SHA."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.8'
+      - name: Verify signer, selected commit, and protected-branch checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_COMMIT: ${{ inputs.commit }}
+          GNUPGHOME: ${{ runner.temp }}/release-gnupg
+        run: |
+          install -d -m 700 "$GNUPGHOME"
+          gh api users/scarowar/gpg_keys --jq '.[].raw_key' | gpg --batch --import
+          cp scripts/build_release.py "$RUNNER_TEMP/verify_release.py"
+          git checkout --detach "$RELEASE_COMMIT"
+          python "$RUNNER_TEMP/verify_release.py" verify --root "$GITHUB_WORKSPACE" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
+
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            python-target: cpython-3.14.8-linux-x86_64-gnu
+            uv-sha256: eadd9d27c134ab5ac1ffd4473b97a741407f3ea238288f03121fc4deddf90220
+          - os: macos-15-intel
+            python-target: cpython-3.14.8-macos-x86_64-none
+            uv-sha256: bb7b805bdcf3d0bc8c74ceb94569e6b3e8aa35bd492acdbb9d46bf46d9d4ff6b
+          - os: macos-26
+            python-target: cpython-3.14.8-macos-aarch64-none
+            uv-sha256: cfe454573412ff7380d15fc7dae5997ab53ffce72fce0a78e91ddbc84001acd2
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install verified uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: '0.13.1'
+          checksum: ${{ matrix.uv-sha256 }}
+          enable-cache: false
+      - name: Install reviewed bundle Python
+        id: python
+        env:
+          PYTHON_TARGET: ${{ matrix.python-target }}
+        run: |
+          echo "542bf79edef9770b216e379066743f256dda36f1374c60106e7d30d9ac1c86a8  python-downloads.json" | shasum -a 256 --check
+          install_dir="${RUNNER_TEMP}/insomnia-run-python"
+          uv python install "$PYTHON_TARGET" --no-config --no-bin --install-dir "$install_dir" --python-downloads-json-url "$GITHUB_WORKSPACE/python-downloads.json"
+          echo "executable=${install_dir}/${PYTHON_TARGET}/bin/python3.14" >> "$GITHUB_OUTPUT"
+      - name: Install locked build tools
+        env:
+          UV_PYTHON: ${{ steps.python.outputs.executable }}
+          UV_PYTHON_DOWNLOADS: never
+        run: uv sync --frozen --dev --no-install-project --no-build
+      - name: Build distributions, SBOM, and native runtime bundle
+        env:
+          UV_PYTHON: ${{ steps.python.outputs.executable }}
+          UV_PYTHON_DOWNLOADS: never
+          BUNDLE_ONLY: ${{ matrix.os != 'ubuntu-24.04' && '--bundle-only' || '' }}
+        run: uv run --frozen --no-sync --no-build python scripts/build_release.py build --directory release-assets ${BUNDLE_ONLY:+--bundle-only}
+      - name: Preserve candidate assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.os }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble:
+    needs: [verify, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.8'
+      - name: Install verified uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: '0.13.1'
+          checksum: eadd9d27c134ab5ac1ffd4473b97a741407f3ea238288f03121fc4deddf90220
+          enable-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release-assets
+      - name: Create asset checksums
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python scripts/build_release.py checksums --directory release-assets
+          python scripts/build_release.py validate --tag "$RELEASE_TAG" --directory release-assets
+      - name: Preserve complete candidate
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-candidate
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: inputs.publish
+    needs: [verify, assemble]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      checks: read
+      pull-requests: read
+      statuses: read
+      attestations: write
+      id-token: write
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.8'
+      - name: Install verified uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: '0.13.1'
+          checksum: eadd9d27c134ab5ac1ffd4473b97a741407f3ea238288f03121fc4deddf90220
+          enable-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-candidate
+          path: release-assets
+      - name: Revalidate complete candidate before attesting
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python scripts/build_release.py validate --tag "$RELEASE_TAG" --directory release-assets
+      - name: Attest exact candidate assets
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/*
+      - name: Verify and publish complete draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_COMMIT: ${{ inputs.commit }}
+          GNUPGHOME: ${{ runner.temp }}/release-gnupg
+        run: |
+          install -d -m 700 "$GNUPGHOME"
+          gh api users/scarowar/gpg_keys --jq '.[].raw_key' | gpg --batch --import
+          python scripts/build_release.py publish --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --directory release-assets --publish

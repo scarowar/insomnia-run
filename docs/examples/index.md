@@ -1,5 +1,7 @@
 # Examples
 
+Examples use an explicit YAML export path. For legacy Git Sync, pass the parent repository root instead; see [input paths](../reference/inputs.md#input-paths).
+
 ## Basic Collection
 
 Run a collection on every PR and push to main:
@@ -19,13 +21,18 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    concurrency:
+      group: insomnia-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
-          working-directory: .insomnia
+          working-directory: insomnia-export.yaml
 ```
 
 ## Basic Test Suite
@@ -45,60 +52,77 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    concurrency:
+      group: insomnia-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: test
-          working-directory: .insomnia
+          working-directory: insomnia-export.yaml
           identifier: "My Test Suite"
 ```
 
 ## With Secrets
 
-Pass secrets to your Insomnia workspace via environment variables:
+Map URL-safe secrets into the collection environment:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
-  env:
-    API_KEY: ${{ secrets.API_KEY }}
+    working-directory: insomnia-export.yaml
+    env-var: |
+      API_KEY=${{ secrets.API_KEY }}
 ```
+
+For arbitrary secret values, use the [encoding step](../guides/secrets.md#collection-overrides) to preserve reserved characters through Inso's URL decoding.
 
 ## Multi-Environment
 
 Test against multiple environments using a matrix strategy:
 
 ```yaml
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         env: [staging, production]
+    concurrency:
+      group: insomnia-matrix-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ matrix.env }}
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
-          working-directory: .insomnia
+          working-directory: insomnia-export.yaml
           environment: ${{ matrix.env }}
 ```
 
 ## Non-Blocking
 
-Run tests without failing the workflow, then handle results manually:
+Allow assertion failures while retaining fatal configuration, execution, timeout, and report errors, then handle the assertion result:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   id: tests
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     fail-on-error: "false"
 
 - name: Check results
@@ -106,6 +130,42 @@ Run tests without failing the workflow, then handle results manually:
     if [ "${{ steps.tests.outputs.exit-code }}" != "0" ]; then
       echo "Tests failed"
     fi
+```
+
+Use `json-file` for complete machine-readable results; `output-format: json` is only a bounded convenience output. See the [output contract](../reference/inputs.md#action-outputs).
+
+## CI Test Report
+
+Publish a JUnit report while keeping the final failure decision explicit:
+
+Grant `checks: write` when publishing a GitHub test report.
+
+```yaml
+- uses: scarowar/insomnia-run@v0.2.0
+  id: tests
+  with:
+    command: collection
+    working-directory: insomnia-export.yaml
+    fail-on-error: "false"
+
+- name: Publish JUnit report
+  if: always() && steps.tests.outputs.junit-file != ''
+  uses: dorny/test-reporter@a6ddd83ac95ff4586f5d3aceeb314d9a1841db95 # v3.0.0
+  with:
+    name: Insomnia API Tests
+    path: ${{ steps.tests.outputs.junit-file }}
+    reporter: java-junit
+
+- name: Upload JUnit report
+  if: always() && steps.tests.outputs.junit-file != ''
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  with:
+    name: insomnia-run-junit
+    path: ${{ steps.tests.outputs.junit-file }}
+
+- name: Fail workflow on test failures
+  if: always() && steps.tests.outputs.exit-code != '' && steps.tests.outputs.exit-code != '0'
+  run: exit 1
 ```
 
 ## Scheduled Monitoring
@@ -123,12 +183,14 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         with:
           command: collection
-          working-directory: .insomnia
+          working-directory: insomnia-export.yaml
           pr-comment: "false"
 ```
 
@@ -137,14 +199,28 @@ jobs:
 Route requests through a corporate proxy:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     https-proxy: "https://proxy.example.com:8080"
     http-proxy: "https://proxy.example.com:8080"
     no-proxy: "localhost,127.0.0.1"
 ```
+
+## Response Headers
+
+Retain only named, non-credential headers in native collection reports:
+
+```yaml
+- uses: scarowar/insomnia-run@v0.2.0
+  with:
+    command: collection
+    working-directory: insomnia-export.yaml
+    capture-response-headers: "X-Request-ID"
+```
+
+This does not publish response bodies or native exports. See [header privacy](../guides/secrets.md#response-headers).
 
 ## Self-Signed Certificates
 
@@ -152,10 +228,10 @@ Route requests through a corporate proxy:
     Disabling certificate validation is insecure. Only use in development environments.
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     disable-cert-validation: "true"
 ```
 
@@ -178,23 +254,28 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: scarowar/insomnia-run@v0.1.0
+      - uses: scarowar/insomnia-run@v0.2.0
         id: tests
         with:
           command: collection
-          working-directory: .insomnia
+          working-directory: insomnia-export.yaml
           pr-comment: "false"
           fail-on-error: "false"
 
       - name: Write report to file
-        if: steps.tests.outputs.exit-code != '0'
-        run: echo "${{ steps.tests.outputs.markdown }}" > report.md
+        if: always() && steps.tests.outputs.exit-code != '' && steps.tests.outputs.exit-code != '0'
+        env:
+          REPORT_MARKDOWN: ${{ steps.tests.outputs.markdown }}
+        run: |
+          printf '%s\n' "$REPORT_MARKDOWN" > report.md
 
       - name: Create Issue on Failure
-        if: steps.tests.outputs.exit-code != '0'
-        uses: peter-evans/create-issue-from-file@v6
+        if: always() && steps.tests.outputs.exit-code != '' && steps.tests.outputs.exit-code != '0'
+        uses: peter-evans/create-issue-from-file@fca9117c27cdc29c6c4db3b86c48e4115a786710 # v6.0.0
         with:
           title: "API Tests Failing"
           content-filepath: report.md
@@ -207,16 +288,16 @@ jobs:
 Send email notification on test failure. This example uses AWS SES, but any SMTP server works (SendGrid, Mailgun, Gmail, etc.):
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   id: tests
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     fail-on-error: "false"
 
 - name: Send Email on Failure
-  if: steps.tests.outputs.exit-code != '0'
-  uses: dawidd6/action-send-mail@v7
+  if: always() && steps.tests.outputs.exit-code != '' && steps.tests.outputs.exit-code != '0'
+  uses: dawidd6/action-send-mail@6e71c855c9a091d80a519621b9fd3e8d252ca40c # v7
   with:
     server_address: email-smtp.${{ secrets.AWS_REGION }}.amazonaws.com
     server_port: 587
@@ -236,16 +317,16 @@ Send email notification on test failure. This example uses AWS SES, but any SMTP
 Send test results to Slack:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   id: tests
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     fail-on-error: "false"
 
 - name: Notify Slack on Failure
-  if: steps.tests.outputs.exit-code != '0'
-  uses: slackapi/slack-github-action@v2
+  if: always() && steps.tests.outputs.exit-code != '' && steps.tests.outputs.exit-code != '0'
+  uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
   with:
     webhook: ${{ secrets.SLACK_WEBHOOK }}
     webhook-type: incoming-webhook
@@ -269,10 +350,10 @@ Send test results to Slack:
 For large collections or slow APIs, increase the execution timeout:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     execution-timeout: "600"  # 10 minutes
 ```
 
@@ -281,40 +362,50 @@ For large collections or slow APIs, increase the execution timeout:
 Run collections with external data files:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   with:
     command: collection
-    working-directory: .insomnia
+    working-directory: insomnia-export.yaml
     iteration-data: "tests/data/users.csv"
     iteration-count: "10"
 ```
 
 ## JSON Output
 
-Run a collection and save the machine-readable JSON report:
+Read or upload the complete JSON file rather than copying the bounded convenience output:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.1.0
+- uses: scarowar/insomnia-run@v0.2.0
   id: run-cli
   with:
     command: collection
-    working-directory: .insomnia
-    output-format: json
+    working-directory: insomnia-export.yaml
+    fail-on-error: "false"
 
-- name: Save JSON report
+- name: Read JSON report
+  if: always() && steps.run-cli.outputs.json-file != ''
   env:
-    JSON_OUTPUT: ${{ steps.run-cli.outputs.json-output }}
+    REPORT_JSON: ${{ steps.run-cli.outputs.json-file }}
   run: |
-    printf '%s' "$JSON_OUTPUT" > test-results.json
-  # This will save the JSON report in the current workspace directory
-```
+    python3 - <<'PY'
+    import json
+    import os
+    from pathlib import Path
 
-If you want this file accessible across jobs in GitHub Actions, you can also upload it as an artifact:
+    report = json.loads(Path(os.environ["REPORT_JSON"]).read_text(encoding="utf-8"))
+    print("Assertion results:", len(report["results"]))
+    PY
 
-```yaml
 - name: Upload JSON report
-  uses: actions/upload-artifact@v6
+  if: always() && steps.run-cli.outputs.json-file != ''
+  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
   with:
     name: insomnia-json-report
-    path: test-results.json
+    path: ${{ steps.run-cli.outputs.json-file }}
+
+- name: Apply failure policy
+  if: always() && steps.run-cli.outputs.exit-code != '' && steps.run-cli.outputs.exit-code != '0'
+  run: exit 1
 ```
+
+For a small step output, request `output-format: json` and check `json-output-omitted` before consuming `json-output`. File reports do not depend on that opt-in.

@@ -43,8 +43,8 @@ body:
   id: version
   attributes:
     label: "insomnia-run version"
-    description: "Which version of insomnia-run are you using? (e.g., v0.1.0)"
-    placeholder: "v0.1.0"
+    description: "Which version of insomnia-run are you using? (e.g., v0.2.0)"
+    placeholder: "v0.2.0"
   validations:
     required: false
 - type: input
@@ -83,7 +83,7 @@ body:
       ```yaml
       jobs:
         deploy:
-          uses: scarowar/insomnia-run@v0.1.0
+          uses: scarowar/insomnia-run@v0.2.0
           with:
             ...
       ```

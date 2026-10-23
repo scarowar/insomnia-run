@@ -1,0 +1,5 @@
+# Non-issued values in historical redaction unit tests, scoped to exact commits.
+# New occurrences remain detectable; do not replace these with file exclusions.
+cab48fe5a01d4e0a51800b3785bc74a1a56556d1:tests/test_runner.py:generic-api-key:461
+cab48fe5a01d4e0a51800b3785bc74a1a56556d1:tests/test_runner.py:generic-api-key:470
+cab48fe5a01d4e0a51800b3785bc74a1a56556d1:tests/test_runner.py:generic-api-key:471

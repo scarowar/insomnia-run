@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "run_type": "collection",
+  "target_name": "Example API",
+  "tap_version": 13,
+  "plan_start": 1,
+  "plan_end": 1,
+  "results": [
+    {
+      "id": 1,
+      "status": "FAIL",
+      "description": "Status is 200",
+      "message": "expected 503 to equal 200",
+      "duration_seconds": 0.00073,
+      "execution_id": 1
+    }
+  ],
+  "executions": [
+    {
+      "id": 1,
+      "request_id": "req_example",
+      "name": "Health",
+      "iteration": 0,
+      "status_code": 503,
+      "status": "Service Unavailable",
+      "duration_seconds": 0.021,
+      "headers": {}
+    }
+  ],
+  "source": "native",
+  "complete": true,
+  "run_error": null
+}

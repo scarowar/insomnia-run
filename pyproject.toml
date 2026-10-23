@@ -1,6 +1,6 @@
 [project]
 name = "insomnia-run"
-version = "0.1.0"
+version = "0.2.0"
 description = "CLI runner for Insomnia API tests and collections."
 readme = "README.md"
 authors = [
@@ -8,7 +8,8 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "pydantic>=2.12.5",
+    "click>=8.4.2",
+    "pydantic>=2.14.1",
     "rich>=14.2.0",
     "typer>=0.21.0",
 ]
@@ -17,12 +18,30 @@ dependencies = [
 insomnia-run = "insomnia_run.main:main"
 
 [build-system]
-requires = ["uv_build>=0.9.18,<0.10.0"]
+requires = ["uv_build==0.13.1"]
 build-backend = "uv_build"
 
 [dependency-groups]
-dev = [
-    "pytest>=9.0.2",
-    "ruff>=0.14.10",
-    "zensical>=0.0.15",
+release = ["python-semantic-release==10.7.0"]
+test = [
+    "hypothesis>=6.142.0",
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "pyyaml>=6.0.3",
 ]
+dev = [
+    { include-group = "test" },
+    "bandit>=1.9.4",
+    "cyclonedx-bom>=7.3.0",
+    "pip-audit>=2.10.0",
+    "mypy>=2.1.0",
+    "pygments>=2.20.0",
+    "pymdown-extensions>=11.0.1",
+    "pre-commit>=4.5.0",
+    "ruff>=0.17.1",
+    "zensical>=0.0.43",
+    "zizmor>=1.25.2",
+]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
