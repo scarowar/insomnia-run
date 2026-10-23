@@ -203,7 +203,9 @@ def _owned_comment(
     user, text = comment.get("user"), comment.get("body")
     if not isinstance(user, dict) or not _positive_int(user.get("id")):
         return None
-    if user["id"] != author_id or _login(user) != author_login.lower():
+    if user["id"] != author_id or _login(user).removesuffix(
+        "[bot]"
+    ) != author_login.lower().removesuffix("[bot]"):
         return None
     if not isinstance(text, str) or not text.startswith(marker + "\n"):
         return None
@@ -211,7 +213,7 @@ def _owned_comment(
     match = _GENERATION.fullmatch(lines[1])
     comment_id = comment.get("id")
     if not match or not _positive_int(comment_id) or len(lines) != 4 or lines[2] != "":
-        raise ValueError("Invalid owned comment metadata.")
+        return None
     return CommentGeneration(int(match[1]), int(match[2])), comment_id, text
 
 

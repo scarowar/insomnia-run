@@ -199,13 +199,11 @@ def test_stale_generation_on_later_page_is_not_overwritten(context, scope):
         "9" * 1000 + ":1",
     ],
 )
-def test_owned_marker_with_invalid_generation_warns_without_creating_duplicate(
-    context, scope, generation
-):
+def test_owned_marker_with_invalid_generation_is_skipped(context, scope, generation):
     transport = FakeTransport(context, [[old_comment(scope, generation)]])
     result = publish(context, scope, transport)
-    assert result.status == "warning"
-    assert result.warning == COMMENT_WARNING
+    assert result.status == "created"
+    assert result.warning == ""
 
 
 def test_same_generation_same_body_does_not_write(context, scope):
