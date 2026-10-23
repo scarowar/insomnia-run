@@ -765,6 +765,7 @@ name = "insomnia-run"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "pydantic" },
     { name = "rich" },
     { name = "typer" },
@@ -801,6 +802,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.4.2" },
     { name = "pydantic", specifier = ">=2.14.1" },
     { name = "rich", specifier = ">=14.2.0" },
     { name = "typer", specifier = ">=0.21.0" },

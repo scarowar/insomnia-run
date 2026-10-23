@@ -291,3 +291,32 @@ def test_invalid_numeric_limits_are_rejected_before_execution(
 
     assert result.exit_code == 2
     run.assert_not_called()
+
+
+def test_repeated_cli_invocations_do_not_reuse_options():
+    runner = CliRunner()
+    with patch(
+        "insomnia_run.main.InsoRunner.run_collection",
+        return_value=InsoRunReport(plan_end=0),
+    ) as execute:
+        first = runner.invoke(
+            app,
+            [
+                "run-collection",
+                "-w",
+                "first.yaml",
+                "--bail",
+                "--env-var",
+                "MODE=one",
+                "--env-var",
+                "MODE=two",
+            ],
+        )
+        second = runner.invoke(app, ["run-collection", "-w", "second.yaml"])
+    assert first.exit_code == second.exit_code == 0
+    first_options, second_options = [call.args[0] for call in execute.call_args_list]
+    assert first_options.bail
+    assert first_options.env_var == ["MODE=one", "MODE=two"]
+    assert second_options.working_dir == "second.yaml"
+    assert not second_options.bail
+    assert second_options.env_var is None
