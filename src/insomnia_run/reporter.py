@@ -139,19 +139,31 @@ def _result_groups(
     )
 
 
-def _select_result_blocks(
-    results: list[InsoResult], limit: int, budget: int
-) -> list[str]:
-    blocks = []
-    prioritized = sorted(results, key=lambda result: result.status != InsoStatus.FAIL)
-    for result in prioritized[:limit]:
-        block = _result_block(result)
-        size = len(block.encode("utf-8"))
-        if size > budget:
+def _select_group_results(
+    groups: list[tuple[RequestExecution | None, list[InsoResult]]],
+    frames: list[tuple[str, str]],
+    budget: int,
+) -> list[list[InsoResult]]:
+    selected: list[list[InsoResult]] = [[] for _ in groups]
+    candidates = [
+        (index, result)
+        for index, (_, results) in enumerate(groups)
+        for result in results
+    ]
+    candidates.sort(key=lambda item: item[1].status != InsoStatus.FAIL)
+    count = 0
+    for index, result in candidates:
+        if count == _MAX_RENDERED_RESULTS:
             break
-        blocks.append(block)
+        size = len(_result_block(result).encode("utf-8"))
+        if not selected[index]:
+            size += len("".join(frames[index]).encode("utf-8"))
+        if size > budget:
+            continue
+        selected[index].append(result)
+        count += 1
         budget -= size
-    return blocks
+    return selected
 
 
 def _junit_time(value: float | Decimal) -> str:
@@ -285,6 +297,7 @@ class Reporter:
     def _markdown_results(report: InsoRunReport, prefix: str, suffix: str) -> str:
         omission = (
             f"- {report.total_tests} more results omitted; full details remain in JSON and JUnit reports.\n\n"
+            f"- {report.failed_count} failures omitted.\n\n"
             f"- {len(report.executions)} request groups omitted; full details remain in JSON reports.\n\n"
         )
         available = _MAX_MARKDOWN_BYTES - len(
@@ -292,30 +305,58 @@ class Reporter:
         )
         blocks = []
         shown_results = 0
+        shown_failures = 0
         shown_executions = 0
-        for execution, results in _result_groups(report):
-            if results and shown_results == _MAX_RENDERED_RESULTS:
-                continue
+        groups = _result_groups(report)
+        frames = []
+        for execution, results in groups:
             opening, closing = (
                 _request_frame(execution, results) if execution else ("", "")
             )
-            separator = "\n" if execution else ""
-            size = len((opening + separator + closing).encode("utf-8"))
-            if size > available:
-                continue
-            selected = _select_result_blocks(
-                results, _MAX_RENDERED_RESULTS - shown_results, available - size
+            frames.append((opening, ("\n" if execution else "") + closing))
+        selected_groups = _select_group_results(groups, frames, available)
+        selected_size = sum(
+            len(
+                (
+                    opening
+                    + "".join(_result_block(result) for result in selected)
+                    + closing
+                ).encode("utf-8")
             )
-            block = opening + "".join(selected) + separator + closing
+            for (opening, closing), selected in zip(frames, selected_groups)
+            if selected
+        )
+        empty_budget = available - selected_size
+        for (execution, results), (opening, closing), selected in zip(
+            groups, frames, selected_groups
+        ):
+            if results and not selected:
+                continue
+            block = (
+                opening
+                + "".join(_result_block(result) for result in selected)
+                + closing
+            )
+            # Assertion-free requests use only the space left after selected assertions.
+            if not selected:
+                if len(block.encode("utf-8")) > empty_budget:
+                    continue
+                empty_budget -= len(block.encode("utf-8"))
             blocks.append(block)
             available -= len(block.encode("utf-8"))
             shown_results += len(selected)
+            shown_failures += sum(
+                result.status == InsoStatus.FAIL for result in selected
+            )
             shown_executions += int(execution is not None)
         omitted_results = report.total_tests - shown_results
         if omitted_results:
             blocks.append(
                 f"- {omitted_results} more results omitted; full details remain in JSON and JUnit reports.\n\n"
             )
+        omitted_failures = report.failed_count - shown_failures
+        if omitted_failures:
+            blocks.append(f"- {omitted_failures} failures omitted.\n\n")
         omitted_executions = len(report.executions) - shown_executions
         if omitted_executions:
             blocks.append(
@@ -337,8 +378,19 @@ class Reporter:
                 "skipped": str(report.skipped_count),
             },
         )
+        executions = {execution.id: execution for execution in report.executions}
         for result in report.results:
-            _junit_result(suite, classname, result)
+            execution = (
+                executions.get(result.execution_id)
+                if result.execution_id is not None
+                else None
+            )
+            context = classname
+            if execution is not None:
+                context += f" / {execution.name} / Execution {execution.id}"
+                if execution.iteration is not None:
+                    context += f" / Iteration {execution.iteration + 1}"
+            _junit_result(suite, _xml_text(context), result)
 
         if report.run_error:
             testcase = ElementTree.SubElement(
@@ -349,6 +401,8 @@ class Reporter:
                 testcase, "error", {"type": report.run_error.kind, "message": message}
             )
             error.text = message
+        if report.duration_seconds is not None:
+            suite.set("time", _junit_time(report.duration_seconds))
         elif all(result.duration_seconds is not None for result in report.results):
             duration = sum(
                 (
