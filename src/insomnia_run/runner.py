@@ -3,6 +3,8 @@ import signal
 from pathlib import Path
 import re
 import tempfile
+import time
+from urllib.parse import urlencode
 
 # Inso must be executed as a subprocess.
 import subprocess  # nosec B404
@@ -39,7 +41,18 @@ class InsoRunner:
             start_new_session=True,
             shell=False,
             umask=0o077,
-            env={**os.environ, "INSO_TELEMETRY_DISABLED": "1"},
+            env={
+                **{
+                    key: value
+                    for key, value in os.environ.items()
+                    if key
+                    not in {"REDACT_VALUES", "ENV_VAR", "GITHUB_TOKEN", "GH_TOKEN"}
+                    and not key.startswith(
+                        ("INPUT_", "ACTION_", "INSOMNIA_RUN_", "ACTIONS_ID_TOKEN_")
+                    )
+                },
+                "INSO_TELEMETRY_DISABLED": "1",
+            },
         ) as process:
             try:
                 stdout, stderr = process.communicate(timeout=timeout)
@@ -139,7 +152,9 @@ class InsoRunner:
 
         if options.env_var:
             if isinstance(options.env_var, dict):
-                env_vars = [f"{key}={value}" for key, value in options.env_var.items()]
+                env_vars = [
+                    urlencode({key: value}) for key, value in options.env_var.items()
+                ]
             else:
                 env_vars = options.env_var
             for value in env_vars:
@@ -227,6 +242,8 @@ class InsoRunner:
         report: InsoRunReport, options: InsoCollectionOptions, returncode: int
     ) -> None:
         report.complete = False
+        if report.run_error:
+            return
         # Inso 13.3.1's bail path exits zero before saveReport().
         if not (
             options.bail
@@ -250,12 +267,19 @@ class InsoRunner:
         run_type: RunType,
         native_path: Path | None = None,
     ) -> InsoRunReport:
+        started = time.monotonic()
         try:
             result = self._run_command(cmd, options.execution_timeout)
         except subprocess.TimeoutExpired as error:
             stdout, stderr = self._text(error.output), self._text(error.stderr)
             if native_path is not None and native_path.exists():
                 report = self._native_report(native_path, options)
+                if (
+                    report.run_error
+                    and report.run_error.kind == "protocol"
+                    and not options.verbose
+                ):
+                    report = TapParser().parse(stdout, require_tap=True)
             elif options.verbose:
                 report = InsoRunReport(plan_end=0)
             else:
@@ -272,6 +296,7 @@ class InsoRunner:
             stdout, stderr = result.stdout, result.stderr
             report = self._completed_report(result, options, run_type, native_path)
         report.raw_output = stdout + stderr
+        report.duration_seconds = time.monotonic() - started
         report.run_type = run_type
         report.target_name = options.identifier
         return report

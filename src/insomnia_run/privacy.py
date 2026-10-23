@@ -16,7 +16,7 @@ _Model = TypeVar("_Model", bound=BaseModel)
 _REDACTED = "[REDACTED]"
 _CREDENTIAL_NAME = (
     r"(?:authorization|proxy-authorization|cookie|set-cookie|"
-    r"x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|"
+    r"x-api-key|api[_-]?key|access[_-]?key|access[_-]?token|refresh[_-]?token|"
     r"client[_-]?secret|password|passwd|secret|token|"
     r"x-amz-signature|x-amz-credential|signature|sig)"
 )
@@ -25,12 +25,16 @@ _HEADER = re.compile(
     r"\s*:\s*)([^\r\n]+)"
 )
 _ASSIGNMENT = re.compile(
-    rf"(?i)([\"']?\b{_CREDENTIAL_NAME}[\"']?\s*[:=]\s*)"
+    rf"(?i)([\"']?(?<![A-Za-z0-9])(?:[A-Za-z0-9]{{1,32}}[_-]){{0,4}}"
+    rf"{_CREDENTIAL_NAME}[\"']?\s*[:=]\s*)"
     r"""("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s&,;<>"']+)"""
 )
-_URL_USERINFO = re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://)[^\s/@<>\"']+@")
+_URL_USERINFO = re.compile(r"(?i)(\b[a-z][a-z0-9+.-]{0,31}://)[^\s/@<>\"']{1,1024}@")
 _QUERY_VALUE = re.compile(r"([?&])([^\s?&#=<>\"']+)=([^\s&#<>\"']*)")
 _QUERY_CREDENTIAL = re.compile(rf"(?i)^{_CREDENTIAL_NAME}$")
+_ENV_CREDENTIAL = re.compile(
+    rf"(?i)^(?:[A-Za-z0-9]{{1,32}}[_-]){{0,4}}{_CREDENTIAL_NAME}$"
+)
 
 
 def _variants(value: str) -> set[str]:
@@ -69,15 +73,22 @@ class Redactor:
         env_vars: Iterable[str] | Mapping[str, str] | None = None,
     ) -> None:
         secrets = list(values)
+        pairs: Iterable[tuple[str, str]]
         if isinstance(env_vars, Mapping):
-            secrets.extend(env_vars.values())
+            pairs = env_vars.items()
         elif env_vars is not None:
-            env_vars = tuple(env_vars)
-            secrets.extend(item.partition("=")[2] for item in env_vars if "=" in item)
-            for item in env_vars:
-                secrets.extend(
-                    value for _, value in parse_qsl(item, keep_blank_values=True)
-                )
+            pairs = [
+                pair
+                for item in env_vars
+                for pair in parse_qsl(item, keep_blank_values=True)
+            ]
+        else:
+            pairs = []
+        secrets.extend(
+            value
+            for key, value in pairs
+            if _ENV_CREDENTIAL.fullmatch(key) or len(value) >= 8
+        )
         self.values = tuple(dict.fromkeys(value for value in secrets if value))
         variants = {variant for value in self.values for variant in _variants(value)}
         self._known = (

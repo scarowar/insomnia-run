@@ -45,6 +45,7 @@ class InsoRunReport(BaseModel):
     run_type: RunType = RunType.COLLECTION
     target_name: Optional[str] = None
     raw_output: Optional[str] = None
+    duration_seconds: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
     tap_version: int = 13
     plan_start: int = 1
     plan_end: int
