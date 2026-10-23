@@ -463,7 +463,10 @@ def _verify_locked_wheels(
     }
     if not dependencies:
         return
-    result = subprocess.run(  # nosec B603 # frozen offline metadata export, no shell
+    # The operator selects uv; it is not collection or downloaded metadata.
+    # Execute that program directly with fixed arguments, binding the absolute
+    # project path to one option. See test_bundle_lock_binding.py injection cases.
+    result = subprocess.run(  # nosec B603 # NOSONAR(S8701, S8705)
         [
             uv,
             "--offline",
@@ -477,10 +480,10 @@ def _verify_locked_wheels(
             "cyclonedx1.5",
             "--preview-features",
             "sbom-export",
-            "--project",
-            str(project),
+            f"--project={project.resolve(strict=True)}",
         ],
         check=True,
+        shell=False,
         capture_output=True,
         text=True,
         env=tool_environment(offline=True),

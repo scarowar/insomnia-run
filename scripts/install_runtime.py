@@ -239,7 +239,10 @@ def _download_request(
     }
     if token and current_origin == allowed_origin:
         headers["Authorization"] = "Bearer " + token
-    return Request(
+    # The authority is reconstructed from the exact origin allowlist above.
+    # _https_url rejects controls, backslashes and userinfo; signed queries stay
+    # in the request target and cannot select a host (test_download_limits.py).
+    return Request(  # NOSONAR(S8703)
         urlunsplit(("https", authority, parsed.path, parsed.query, "")), headers=headers
     )
 

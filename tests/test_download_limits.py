@@ -195,9 +195,10 @@ def test_total_deadline_interrupts_blocked_network_operations(
     monkeypatch.setattr(install_runtime, "build_opener", lambda *args: Opener())
     previous_handler = signal.getsignal(signal.SIGALRM)
     started = time.monotonic()
+    output = io.BytesIO()
     with pytest.raises(ValueError, match="deadline|timed out|time limit"):
         install_runtime._download_https(
-            "https://github.com/archive", io.BytesIO(), "", None, 1024
+            "https://github.com/archive", output, "", None, 1024
         )
     assert time.monotonic() - started < 0.5
     assert signal.getsignal(signal.SIGALRM) == previous_handler
@@ -230,3 +231,22 @@ def test_download_restores_a_preexisting_alarm(monkeypatch):
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, original_handler)
         signal.setitimer(signal.ITIMER_REAL, *original_timer)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "next=https://127.0.0.1/private",
+        "@127.0.0.1:8080/private",
+        "//127.0.0.1/private",
+        "signature=a%2Bb&host=evil.example",
+        "%0d%0aHost:%20evil.example",
+    ],
+)
+def test_query_content_cannot_replace_the_authorized_request_host(query):
+    request = install_runtime._download_request(
+        f"https://github.com/archive?{query}", {("github.com", 443)}, "", None
+    )
+    assert request.type == "https"
+    assert request.host == "github.com"
+    assert request.selector == f"/archive?{query}"

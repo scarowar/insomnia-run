@@ -79,5 +79,6 @@ def test_capability_output_limit_is_a_configuration_error(tmp_path, monkeypatch)
     binary.chmod(0o755)
     monkeypatch.setenv("PATH", str(tmp_path))
     monkeypatch.setattr(runner, "_MAX_CAPTURE_BYTES", 65536)
+    inso_runner = InsoRunner()
     with pytest.raises(runner.InsoConfigurationError, match="capture limit"):
-        InsoRunner()._supports_native_report()
+        inso_runner._supports_native_report()

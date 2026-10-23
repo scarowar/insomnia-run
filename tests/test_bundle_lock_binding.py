@@ -100,3 +100,46 @@ def test_dependency_filename_must_match_the_locked_asset(locked_bundle, dependen
 
     with pytest.raises(ValueError, match="lock|wheel"):
         verify_bundle(root, project, "cpython-310", "linux-x86_64")
+
+
+@pytest.mark.parametrize(
+    "name", ["--offline", "project with spaces", "project;touch CANARY"]
+)
+def test_project_path_is_bound_as_one_option_value(locked_bundle, monkeypatch, name):
+    root, project = locked_bundle
+    destination = project.with_name(name)
+    project.rename(destination)
+    monkeypatch.chdir(destination.parent)
+    relative_project = Path(name)
+
+    verified = verify_bundle(root, relative_project, "cpython-310", "linux-x86_64")
+
+    assert verified.application.is_file()
+    assert not (destination.parent / "CANARY").exists()
+
+
+def test_selected_uv_executable_is_never_interpreted_by_a_shell(
+    locked_bundle, tmp_path, monkeypatch
+):
+    root, project = locked_bundle
+    references = [
+        {
+            "type": "distribution",
+            "url": f"https://files.pythonhosted.org/{wheel.name}",
+            "hashes": [{"alg": "SHA-256", "content": sha256_file(wheel)}],
+        }
+        for wheel in (root / "wheels").glob("*.whl")
+        if not wheel.name.startswith("insomnia_run-")
+    ]
+    export = json.dumps({"components": [{"externalReferences": references}]})
+    executable = tmp_path / "uv;touch CANARY"
+    executable.write_text(f"#!{sys.executable}\nprint({export!r})\n")
+    executable.chmod(0o700)
+    monkeypatch.chdir(tmp_path)
+
+    verified = verify_bundle(
+        root, project, "cpython-310", "linux-x86_64", uv=str(executable)
+    )
+
+    assert verified.application.is_file()
+    assert not (tmp_path / "CANARY").exists()
