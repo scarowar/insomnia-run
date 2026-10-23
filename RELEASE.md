@@ -37,6 +37,13 @@ The Python 3.15 test environment permits hash-locked PyYAML 6.0.3 source builds 
 - Verify `inso-provenance.intoto.jsonl` with `slsa-verifier` against `github.com/Kong/insomnia` and the requested version before adding bundled digests.
 - Run the updated binary on every supported automatic-install platform, including Rosetta on Apple Silicon.
 
+## Validate Release Bundles
+
+- Build bundles with the reviewed interpreter from `python-downloads.json`, matching the consumer's Python and platform identities on Linux x64, macOS Intel, and macOS ARM64.
+- Confirm build, assembly, and publication jobs install checksum-pinned `uv 0.13.1` with caching disabled; bundle validation also invokes uv.
+- Dispatch the Release workflow from `main` with `publish: false` for the signed release tag and exact tested commit. Confirm all three native bundles and the assembled candidate validate before publishing.
+- Consume each candidate bundle with the action on its matching platform and an empty dependency cache. A passing PR E2E run alone does not validate the assembled release candidate.
+
 ## Publish
 
 - Confirm **Settings → General → Releases → Enable release immutability** is enabled before dispatching the release workflow. This is a maintainer check; the workflow uses `GITHUB_TOKEN` and does not read the administration-only setting.

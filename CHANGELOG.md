@@ -27,6 +27,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Build release bundles with the consumer's reviewed Python distribution and install pinned uv in assembly and publication jobs.
 - Preserve completed evidence and report later script/process errors separately from failed assertions.
 - Mark incomplete runs without inventing request records or timings, and preserve native skip status.
 - Stop Inso descendant processes on timeout and retain trustworthy partial output.

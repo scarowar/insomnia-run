@@ -48,7 +48,7 @@ Unbundled Inso archives require a trusted `inso-sha256`; checksum discovery no l
 
 Optional `runtime-bundle` installation requires `runtime-bundle-sha256`, matching source/lock/Python/platform identity, and a valid hashed wheelhouse. It never silently switches from bundle to source mode.
 
-`python-version: system` keeps an existing Python 3.10+ interpreter. The explicit managed option is reviewed CPython `3.14.8`, not latest. Linux x64 and macOS support automatic installation; Apple Silicon still needs Rosetta for the official Inso binary. Linux ARM needs compatible provisioned tools; Windows is unsupported.
+`python-version: system` keeps an existing Python 3.10+ interpreter for source installation. Setting `runtime-bundle` automatically selects managed CPython `3.14.8`, including when `python-version` is `system`. The explicit managed option is reviewed CPython `3.14.8`, not latest. Linux x64 and macOS support automatic installation; Apple Silicon still needs Rosetta for the official Inso binary. Linux ARM needs compatible provisioned tools; Windows is unsupported.
 
 For offline installation, provision tools and caches or local archives/bundles, then set `offline-install: "true"`. This disables installer/cache network access, not API traffic from your collection or network access by comments/uploads. Dependency actions still need approved mirroring/allowlisting. See [enterprise requirements](reference/inputs.md#enterprise-runners).
 

@@ -63,7 +63,7 @@ Examples use `insomnia-export.yaml`. For legacy Git Sync data under `.insomnia/W
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `command` | Yes | | `collection` or `test` |
+| `command` | No | `collection` | `collection` or `test` |
 | `working-directory` | Yes | | Explicit YAML export path, or repository root for legacy Git Sync |
 | `identifier` | No | | Collection/test suite name or ID |
 | `environment` | No | | Insomnia environment to use |
@@ -90,6 +90,7 @@ Verified Inso archive caching (`cache-inso`) is enabled by default. Report uploa
 | `raw-file` | Redacted raw diagnostics path, only when explicitly enabled |
 | `total`, `passed`, `failed`, `skipped` | Assertion/test counts, empty if no report exists |
 | `requests` | Completed native request occurrences; empty when unknown |
+| `complete` | Whether the selected run completed; false for partial evidence, empty when no report exists |
 | `run-error` | Whether a report contains a structured execution/timeout/protocol error |
 | `comment-status`, `comment-id` | Comment publication outcome and known comment ID |
 | `exit-code` | `0` success, `1` assertion failures, `2` wrapper/config/report error, `3` Inso execution/timeout/protocol error |
