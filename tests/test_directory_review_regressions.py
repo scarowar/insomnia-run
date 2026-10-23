@@ -35,7 +35,8 @@ def mock_directory_metadata(monkeypatch, *, current_uid, directories):
 def test_root_owned_sticky_shared_temp_anchor_accepts_private_directory(
     tmp_path, monkeypatch
 ):
-    anchor = Path(tempfile.gettempdir()).resolve()
+    anchor = tmp_path.parent
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(anchor))
     monkeypatch.delenv("RUNNER_TEMP", raising=False)
     mock_directory_metadata(
         monkeypatch, current_uid=1001, directories=[(anchor, 0, 0o1777)]
@@ -51,7 +52,8 @@ def test_root_owned_sticky_shared_temp_anchor_accepts_private_directory(
 def test_nonroot_owned_sticky_writable_temp_anchor_is_rejected(
     tmp_path, monkeypatch, anchor_uid
 ):
-    anchor = Path(tempfile.gettempdir()).resolve()
+    anchor = tmp_path.parent
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(anchor))
     monkeypatch.delenv("RUNNER_TEMP", raising=False)
     mock_directory_metadata(
         monkeypatch, current_uid=1001, directories=[(anchor, anchor_uid, 0o1777)]
