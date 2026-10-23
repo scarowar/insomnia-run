@@ -889,29 +889,33 @@ class HttpResponse:
         self.status = status
         self.payload = payload
         self.read_sizes = []
+        self.closed = False
 
     def read(self, size):
         self.read_sizes.append(size)
         return self.payload[:size]
 
+    def close(self):
+        self.closed = True
 
-class HttpConnection:
+
+class HttpOpener:
     def __init__(self, response, error=None):
         self.response = response
         self.error = error
-        self.closed = False
         self.requests = []
 
-    def request(self, method, path, **kwargs):
-        self.requests.append((method, path, kwargs))
+    def open(self, request, *, timeout):
+        from urllib.error import HTTPError
+
+        self.requests.append((request, timeout))
         if self.error:
             raise self.error
-
-    def getresponse(self):
+        if self.response.status not in {200, 201}:
+            raise HTTPError(
+                request.full_url, self.response.status, "denied", {}, self.response
+            )
         return self.response
-
-    def close(self):
-        self.closed = True
 
 
 @pytest.mark.parametrize(
@@ -927,24 +931,28 @@ def test_https_adapter_is_bounded_and_does_not_follow_redirects(
     monkeypatch, status, payload
 ):
     response = HttpResponse(status, payload)
-    connection = HttpConnection(response)
+    opener = HttpOpener(response)
     constructors = []
 
-    def connect(host, *, timeout):
-        constructors.append((host, timeout))
-        return connection
+    def build(handler):
+        constructors.append(handler)
+        return opener
 
-    monkeypatch.setattr(publication.http.client, "HTTPSConnection", connect)
+    monkeypatch.setattr(publication, "build_opener", build)
     result = publication._https_transport(
         "GET",
         "https://api.acme.ghe.com/repos/a/b?per_page=100&page=1",
         {"Authorization": "Bearer synthetic"},
         None,
     )
-    assert constructors == [("api.acme.ghe.com", 15)]
-    assert len(connection.requests) == 1
-    assert connection.requests[0][1] == "/repos/a/b?per_page=100&page=1"
-    assert connection.closed
+    assert len(constructors) == 1
+    assert constructors[0].redirect_request(None, None, None, None, None, None) is None
+    assert len(opener.requests) == 1
+    request, timeout = opener.requests[0]
+    assert timeout == 15
+    assert request.full_url == "https://api.acme.ghe.com/repos/a/b?per_page=100&page=1"
+    assert request.get_header("Authorization") == "Bearer synthetic"
+    assert response.closed
     assert result.status == status
     if status in {200, 201}:
         assert result.data == json.loads(payload)
@@ -960,23 +968,20 @@ def test_https_adapter_is_bounded_and_does_not_follow_redirects(
     ids=["invalid-json", "oversized-json"],
 )
 def test_https_adapter_closes_after_bad_or_excessive_response(monkeypatch, payload):
-    connection = HttpConnection(HttpResponse(payload=payload))
-    monkeypatch.setattr(
-        publication.http.client, "HTTPSConnection", lambda *args, **kwargs: connection
-    )
+    response = HttpResponse(payload=payload)
+    opener = HttpOpener(response)
+    monkeypatch.setattr(publication, "build_opener", lambda *args: opener)
     with pytest.raises(ValueError):
         publication._https_transport("GET", "https://api.github.com/user", {}, None)
-    assert connection.closed
+    assert response.closed
 
 
-def test_https_adapter_closes_on_connection_failure(monkeypatch):
-    connection = HttpConnection(HttpResponse(), OSError("private payload"))
-    monkeypatch.setattr(
-        publication.http.client, "HTTPSConnection", lambda *args, **kwargs: connection
-    )
+def test_https_adapter_propagates_connection_failure(monkeypatch):
+    opener = HttpOpener(HttpResponse(), OSError("private payload"))
+    monkeypatch.setattr(publication, "build_opener", lambda *args: opener)
     with pytest.raises(OSError):
         publication._https_transport("GET", "https://api.github.com/user", {}, None)
-    assert connection.closed
+    assert len(opener.requests) == 1
 
 
 @pytest.fixture

@@ -1,16 +1,18 @@
 """Optional GitHub publication; callers supply already-redacted report content."""
 
 import hashlib
-import http.client
 import json
 import os
 import re
 from collections.abc import Callable, Iterable, Mapping
+from contextlib import closing
 from dataclasses import dataclass, field
 from itertools import islice
 from pathlib import Path
 from typing import Any, Literal, Protocol, TypeGuard
 from urllib.parse import urlsplit
+from urllib.error import HTTPError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .privacy import escape_workflow_command
 
@@ -144,23 +146,28 @@ def comment_marker(scope: CommentScope) -> str:
     return f"<!-- insomnia-run:comment:v1:{digest} -->"
 
 
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def _https_transport(
     method: str, url: str, headers: Mapping[str, str], body: bytes | None
 ) -> ApiResponse:
-    parsed = urlsplit(url)
-    connection = http.client.HTTPSConnection(parsed.netloc, timeout=15)
-    path = parsed.path + ("?" + parsed.query if parsed.query else "")
     try:
-        connection.request(method, path, body=body, headers=dict(headers))
-        response = connection.getresponse()
+        response = build_opener(_NoRedirect()).open(
+            Request(url, data=body, headers=dict(headers), method=method), timeout=15
+        )
+    except HTTPError as error:
+        error.close()
+        return ApiResponse(error.code, None)
+    with closing(response):
         if response.status not in {200, 201}:
             return ApiResponse(response.status, None)
         data = response.read(_MAX_RESPONSE_BYTES + 1)
         if len(data) > _MAX_RESPONSE_BYTES:
             raise ValueError("GitHub API response exceeded the size limit.")
         return ApiResponse(response.status, json.loads(data))
-    finally:
-        connection.close()
 
 
 def _positive_int(value: object) -> TypeGuard[int]:
