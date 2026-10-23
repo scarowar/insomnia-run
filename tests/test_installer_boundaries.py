@@ -8,6 +8,7 @@ import tarfile
 from urllib.error import HTTPError
 
 import pytest
+from http_fakes import ArchiveResponse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import install_runtime
@@ -206,7 +207,7 @@ def test_redirect_requires_explicit_destination_before_connection(
                     {"Location": "https://internal.example/archive"},
                     io.BytesIO(),
                 )
-            return io.BytesIO(b"archive")
+            return ArchiveResponse(b"archive")
 
     monkeypatch.setattr(install_runtime, "build_opener", lambda handler: Opener())
     with pytest.raises(ValueError, match="origin"):
@@ -484,7 +485,7 @@ def test_redirect_policy_and_auth_are_independent(
                 raise HTTPError(
                     request.full_url, 302, "Found", {"Location": redirect}, io.BytesIO()
                 )
-            return io.BytesIO(b"archive")
+            return ArchiveResponse(b"archive")
 
     monkeypatch.setattr(install_runtime, "build_opener", lambda handler: Opener())
     kwargs = dict(token=credential, origin=token_origin, download_origins=origins)

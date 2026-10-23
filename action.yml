@@ -51,7 +51,7 @@ inputs:
     description: "Forbid installer and cache network access. Requires provisioned tools and installation materials. Does not restrict collection HTTP traffic."
     default: "false"
   python-version:
-    description: "Use system Python (default) or the reviewed managed 3.14.8 build."
+    description: "Use system Python or the reviewed managed 3.14.8 build. Runtime bundles automatically select 3.14.8."
     default: "system"
   redact-values:
     description: "Additional sensitive values, one per line, to redact from published reports."
@@ -247,10 +247,14 @@ runs:
         INSOMNIA_RUN_UV_VERSION: "0.13.1"
         OFFLINE_INSTALL: ${{ inputs.offline-install }}
         PYTHON_VERSION: ${{ inputs.python-version }}
+        RUNTIME_BUNDLE: ${{ inputs.runtime-bundle }}
       run: |
         set -euo pipefail
         [[ "$OFFLINE_INSTALL" == "true" || "$OFFLINE_INSTALL" == "false" ]] || { echo "::error::offline-install must be true or false."; exit 1; }
         [[ "$PYTHON_VERSION" == "system" || "$PYTHON_VERSION" == "3.14.8" ]] || { echo "::error::python-version must be system or 3.14.8."; exit 1; }
+        if [[ -n "${RUNTIME_BUNDLE:-}" && "$PYTHON_VERSION" == "system" ]]; then
+          PYTHON_VERSION="3.14.8"
+        fi
         if command -v uv >/dev/null 2>&1 && [[ "$(uv --version | awk '{print $2}')" == "$INSOMNIA_RUN_UV_VERSION" ]]; then
           echo "needs-setup=false" >> "$GITHUB_OUTPUT"
         else
@@ -261,6 +265,7 @@ runs:
           esac
           echo "needs-setup=true" >> "$GITHUB_OUTPUT"
         fi
+        printf 'python-version=%s\n' "$PYTHON_VERSION" >> "$GITHUB_OUTPUT"
 
     - name: Setup uv
       if: steps.check-uv.outputs.needs-setup == 'true'
@@ -277,7 +282,7 @@ runs:
       id: python
       shell: bash
       env:
-        PYTHON_VERSION: ${{ inputs.python-version }}
+        PYTHON_VERSION: ${{ steps.check-uv.outputs.python-version }}
         OFFLINE_INSTALL: ${{ inputs.offline-install }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
@@ -298,26 +303,23 @@ runs:
           args=(python install "$target" --no-config --no-bin --install-dir "$install_dir" --python-downloads-json-url "${ACTION_PATH}/python-downloads.json")
           if [[ "$OFFLINE_INSTALL" == "true" ]]; then
             args+=(--offline)
-          else
-            args+=(--reinstall)
           fi
           uv "${args[@]}"
           python_bin="${install_dir}/${target}/bin/python3.14"
-          "$python_bin" -I -S "${ACTION_PATH}/scripts/managed_python.py" --target "$target" --install-dir "$install_dir" >/dev/null
         elif command -v python3 &> /dev/null; then
           python_bin="$(command -v python3)"
         else
           echo "::error::insomnia-run requires Python 3.10 or higher in PATH"
           exit 1
         fi
-        "$python_bin" - <<'EOF'
+        "$python_bin" -I - <<'EOF'
         import sys
         if sys.version_info < (3, 10):
             print("::error::insomnia-run requires Python 3.10 or higher")
             sys.exit(1)
         print(f"Using Python {sys.version.split()[0]}")
         EOF
-        printf 'executable=%s\n' "$("$python_bin" -c 'import sys; print(sys.executable)')" >> "$GITHUB_OUTPUT"
+        printf 'executable=%s\n' "$("$python_bin" -I -c 'import sys; print(sys.executable)')" >> "$GITHUB_OUTPUT"
 
     - name: Validate Inso Version
       shell: bash
@@ -424,6 +426,7 @@ runs:
         "$PYTHON_BIN" "${ACTION_PATH}/scripts/verify_inso_release.py" "${args[@]}"
 
     - name: Verify Inso CLI
+      id: verify-inso
       shell: bash
       env:
         INSO_VERSION: ${{ inputs.inso-version }}
@@ -455,6 +458,7 @@ runs:
           exit 1
         fi
         echo "$version_output"
+        printf 'version=%s\n' "$installed_version" >> "$GITHUB_OUTPUT"
 
     - name: Save verified Inso archive
       if: inputs.offline-install != 'true' && inputs.cache-inso == 'true' && steps.detect-inso.outputs.found != 'true' && steps.inso-cache.outputs.cache-hit != 'true' && github.event_name != 'issue_comment' && github.event_name != 'pull_request_target'
@@ -494,6 +498,7 @@ runs:
       shell: bash
       env:
         INSOMNIA_RUN_VENV: ${{ steps.install-runtime.outputs.venv }}
+        INSOMNIA_RUN_INSO_VERSION: ${{ steps.verify-inso.outputs.version }}
         USE_INSTALLED_INSO: ${{ steps.detect-inso.outputs.found != 'true' }}
         EXECUTION_TIMEOUT: ${{ inputs.execution-timeout }}
         COMMAND: ${{ inputs.command }}

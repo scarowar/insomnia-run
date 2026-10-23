@@ -2,7 +2,7 @@
 
 import argparse
 from pathlib import Path
-import subprocess
+import subprocess  # nosec B404 # maintainer release tools, no shell invocation
 import tempfile
 
 
@@ -19,7 +19,7 @@ prerelease = false
 
 
 def prepare(root: Path, *, dry_run: bool = False) -> None:
-    status = subprocess.run(
+    status = subprocess.run(  # nosec B603, B607 # fixed git status arguments
         ["git", "status", "--porcelain"],
         cwd=root,
         check=True,
@@ -52,9 +52,9 @@ def prepare(root: Path, *, dry_run: bool = False) -> None:
                 "--skip-build",
             ]
         )
-        subprocess.run(command, cwd=root, check=True)
+        subprocess.run(command, cwd=root, check=True)  # nosec B603 # pinned semantic-release command
     if not dry_run:
-        subprocess.run(["uv", "lock", "--offline"], cwd=root, check=True)
+        subprocess.run(["uv", "lock", "--offline"], cwd=root, check=True)  # nosec B603, B607 # offline lock refresh
 
 
 def main() -> None:

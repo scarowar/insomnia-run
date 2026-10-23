@@ -43,7 +43,7 @@ repos:
   rev: 1.9.4
   hooks:
   - id: bandit
-    args: [ -r, src/insomnia_run ]
+    args: [ -r, src/insomnia_run, scripts ]
     pass_filenames: false
 
 - repo: https://github.com/rhysd/actionlint

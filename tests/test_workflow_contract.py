@@ -77,6 +77,16 @@ def test_jobs_start_with_harden_runner_and_have_timeouts():
                 continue
             assert job.get("timeout-minutes"), f"{path}:{job_name} missing timeout"
             assert job["timeout-minutes"] <= 25, f"{path}:{job_name} timeout too high"
+            if path.name == "e2e-test.yml" and job_name == "test-container":
+                # Hosted container jobs cannot run the host-level security agent.
+                assert re.fullmatch(
+                    r"python:[^@]+@sha256:[0-9a-f]{64}", job["container"]["image"]
+                )
+                assert "options" not in job["container"]
+                assert job.get("permissions", workflow["permissions"]) == {
+                    "contents": "read"
+                }
+                continue
             assert (
                 steps[0].get("uses", "").startswith("step-security/harden-runner@")
             ), f"{path}:{job_name} does not start with Harden-Runner"

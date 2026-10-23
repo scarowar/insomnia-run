@@ -94,7 +94,7 @@ Report destinations in Actions must be below the workspace or runner temporary d
 | `download-origins` | Empty | Additional exact HTTPS origins authorized for Inso/runtime-bundle downloads and redirects, one per line. No wildcards, paths, or queries. |
 | `github-com-token` | Empty | Public GitHub download credential. On GitHub.com the workflow token is the fallback; enterprise instance tokens are not forwarded. |
 | `offline-install` | `false` | Forbid installer/cache network access. Requires provisioned tools and local installation materials. |
-| `python-version` | `system` | Use system Python 3.10+, or select the reviewed managed CPython `3.14.8` build. |
+| `python-version` | `system` | Use system Python 3.10+, or select the reviewed managed CPython `3.14.8` build. Setting `runtime-bundle` automatically selects `3.14.8` to match release bundles. |
 
 ## Action Outputs
 

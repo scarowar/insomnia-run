@@ -5,17 +5,18 @@ from dataclasses import dataclass
 import hashlib
 import gzip
 import json
+from itertools import chain
 import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
 import stat
-import subprocess
+import subprocess  # nosec B404 # bundle builds invoke the selected uv executable
 import sys
 import sysconfig
 import tarfile
 import tempfile
-from typing import BinaryIO, Callable, Iterator
+from typing import IO, BinaryIO, Callable, Iterator
 import zipfile
 from urllib.parse import unquote, urlsplit
 
@@ -67,8 +68,7 @@ def _anchor_candidates() -> list[Path]:
     return list(dict.fromkeys(candidates))
 
 
-@contextmanager
-def open_directory(path: Path, *, create: bool = False) -> Iterator[int]:
+def _directory_anchor(path: Path) -> tuple[Path, Path, bool]:
     absolute = Path(os.path.abspath(path))
     roots = _anchor_candidates()
     root = Path(absolute.anchor)
@@ -79,24 +79,34 @@ def open_directory(path: Path, *, create: bool = False) -> Iterator[int]:
             root = candidate.resolve(strict=True)
             relative = absolute.relative_to(candidate)
             break
+    temporary_anchor = root in {candidate.resolve() for candidate in roots}
+    return root, relative, temporary_anchor
+
+
+def _open_child_directory(parent: int, name: str, flags: int, *, create: bool) -> int:
+    try:
+        return os.open(name, flags, dir_fd=parent)
+    except FileNotFoundError:
+        if not create:
+            raise
+        os.mkdir(name, mode=0o700, dir_fd=parent)
+        return os.open(name, flags, dir_fd=parent)
+
+
+@contextmanager
+def open_directory(path: Path, *, create: bool = False) -> Iterator[int]:
+    root, relative, temporary_anchor = _directory_anchor(path)
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     descriptor = os.open(root, flags)
     try:
-        temporary_anchor = root in {candidate.resolve() for candidate in roots}
         runner_temp = os.environ.get("RUNNER_TEMP")
         runner_anchor = bool(runner_temp and root == Path(runner_temp).resolve())
         _check_directory_permissions(
             descriptor, temporary_anchor=temporary_anchor, runner_anchor=runner_anchor
         )
-        system_walk = root == Path(absolute.anchor)
+        system_walk = root == Path(path.absolute().anchor)
         for index, part in enumerate(relative.parts):
-            try:
-                child = os.open(part, flags, dir_fd=descriptor)
-            except FileNotFoundError:
-                if not create:
-                    raise
-                os.mkdir(part, mode=0o700, dir_fd=descriptor)
-                child = os.open(part, flags, dir_fd=descriptor)
+            child = _open_child_directory(descriptor, part, flags, create=create)
             os.close(descriptor)
             descriptor = child
             _check_directory_permissions(
@@ -153,7 +163,7 @@ def _member_path(name: str) -> PurePosixPath:
     return path
 
 
-def _write_member(stream: BinaryIO, destination: Path, size: int) -> None:
+def _write_member(stream: IO[bytes], destination: Path, size: int) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     with destination.open("xb") as output:
         os.chmod(destination, 0o600)
@@ -415,7 +425,7 @@ def _requirement_hashes(requirements: Path) -> dict[tuple[str, str], str]:
 
 
 def verify_bundle(
-    root: Path, project: Path, python_tag: str, platform_tag: str
+    root: Path, project: Path, python_tag: str, platform_tag: str, *, uv: str = "uv"
 ) -> VerifiedBundle:
     manifest = _load_manifest(root)
     if manifest["source_sha256"] != source_digest(project) or manifest[
@@ -439,7 +449,72 @@ def verify_bundle(
     wheels = _wheel_hashes(files)
     if _requirement_hashes(requirements) != wheels:
         raise ValueError("Runtime requirements do not match the wheelhouse")
+    _verify_locked_wheels(project, files, application, uv)
     return VerifiedBundle(root, requirements, root / application)
+
+
+def _verify_locked_wheels(
+    project: Path, files: dict, application: str, uv: str
+) -> None:
+    dependencies = {
+        (PurePosixPath(name).name, digest)
+        for name, digest in files.items()
+        if name.endswith(".whl") and name != application
+    }
+    if not dependencies:
+        return
+    result = subprocess.run(  # nosec B603 # frozen offline metadata export, no shell
+        [
+            uv,
+            "--offline",
+            "export",
+            "--frozen",
+            "--no-dev",
+            "--no-emit-project",
+            "--python",
+            sys.executable,
+            "--format",
+            "cyclonedx1.5",
+            "--preview-features",
+            "sbom-export",
+            "--project",
+            str(project),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=tool_environment(offline=True),
+    )
+    exported = json.loads(result.stdout)
+    references = chain.from_iterable(
+        component.get("externalReferences", [])
+        for component in exported.get("components", [])
+    )
+    authorized = {
+        (
+            PurePosixPath(unquote(urlsplit(reference["url"]).path)).name,
+            digest["content"],
+        )
+        for reference in references
+        if reference.get("type") == "distribution"
+        for digest in reference.get("hashes", [])
+        if digest.get("alg") == "SHA-256"
+    }
+    if not dependencies <= authorized:
+        raise ValueError("Runtime dependency wheel is not authorized by uv.lock")
+
+
+def tool_environment(*, offline: bool = False) -> dict[str, str]:
+    environment = dict(os.environ, UV_PYTHON_DOWNLOADS="never")
+    for name in (
+        "INSOMNIA_RUN_DOWNLOAD_TOKEN",
+        "INPUT_DOWNLOAD_TOKEN",
+        "INSO_DOWNLOAD_TOKEN",
+    ):
+        environment.pop(name, None)
+    if offline:
+        environment["UV_OFFLINE"] = "1"
+    return environment
 
 
 def _select_locked_wheel(requirement, lock: dict, supported: dict) -> tuple[str, dict]:
@@ -479,26 +554,121 @@ def _select_locked_wheel(requirement, lock: dict, supported: dict) -> tuple[str,
     return filename, selected
 
 
+def _download_dependency_wheels(selection: str, lock: dict, wheels: Path) -> None:
+    from packaging.requirements import Requirement
+    from packaging.tags import sys_tags
+    from install_runtime import download_archive
+
+    supported = {tag: rank for rank, tag in enumerate(sys_tags())}
+    for line in selection.splitlines():
+        if not line.strip():
+            continue
+        requirement = Requirement(line)
+        if requirement.marker and not requirement.marker.evaluate():
+            continue
+        filename, selected = _select_locked_wheel(requirement, lock, supported)
+        wheel_path = wheels / filename
+        if PurePosixPath(filename).name != filename or "\\" in filename:
+            raise ValueError("Invalid locked wheel filename")
+        download_archive(
+            selected["url"],
+            wheel_path,
+            download_origins=("https://files.pythonhosted.org",),
+        )
+        if sha256_file(wheel_path) != require_digest(
+            selected["hash"].removeprefix("sha256:")
+        ):
+            raise ValueError("Locked dependency wheel failed SHA-256 verification")
+
+
+def _build_application_wheel(
+    project: Path, wheels: Path, uv: str, environment: dict[str, str]
+) -> Path:
+    build_dir = wheels.parent / "application"
+    subprocess.run(  # nosec B603 # first-party build with fixed uv options
+        [
+            uv,
+            "build",
+            "--wheel",
+            "--project",
+            str(project),
+            "--out-dir",
+            str(build_dir),
+            "--python",
+            sys.executable,
+            "--no-python-downloads",
+        ],
+        check=True,
+        env=environment,
+    )
+    application_wheels = list(build_dir.glob("insomnia_run-*.whl"))
+    if len(application_wheels) != 1:
+        raise ValueError("Bundle build must produce exactly one application wheel")
+    application = wheels / application_wheels[0].name
+    shutil.copyfile(application_wheels[0], application)
+    shutil.rmtree(build_dir)
+    return application
+
+
+def _write_bundle_metadata(
+    root: Path, application: Path, source_hash: str, lock_hash: str
+) -> dict:
+    from packaging.utils import parse_wheel_filename
+
+    wheels = sorted((root / "wheels").iterdir())
+    requirements = []
+    for wheel in wheels:
+        name, version, _, _ = parse_wheel_filename(wheel.name)
+        requirements.append(f"{name}=={version} --hash=sha256:{sha256_file(wheel)}\n")
+    (root / REQUIREMENTS_NAME).write_text("".join(requirements), encoding="utf-8")
+    files = {
+        path.relative_to(root).as_posix(): sha256_file(path)
+        for path in [root / REQUIREMENTS_NAME, *wheels]
+    }
+    manifest = {
+        "schema_version": 1,
+        "source_sha256": source_hash,
+        "lock_sha256": lock_hash,
+        "python_tag": sys.implementation.cache_tag,
+        "platform": sysconfig.get_platform(),
+        "application": application.relative_to(root).as_posix(),
+        "files": files,
+    }
+    (root / MANIFEST_NAME).write_text(
+        json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+    )
+    return files
+
+
+def _archive_bundle(root: Path, files: dict, output: Path) -> Path:
+    output.mkdir(parents=True, exist_ok=True)
+    filename = f"insomnia-run-runtime-{sys.implementation.cache_tag}-{sysconfig.get_platform()}.tar.gz"
+    destination = output / filename
+    with (
+        destination.open("xb") as stream,
+        gzip.GzipFile(filename="", mode="wb", fileobj=stream, mtime=0) as compressed,
+        tarfile.open(fileobj=compressed, mode="w") as archive,
+    ):
+        for name in sorted([MANIFEST_NAME, *files]):
+            path = root / name
+            member = tarfile.TarInfo(name)
+            member.size = path.stat().st_size
+            member.mode = 0o600
+            with path.open("rb") as source:
+                archive.addfile(member, source)
+    return destination
+
+
 def build_bundle(project: Path, output: Path, *, uv: str = "uv") -> Path:
     """Build a native wheelhouse from the frozen runtime dependency selection."""
     import tomllib
-    from packaging.requirements import Requirement
-    from packaging.tags import sys_tags
-    from packaging.utils import parse_wheel_filename
-    from install_runtime import download_archive
 
     project = project.resolve(strict=True)
     source_hash = source_digest(project)
     lock_hash = sha256_file(project / LOCK_NAME)
     lock = tomllib.loads((project / LOCK_NAME).read_text(encoding="utf-8"))
-    environment = dict(os.environ, UV_PYTHON_DOWNLOADS="never")
-    for name in (
-        "INSOMNIA_RUN_DOWNLOAD_TOKEN",
-        "INPUT_DOWNLOAD_TOKEN",
-        "INSO_DOWNLOAD_TOKEN",
-    ):
-        environment.pop(name, None)
-    selection = subprocess.run(
+    environment = tool_environment()
+    selection = subprocess.run(  # nosec B603 # frozen export from the selected project
         [
             uv,
             "export",
@@ -518,95 +688,14 @@ def build_bundle(project: Path, output: Path, *, uv: str = "uv") -> Path:
         text=True,
         env=environment,
     ).stdout
-    supported = {tag: rank for rank, tag in enumerate(sys_tags())}
     with tempfile.TemporaryDirectory(prefix="insomnia-bundle-build-") as scratch:
         root = Path(scratch)
         wheels = root / "wheels"
         wheels.mkdir(mode=0o700)
-        for line in selection.splitlines():
-            if not line.strip():
-                continue
-            requirement = Requirement(line)
-            if requirement.marker and not requirement.marker.evaluate():
-                continue
-            filename, selected = _select_locked_wheel(requirement, lock, supported)
-            wheel_path = wheels / filename
-            if PurePosixPath(filename).name != filename or "\\" in filename:
-                raise ValueError("Invalid locked wheel filename")
-            download_archive(
-                selected["url"],
-                wheel_path,
-                download_origins=("https://files.pythonhosted.org",),
-            )
-            if sha256_file(wheel_path) != require_digest(
-                selected["hash"].removeprefix("sha256:")
-            ):
-                raise ValueError("Locked dependency wheel failed SHA-256 verification")
-        build_dir = root / "application"
-        subprocess.run(
-            [
-                uv,
-                "build",
-                "--wheel",
-                "--project",
-                str(project),
-                "--out-dir",
-                str(build_dir),
-                "--python",
-                sys.executable,
-                "--no-python-downloads",
-            ],
-            check=True,
-            env=environment,
-        )
-        application_wheels = list(build_dir.glob("insomnia_run-*.whl"))
-        if len(application_wheels) != 1:
-            raise ValueError("Bundle build must produce exactly one application wheel")
-        application = wheels / application_wheels[0].name
-        shutil.copyfile(application_wheels[0], application)
-        requirements = []
-        for wheel in sorted(wheels.iterdir()):
-            name, version, _, _ = parse_wheel_filename(wheel.name)
-            requirements.append(
-                f"{name}=={version} --hash=sha256:{sha256_file(wheel)}\n"
-            )
-        (root / REQUIREMENTS_NAME).write_text("".join(requirements), encoding="utf-8")
-        files = {
-            path.relative_to(root).as_posix(): sha256_file(path)
-            for path in [root / REQUIREMENTS_NAME, *sorted(wheels.iterdir())]
-        }
-        manifest = {
-            "schema_version": 1,
-            "source_sha256": source_hash,
-            "lock_sha256": lock_hash,
-            "python_tag": sys.implementation.cache_tag,
-            "platform": sysconfig.get_platform(),
-            "application": application.relative_to(root).as_posix(),
-            "files": files,
-        }
-        (root / MANIFEST_NAME).write_text(
-            json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8"
-        )
-        # The build scratch directory is not itself a payload member.
-        shutil.rmtree(build_dir)
+        _download_dependency_wheels(selection, lock, wheels)
+        application = _build_application_wheel(project, wheels, uv, environment)
+        files = _write_bundle_metadata(root, application, source_hash, lock_hash)
         verify_bundle(
-            root, project, sys.implementation.cache_tag, sysconfig.get_platform()
+            root, project, sys.implementation.cache_tag, sysconfig.get_platform(), uv=uv
         )
-        output.mkdir(parents=True, exist_ok=True)
-        filename = f"insomnia-run-runtime-{sys.implementation.cache_tag}-{sysconfig.get_platform()}.tar.gz"
-        destination = output / filename
-        with (
-            destination.open("xb") as stream,
-            gzip.GzipFile(
-                filename="", mode="wb", fileobj=stream, mtime=0
-            ) as compressed,
-            tarfile.open(fileobj=compressed, mode="w") as archive,
-        ):
-            for name in sorted([MANIFEST_NAME, *files]):
-                path = root / name
-                member = tarfile.TarInfo(name)
-                member.size = path.stat().st_size
-                member.mode = 0o600
-                with path.open("rb") as source:
-                    archive.addfile(member, source)
-        return destination
+        return _archive_bundle(root, files, output)

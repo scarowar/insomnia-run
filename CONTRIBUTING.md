@@ -17,10 +17,10 @@ The first command installs locked dependency wheels. The second builds only this
 Run checks before submitting a pull request:
 
 ```sh
-uv run --frozen --no-sync --no-build pytest --cov=insomnia_run --cov-fail-under=95
+uv run --frozen --no-sync --no-build pytest --cov=insomnia_run --cov=scripts --cov-fail-under=95
 uv run --frozen --no-sync --no-build pre-commit run --all-files
 uv run --frozen --no-sync --no-build pre-commit run gitleaks-ci --hook-stage manual --all-files
-uv run --frozen --no-sync --no-build mypy src/insomnia_run --ignore-missing-imports
+uv run --frozen --no-sync --no-build mypy src/insomnia_run scripts --ignore-missing-imports
 uv run --frozen --no-sync --no-build zensical build --strict
 ```
 

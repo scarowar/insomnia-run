@@ -61,7 +61,7 @@ jobs:
           uv run --frozen --no-sync --no-build pip-audit --strict -r /tmp/insomnia-run-pip-audit-requirements.txt
 
       - name: Scan Python security issues
-        run: uv run --frozen --no-sync --no-build bandit -r src/insomnia_run
+        run: uv run --frozen --no-sync --no-build bandit -r src/insomnia_run scripts
 
       - name: Scan workflows with zizmor
         run: uv run --frozen --no-sync --no-build zizmor --offline .

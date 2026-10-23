@@ -113,4 +113,5 @@ def test_installer_cli_hides_malformed_url_credentials(
     if script == "verify_inso_release.py":
         assert "Downloads require an unambiguous HTTPS URL" in result.stderr
     else:
-        assert "Runtime installation failed: ValueError" in result.stderr
+        assert "Runtime installation failed:" in result.stderr
+        assert "Downloads require an unambiguous HTTPS URL" in result.stderr

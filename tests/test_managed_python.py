@@ -1,13 +1,11 @@
-"""Reviewed Python bootstrap metadata and post-install identity checks."""
+"""Exercise the pinned manifest and uv bootstrap without host Python."""
 
-import copy
 import hashlib
 import json
 import os
 from pathlib import Path
 import platform
 import re
-import runpy
 import shutil
 import subprocess
 import sys
@@ -17,9 +15,6 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
-
-import managed_python  # noqa: E402
 
 
 REVIEWED = {
@@ -39,7 +34,7 @@ REVIEWED = {
 
 
 def test_manifest_contains_only_reviewed_builds():
-    entries = managed_python.load_manifest(ROOT / "python-downloads.json")
+    entries = json.loads((ROOT / "python-downloads.json").read_text())
     assert entries.keys() == REVIEWED.keys()
     for key, (triple, digest) in REVIEWED.items():
         assert entries[key]["sha256"] == digest
@@ -55,285 +50,6 @@ def test_manifest_checksum_matches_pre_python_bootstrap_pin():
     ).hexdigest() == (
         "542bf79edef9770b216e379066743f256dda36f1374c60106e7d30d9ac1c86a8"
     )
-
-
-@pytest.mark.parametrize("kind", ["oversized", "symlink"])
-def test_manifest_rejects_unsafe_file(tmp_path, kind):
-    path = tmp_path / "metadata.json"
-    if kind == "symlink":
-        path.symlink_to(ROOT / "python-downloads.json")
-    else:
-        path.write_bytes((ROOT / "python-downloads.json").read_bytes() + b" " * 65536)
-    with pytest.raises((OSError, ValueError)):
-        managed_python.load_manifest(path)
-
-
-def test_cli_rejects_manifest_override(tmp_path):
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-I",
-            "-S",
-            str(ROOT / "scripts/managed_python.py"),
-            "--manifest",
-            str(ROOT / "python-downloads.json"),
-            "--target",
-            "cpython-3.14.8-linux-x86_64-gnu",
-            "--install-dir",
-            str(tmp_path),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 2
-    assert "unrecognized arguments: --manifest" in result.stderr
-
-
-@pytest.mark.parametrize("kind", ["fifo", "directory"])
-def test_manifest_rejects_nonregular_files_without_blocking(tmp_path, kind):
-    path = tmp_path / "metadata.json"
-    if kind == "fifo":
-        os.mkfifo(path)
-    else:
-        path.mkdir()
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-I",
-            "-S",
-            "-c",
-            "import runpy, sys\n"
-            "from pathlib import Path\n"
-            "module = runpy.run_path(sys.argv[1])\n"
-            "try:\n"
-            "    module['load_manifest'](Path(sys.argv[2]))\n"
-            "except (OSError, ValueError):\n"
-            "    sys.exit(0)\n"
-            "sys.exit(1)\n",
-            str(ROOT / "scripts/managed_python.py"),
-            str(path),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=5,
-    )
-    assert result.returncode == 0, result.stderr
-
-
-def test_manifest_accepts_exact_size_limit(tmp_path):
-    content = (ROOT / "python-downloads.json").read_bytes()
-    path = tmp_path / "metadata.json"
-    path.write_bytes(content + b" " * (65536 - len(content)))
-    assert managed_python.load_manifest(path).keys() == REVIEWED.keys()
-
-
-@pytest.mark.parametrize(
-    "field,value",
-    [
-        ("sha256", None),
-        ("sha256", ""),
-        ("sha256", "a" * 63),
-        ("sha256", "g" * 64),
-        ("major", True),
-        ("patch", 9),
-        ("variant", "freethreaded"),
-        ("prerelease", "rc1"),
-        ("build", "20261014"),
-        ("arch", {"family": "x86_64", "variant": "v3"}),
-        ("url", "https://mirror.example/python.tar.gz"),
-    ],
-)
-def test_manifest_rejects_unreviewed_entry(tmp_path, field, value):
-    data = json.loads((ROOT / "python-downloads.json").read_text())
-    data["cpython-3.14.8-linux-x86_64-gnu"][field] = value
-    path = tmp_path / "metadata.json"
-    path.write_text(json.dumps(data))
-    with pytest.raises(ValueError, match="reviewed"):
-        managed_python.load_manifest(path)
-
-
-@pytest.mark.parametrize("change", ["missing", "extra", "missing-hash", "extra-field"])
-def test_manifest_rejects_incomplete_or_expanded_catalog(tmp_path, change):
-    data = json.loads((ROOT / "python-downloads.json").read_text())
-    key = "cpython-3.14.8-linux-x86_64-gnu"
-    if change == "missing":
-        del data[key]
-    elif change == "extra":
-        data["cpython-3.15.0-linux-x86_64-gnu"] = copy.deepcopy(data[key])
-    elif change == "missing-hash":
-        del data[key]["sha256"]
-    else:
-        data[key]["extra"] = "unexpected"
-    path = tmp_path / "metadata.json"
-    path.write_text(json.dumps(data))
-    with pytest.raises(ValueError, match="reviewed"):
-        managed_python.load_manifest(path)
-
-
-@pytest.mark.parametrize("content", ["[]", "null", "{}", "not json"])
-def test_manifest_rejects_invalid_documents(tmp_path, content):
-    path = tmp_path / "metadata.json"
-    path.write_text(content)
-    with pytest.raises(ValueError):
-        managed_python.load_manifest(path)
-
-
-def test_manifest_rejects_non_object_entry(tmp_path):
-    data = json.loads((ROOT / "python-downloads.json").read_text())
-    data["cpython-3.14.8-linux-x86_64-gnu"] = None
-    path = tmp_path / "metadata.json"
-    path.write_text(json.dumps(data))
-    with pytest.raises(ValueError, match="reviewed"):
-        managed_python.load_manifest(path)
-
-
-def test_manifest_rejects_duplicate_json_keys(tmp_path):
-    path = tmp_path / "metadata.json"
-    content = (ROOT / "python-downloads.json").read_text()
-    path.write_text(content.replace('"patch": 8,', '"patch": 9, "patch": 8,', 1))
-    with pytest.raises(ValueError, match="Duplicate"):
-        managed_python.load_manifest(path)
-
-
-def installed_python(tmp_path, monkeypatch):
-    key = "cpython-3.14.8-linux-x86_64-gnu"
-    executable = tmp_path / key / "bin" / "python3.14"
-    executable.parent.mkdir(parents=True)
-    executable.touch()
-    monkeypatch.setattr(managed_python.sys, "executable", str(executable))
-    monkeypatch.setattr(managed_python.sys, "version_info", (3, 14, 8, "final", 0))
-    monkeypatch.setattr(managed_python.sysconfig, "get_config_var", lambda name: 0)
-    return key, executable
-
-
-def test_verify_running_interpreter_checks_exact_installation(tmp_path, monkeypatch):
-    key, executable = installed_python(tmp_path, monkeypatch)
-    assert managed_python.verify_interpreter(tmp_path, key) == executable.resolve()
-
-
-@pytest.mark.parametrize(
-    "version", [(3, 14, 7, "final", 0), (3, 14, 8, "candidate", 1)]
-)
-def test_verify_interpreter_rejects_wrong_version(tmp_path, monkeypatch, version):
-    key, _ = installed_python(tmp_path, monkeypatch)
-    monkeypatch.setattr(managed_python.sys, "version_info", version)
-    with pytest.raises(ValueError, match="CPython 3.14.8"):
-        managed_python.verify_interpreter(tmp_path, key)
-
-
-def test_verify_interpreter_rejects_freethreaded_build(tmp_path, monkeypatch):
-    key, _ = installed_python(tmp_path, monkeypatch)
-    monkeypatch.setattr(managed_python.sysconfig, "get_config_var", lambda name: 1)
-    with pytest.raises(ValueError, match="CPython 3.14.8"):
-        managed_python.verify_interpreter(tmp_path, key)
-
-
-def test_verify_interpreter_rejects_other_implementation(tmp_path, monkeypatch):
-    key, _ = installed_python(tmp_path, monkeypatch)
-    monkeypatch.setattr(managed_python.sys.implementation, "name", "pypy")
-    with pytest.raises(ValueError, match="CPython 3.14.8"):
-        managed_python.verify_interpreter(tmp_path, key)
-
-
-@pytest.mark.parametrize("arch", ["x86_64", "aarch64"])
-def test_macos_uses_canonical_installation_directory(tmp_path, monkeypatch, arch):
-    key = f"cpython-3.14.8-macos-{arch}-none"
-    executable = tmp_path / key / "bin/python3.14"
-    executable.parent.mkdir(parents=True)
-    executable.touch()
-    monkeypatch.setattr(managed_python.sys, "executable", str(executable))
-    monkeypatch.setattr(managed_python.sys, "version_info", (3, 14, 8, "final", 0))
-    monkeypatch.setattr(managed_python.sysconfig, "get_config_var", lambda name: 0)
-    assert managed_python.verify_interpreter(tmp_path, key) == executable.resolve()
-
-
-def test_verify_interpreter_rejects_different_installation(tmp_path, monkeypatch):
-    key, _ = installed_python(tmp_path, monkeypatch)
-    other = tmp_path / "other-python"
-    other.touch()
-    monkeypatch.setattr(managed_python.sys, "executable", str(other))
-    with pytest.raises(ValueError, match="installation"):
-        managed_python.verify_interpreter(tmp_path, key)
-
-
-def test_verify_interpreter_rejects_symlink_escape(tmp_path, monkeypatch):
-    key, executable = installed_python(tmp_path, monkeypatch)
-    outside = tmp_path / "outside"
-    outside.touch()
-    executable.unlink()
-    executable.symlink_to(outside)
-    with pytest.raises(ValueError, match="installation"):
-        managed_python.verify_interpreter(tmp_path, key)
-
-
-def test_verify_interpreter_rejects_unknown_target(tmp_path):
-    with pytest.raises(ValueError, match="reviewed"):
-        managed_python.verify_interpreter(tmp_path, "../../outside")
-
-
-def test_cli_failure_is_nonzero_without_traceback(tmp_path):
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(ROOT / "scripts/managed_python.py"),
-            "--target",
-            "cpython-3.14.8-linux-x86_64-gnu",
-            "--install-dir",
-            str(tmp_path),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert completed.returncode == 1
-    assert "Managed Python verification failed" in completed.stderr
-    assert "Traceback" not in completed.stderr
-
-
-def test_cli_success_prints_only_verified_path(tmp_path, monkeypatch, capsys):
-    key, executable = installed_python(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["managed_python.py", "--target", key, "--install-dir", str(tmp_path)],
-    )
-    managed_python.main()
-    assert capsys.readouterr().out.strip() == str(executable.resolve())
-
-
-def test_cli_failure_is_bounded(tmp_path, monkeypatch, capsys):
-    key, _ = installed_python(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        managed_python, "MANIFEST", tmp_path / "missing\n::error::injected"
-    )
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "managed_python.py",
-            "--target",
-            key,
-            "--install-dir",
-            str(tmp_path),
-        ],
-    )
-    with pytest.raises(SystemExit) as error:
-        managed_python.main()
-    assert error.value.code == 1
-    assert capsys.readouterr().err == "Managed Python verification failed.\n"
-
-
-def test_script_entry_point(tmp_path, monkeypatch, capsys):
-    key, executable = installed_python(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["managed_python.py", "--target", key, "--install-dir", str(tmp_path)],
-    )
-    runpy.run_path(str(ROOT / "scripts/managed_python.py"), run_name="__main__")
-    assert capsys.readouterr().out.strip() == str(executable.resolve())
 
 
 @pytest.fixture
@@ -375,7 +91,9 @@ def test_real_uv_catalog_has_only_reviewed_canonical_keys(uv_binary):
     completed = uv_catalog(uv_binary, ROOT / "python-downloads.json")
     assert completed.returncode == 0, completed.stderr
     entries = json.loads(completed.stdout)
-    assert {entry["key"] for entry in entries} == managed_python.TARGETS
+    assert {entry["key"] for entry in entries} == {
+        key.replace("-darwin-", "-macos-") for key in REVIEWED
+    }
 
 
 def test_real_uv_does_not_fallback_to_builtin_catalog(uv_binary, tmp_path):
@@ -386,7 +104,9 @@ def test_real_uv_does_not_fallback_to_builtin_catalog(uv_binary, tmp_path):
     assert json.loads(completed.stdout) == []
 
 
-def test_real_uv_optional_hash_requires_our_preflight(uv_binary, tmp_path):
+def test_real_uv_catalog_accepts_missing_hash_without_verifying_metadata(
+    uv_binary, tmp_path
+):
     data = json.loads((ROOT / "python-downloads.json").read_text())
     del data["cpython-3.14.8-linux-x86_64-gnu"]["sha256"]
     manifest = tmp_path / "no-hash.json"
@@ -394,8 +114,6 @@ def test_real_uv_optional_hash_requires_our_preflight(uv_binary, tmp_path):
     completed = uv_catalog(uv_binary, manifest)
     assert completed.returncode == 0, completed.stderr
     assert len(json.loads(completed.stdout)) == 3
-    with pytest.raises(ValueError, match="reviewed"):
-        managed_python.load_manifest(manifest)
 
 
 def test_real_uv_invalid_hash_fails_without_catalog_fallback(uv_binary, tmp_path):
@@ -450,11 +168,8 @@ def test_actual_action_manifest_pin_matches_file(action_python_step):
 @pytest.fixture
 def bootstrap_environment(tmp_path):
     action = tmp_path / "action with spaces"
-    (action / "scripts").mkdir(parents=True)
+    action.mkdir(parents=True)
     shutil.copyfile(ROOT / "python-downloads.json", action / "python-downloads.json")
-    shutil.copyfile(
-        ROOT / "scripts/managed_python.py", action / "scripts/managed_python.py"
-    )
     tools = tmp_path / "tools"
     tools.mkdir()
     for name in ("awk", "sha256sum", "shasum"):
@@ -535,13 +250,13 @@ def test_actual_action_uses_canonical_target_and_private_manifest(
     assert "--no-bin" in args
 
 
-def test_online_action_rechecks_archive_instead_of_reusing_installation(
+def test_online_action_reuses_verified_managed_installation(
     action_python_step, bootstrap_environment
 ):
     completed = run_action_bootstrap(action_python_step, bootstrap_environment)
     assert completed.returncode == 97, completed.stderr
     args = Path(bootstrap_environment["UV_CALLS"]).read_text().splitlines()
-    assert "--reinstall" in args, "Online bootstrap must verify the reviewed archive"
+    assert "--reinstall" not in args
     assert "--no-config" in args, "Caller uv configuration must not alter bootstrap"
 
 
@@ -601,6 +316,15 @@ def test_actual_action_real_uv_without_host_python(
         / target
         / "bin/python3.14"
     )
+    assert (
+        Path(environment["GITHUB_OUTPUT"]).read_text().strip()
+        == f"executable={expected}"
+    )
+    environment["UV_CACHE_DIR"] = str(Path(environment["RUNNER_TEMP"]) / "empty-cache")
+    environment["UV_OFFLINE"] = "1"
+    Path(environment["GITHUB_OUTPUT"]).unlink()
+    completed = run_action_bootstrap(action_python_step, environment)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
     assert (
         Path(environment["GITHUB_OUTPUT"]).read_text().strip()
         == f"executable={expected}"

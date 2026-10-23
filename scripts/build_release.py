@@ -10,7 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
-import subprocess
+import subprocess  # nosec B404 # release tooling executes fixed argument vectors
 import sys
 import sysconfig
 import tempfile
@@ -48,7 +48,7 @@ def gh_api(path, method="GET", data=None, upload=None):
     elif path.endswith("per_page=100"):
         command.extend(["--paginate", "--slurp"])
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 # gh API arguments are constructed by this module
             command,
             input=json.dumps(data).encode() if data is not None else None,
             check=True,
@@ -80,7 +80,7 @@ def validate_signature(status: str) -> None:
         )
 
 
-def validate_checks(checks: list, statuses: list, required: dict) -> None:
+def validate_checks(checks: list[dict], statuses: list[dict], required: dict) -> None:
     if not required:
         raise ValueError("Release requires nonempty protected-branch checks")
     for name, app_id in required.items():
@@ -107,7 +107,7 @@ def validate_checks(checks: list, statuses: list, required: dict) -> None:
 
 
 def git(root: Path, *arguments: str) -> str:
-    return subprocess.run(
+    return subprocess.run(  # nosec B603, B607 # use the maintainer's git without a shell
         ["git", *arguments], cwd=root, check=True, capture_output=True, text=True
     ).stdout.strip()
 
@@ -188,7 +188,7 @@ def verify(root: Path, tag: str, commit: str) -> None:
     ):
         raise ValueError("Tag, checkout, and tested commit must agree")
     git(root, "merge-base", "--is-ancestor", commit, "refs/remotes/origin/main")
-    signature = subprocess.run(
+    signature = subprocess.run(  # nosec B603, B607 # validated tag, explicit option terminator
         ["git", "verify-tag", "--raw", "--", tag_ref],
         cwd=root,
         check=True,
@@ -414,7 +414,7 @@ def build(root: Path, output: Path, *, bundle_only: bool = False) -> None:
     output.mkdir(parents=True, exist_ok=True)
     os.environ["SOURCE_DATE_EPOCH"] = git(root, "show", "-s", "--format=%ct", "HEAD")
     if not bundle_only:
-        subprocess.run(["uv", "build", "--out-dir", str(output)], cwd=root, check=True)
+        subprocess.run(["uv", "build", "--out-dir", str(output)], cwd=root, check=True)  # nosec B603, B607 # pinned release uv
     # Kept in the installer module so producer and verifier share one identity format.
     from runtime_bundle import build_bundle, extract_verified, verify_bundle
 
@@ -426,7 +426,7 @@ def build(root: Path, output: Path, *, bundle_only: bool = False) -> None:
             extracted, root, sys.implementation.cache_tag, sysconfig.get_platform()
         )
         environment = Path(scratch) / "runtime"
-        subprocess.run(
+        subprocess.run(  # nosec B603, B607 # pinned release uv, fixed venv arguments
             [
                 "uv",
                 "venv",
@@ -439,7 +439,7 @@ def build(root: Path, output: Path, *, bundle_only: bool = False) -> None:
             cwd=root,
             check=True,
         )
-        subprocess.run(
+        subprocess.run(  # nosec B603, B607 # offline install from verified hashed wheels
             [
                 "uv",
                 "pip",
@@ -458,7 +458,7 @@ def build(root: Path, output: Path, *, bundle_only: bool = False) -> None:
             cwd=root,
             check=True,
         )
-        subprocess.run(
+        subprocess.run(  # nosec B603, B607 # locked release SBOM tool
             [
                 "uv",
                 "run",

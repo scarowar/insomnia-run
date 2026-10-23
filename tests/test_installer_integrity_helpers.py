@@ -10,6 +10,7 @@ import tarfile
 import zipfile
 
 import pytest
+from http_fakes import ArchiveResponse
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -302,7 +303,7 @@ def test_https_redirect_never_forwards_token_to_other_origin(tmp_path, monkeypat
                 raise HTTPError(
                     request.full_url, 302, "redirect", headers, io.BytesIO()
                 )
-            return io.BytesIO(b"verified-archive")
+            return ArchiveResponse(b"verified-archive")
 
     monkeypatch.setattr("install_runtime.build_opener", lambda handler: Opener())
     download_archive(
@@ -892,6 +893,28 @@ def test_bundle_builder_and_installer_share_verified_manifest(
     (project / "uv.lock").write_text(lock)
 
     def run(command, **kwargs):
+        if "cyclonedx1.5" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    {
+                        "components": [
+                            {
+                                "externalReferences": [
+                                    {
+                                        "type": "distribution",
+                                        "url": f"https://files.pythonhosted.org/{wheel.name}",
+                                        "hashes": [
+                                            {"alg": "SHA-256", "content": digest}
+                                        ],
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ),
+            )
         if "export" in command:
             requirement = {
                 "unpinned": "dependency>=1.0",
@@ -928,7 +951,7 @@ def test_bundle_builder_and_installer_share_verified_manifest(
                     {"Location": "https://unapproved.example/" + wheel.name},
                     io.BytesIO(),
                 )
-            return io.BytesIO(wheel.read_bytes())
+            return ArchiveResponse(wheel.read_bytes())
 
     monkeypatch.setattr("install_runtime.build_opener", lambda handler: Opener())
     if fault:

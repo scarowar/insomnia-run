@@ -26,6 +26,7 @@ def run_step(step, tmp_path, **overrides):
         **{key: str(value) for key, value in step.get("env", {}).items()},
         "GITHUB_OUTPUT": str(tmp_path / "output"),
         "HOME": str(tmp_path),
+        "RUNTIME_BUNDLE": "",
     }
     env.update(overrides)
     return subprocess.run(
@@ -76,6 +77,33 @@ def test_uv_bootstrap_version_matches_the_first_party_build_backend():
         assert untrusted_event in setup["with"]["save-cache"]
 
 
+@pytest.mark.parametrize(
+    "bundle,expected", [("", "system"), ("runtime.tar.gz", "3.14.8")]
+)
+def test_bundle_bootstrap_selects_compatible_python(tmp_path, bundle, expected):
+    step = step_by_name(load_action(), "Check uv")
+    version = step["env"]["INSOMNIA_RUN_UV_VERSION"]
+    executable(tmp_path, "uv", f"printf 'uv {version}\\n'\n")
+    result = run_step(
+        step,
+        tmp_path,
+        PATH=f"{tmp_path}:{os.environ['PATH']}",
+        OFFLINE_INSTALL="false",
+        PYTHON_VERSION="system",
+        RUNTIME_BUNDLE=bundle,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (
+        f"python-version={expected}" in (tmp_path / "output").read_text().splitlines()
+    )
+    assert (
+        step_by_name(load_action(), "Verify Python Requirements")["env"][
+            "PYTHON_VERSION"
+        ]
+        == "${{ steps.check-uv.outputs.python-version }}"
+    )
+
+
 @pytest.mark.parametrize("offline", ["TRUE", "False", "", "typo"])
 def test_invalid_offline_setting_fails_before_bootstrap(tmp_path, offline):
     result = run_step(
@@ -113,9 +141,10 @@ def test_uv_bootstrap_uses_exact_preinstalled_version_or_fails_offline(
         assert not (tmp_path / "output").exists()
     else:
         assert result.returncode == 0, result.stderr
-        assert (
-            tmp_path / "output"
-        ).read_text().strip() == f"needs-setup={str(not matching).lower()}"
+        assert (tmp_path / "output").read_text().splitlines() == [
+            f"needs-setup={str(not matching).lower()}",
+            "python-version=system",
+        ]
 
 
 @pytest.mark.parametrize("version", ["13.3.1", "13.3.1-beta.1"])

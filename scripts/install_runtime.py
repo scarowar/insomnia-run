@@ -1,19 +1,21 @@
 """Install the frozen source runtime or an explicitly verified wheel bundle."""
 
 import argparse
-from contextlib import closing, nullcontext
+from contextlib import closing, contextmanager, nullcontext
 import os
 from pathlib import Path
 import secrets
+import signal
 import stat
-import subprocess
+import subprocess  # nosec B404 # installation invokes uv with argument vectors
 import sys
 import sysconfig
 import tempfile
 import tarfile
-from typing import BinaryIO
+import time
+from typing import BinaryIO, Iterator
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 import zipfile
 
@@ -27,10 +29,12 @@ from runtime_bundle import (
     runner_path,
     verify_bundle,
     sha256_file,
+    tool_environment,
 )
 
 
 _INVALID_DOWNLOAD_URL = "Downloads require an unambiguous HTTPS URL"
+_DOWNLOAD_DEADLINE_SECONDS = 300
 
 
 def _split_url(value: str):
@@ -84,9 +88,26 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def _copy_download(source: BinaryIO, output: BinaryIO, max_bytes: int) -> None:
+def _remaining_download_time(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise ValueError("Archive download exceeded its total time limit")
+    return remaining
+
+
+def _copy_download(
+    source: BinaryIO, output: BinaryIO, max_bytes: int, *, deadline: float | None = None
+) -> None:
     total = 0
-    for block in iter(lambda: source.read(1024 * 1024), b""):
+    read = getattr(source, "read1", source.read)
+    while True:
+        if deadline is not None:
+            _remaining_download_time(deadline)
+        block = read(1024 * 1024)
+        if deadline is not None:
+            _remaining_download_time(deadline)
+        if not block:
+            break
         total += len(block)
         if total > max_bytes:
             raise ValueError("Download size limit exceeded")
@@ -109,6 +130,32 @@ def _redirect_location(error: HTTPError, current: str, attempt: int) -> str:
         raise ValueError(_INVALID_DOWNLOAD_URL) from None
 
 
+@contextmanager
+def _download_deadline() -> Iterator[float]:
+    started = time.monotonic()
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_delay, previous_interval = signal.getitimer(signal.ITIMER_REAL)
+    duration = (
+        min(_DOWNLOAD_DEADLINE_SECONDS, previous_delay)
+        if previous_delay
+        else _DOWNLOAD_DEADLINE_SECONDS
+    )
+
+    def expired(signum, frame):
+        raise ValueError("Archive download exceeded its total time limit")
+
+    signal.signal(signal.SIGALRM, expired)
+    signal.setitimer(signal.ITIMER_REAL, duration)
+    try:
+        yield started + duration
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_delay:
+            remaining = max(0.000001, previous_delay - (time.monotonic() - started))
+            signal.setitimer(signal.ITIMER_REAL, remaining, previous_interval)
+
+
 def _download_https(
     location: str,
     output: BinaryIO,
@@ -116,6 +163,28 @@ def _download_https(
     allowed_origin: tuple[str, int] | None,
     max_bytes: int,
     download_origins: tuple[str, ...] = (),
+) -> None:
+    with _download_deadline() as deadline:
+        _download_https_transfer(
+            location,
+            output,
+            token,
+            allowed_origin,
+            max_bytes,
+            download_origins,
+            deadline=deadline,
+        )
+
+
+def _download_https_transfer(
+    location: str,
+    output: BinaryIO,
+    token: str,
+    allowed_origin: tuple[str, int] | None,
+    max_bytes: int,
+    download_origins: tuple[str, ...] = (),
+    *,
+    deadline: float,
 ) -> None:
     permitted = {
         ("github.com", 443),
@@ -125,28 +194,54 @@ def _download_https(
     }
     if _https_url(location)[1] not in permitted:
         raise ValueError("Archive download origin is not permitted")
+    if token and allowed_origin not in permitted:
+        raise ValueError("Download token origin is not permitted")
     opener = build_opener(_NoRedirect())
     current = location
     for attempt in range(6):
-        _, current_origin = _https_url(current)
-        if current_origin not in permitted:
-            raise ValueError("Archive redirect origin is not permitted")
-        headers = {
-            "User-Agent": "insomnia-run-installer",
-            "Accept": "application/octet-stream",
-        }
-        if token and current_origin == allowed_origin:
-            headers["Authorization"] = "Bearer " + token
+        request = _download_request(current, permitted, token, allowed_origin)
         try:
-            response = opener.open(Request(current, headers=headers), timeout=60)
+            response = opener.open(
+                request, timeout=min(60, _remaining_download_time(deadline))
+            )
         except HTTPError as error:
             current = _redirect_location(error, current, attempt)
             continue
         except URLError:
             raise ValueError("Archive download failed; check network access") from None
         with closing(response):
-            _copy_download(response, output, max_bytes)
+            if response.status != 200:
+                raise ValueError(
+                    f"Archive download requires HTTP 200 (received {response.status})"
+                )
+            _copy_download(response, output, max_bytes, deadline=deadline)
         break
+
+
+def _download_request(
+    current: str,
+    permitted: set[tuple[str, int]],
+    token: str,
+    allowed_origin: tuple[str, int] | None,
+) -> Request:
+    parsed, current_origin = _https_url(current)
+    for host, port in permitted:
+        if (host, port) == current_origin:
+            break
+    else:
+        raise ValueError("Archive redirect origin is not permitted")
+    authority = f"[{host}]" if ":" in host else host
+    if port != 443:
+        authority += f":{port}"
+    headers = {
+        "User-Agent": "insomnia-run-installer",
+        "Accept": "application/octet-stream",
+    }
+    if token and current_origin == allowed_origin:
+        headers["Authorization"] = "Bearer " + token
+    return Request(
+        urlunsplit(("https", authority, parsed.path, parsed.query, "")), headers=headers
+    )
 
 
 def _check_download_destination(destination: Path, parent: int, replace: bool) -> None:
@@ -168,6 +263,42 @@ def _download_token_origin(token: str, origin: str) -> tuple[str, int] | None:
             "A valid download-token-origin is required for a download token"
         )
     return token_origin(origin) if origin else None
+
+
+def _copy_archive_source(
+    location: str,
+    output: BinaryIO,
+    *,
+    token: str,
+    allowed_origin: tuple[str, int] | None,
+    max_bytes: int,
+    download_origins: tuple[str, ...],
+) -> None:
+    if _split_url(location).scheme:
+        _download_https(
+            location, output, token, allowed_origin, max_bytes, download_origins
+        )
+    else:
+        with regular_file(Path(location)) as source:
+            _copy_download(source, output, max_bytes)
+
+
+def _publish_download(
+    staged: Path, destination: Path, parent: int, *, expected_sha256: str, replace: bool
+) -> None:
+    if expected_sha256 and sha256_file(staged, dir_fd=parent) != expected_sha256:
+        raise ValueError("Inso archive failed SHA-256 verification")
+    require_directory_identity(destination.parent, parent)
+    if replace:
+        os.replace(staged, destination.name, src_dir_fd=parent, dst_dir_fd=parent)
+    else:
+        os.link(
+            staged,
+            destination.name,
+            src_dir_fd=parent,
+            dst_dir_fd=parent,
+            follow_symlinks=False,
+        )
 
 
 def download_archive(
@@ -209,57 +340,28 @@ def download_archive(
         try:
             with os.fdopen(descriptor, "wb") as output:
                 os.fchmod(output.fileno(), 0o600)
-                if not parsed.scheme:
-                    with regular_file(Path(location)) as source:
-                        _copy_download(source, output, max_bytes)
-                else:
-                    _download_https(
-                        location,
-                        output,
-                        token,
-                        allowed_origin,
-                        max_bytes,
-                        download_origins,
-                    )
+                _copy_archive_source(
+                    location,
+                    output,
+                    token=token,
+                    allowed_origin=allowed_origin,
+                    max_bytes=max_bytes,
+                    download_origins=download_origins,
+                )
                 output.flush()
                 os.fsync(output.fileno())
-            if (
-                expected_sha256
-                and sha256_file(staged, dir_fd=parent) != expected_sha256
-            ):
-                raise ValueError("Inso archive failed SHA-256 verification")
-            require_directory_identity(destination.parent, parent)
-            if replace:
-                os.replace(
-                    staged, destination.name, src_dir_fd=parent, dst_dir_fd=parent
-                )
-            else:
-                os.link(
-                    staged,
-                    destination.name,
-                    src_dir_fd=parent,
-                    dst_dir_fd=parent,
-                    follow_symlinks=False,
-                )
+            _publish_download(
+                staged,
+                destination,
+                parent,
+                expected_sha256=expected_sha256,
+                replace=replace,
+            )
         finally:
             try:
                 os.unlink(staged, dir_fd=parent)
             except FileNotFoundError:
                 pass
-
-
-def _child_environment(offline: bool) -> dict[str, str]:
-    environment = dict(os.environ)
-    for name in (
-        "INSOMNIA_RUN_DOWNLOAD_TOKEN",
-        "INPUT_DOWNLOAD_TOKEN",
-        "INSO_DOWNLOAD_TOKEN",
-    ):
-        environment.pop(name, None)
-    environment["UV_PYTHON_DOWNLOADS"] = "never"
-    if offline:
-        environment["UV_OFFLINE"] = "1"
-    return environment
 
 
 def install_runtime(
@@ -281,11 +383,11 @@ def install_runtime(
         )
     if venv.exists() or venv.is_symlink():
         raise ValueError("Runtime virtual environment destination must not exist")
-    environment = _child_environment(offline)
+    environment = tool_environment(offline=offline)
     prefix = [uv] + (["--offline"] if offline else [])
 
     def run(arguments, *, extra_environment=None):
-        subprocess.run(
+        subprocess.run(  # nosec B603 # fixed uv operations, isolated validated destinations
             prefix + arguments,
             env={**environment, **(extra_environment or {})},
             check=True,
@@ -312,6 +414,7 @@ def install_runtime(
                 project,
                 sys.implementation.cache_tag,
                 sysconfig.get_platform(),
+                uv=uv,
             )
         run(
             [
@@ -421,9 +524,12 @@ def main() -> None:
         tarfile.TarError,
         zipfile.BadZipFile,
     ) as error:
+        diagnostic = (
+            str(error) if isinstance(error, ValueError) else type(error).__name__
+        )
         parser.exit(
             1,
-            f"Runtime installation failed: {type(error).__name__}. Check installer inputs and provisioned materials.\n",
+            f"Runtime installation failed: {diagnostic}. Check installer inputs and provisioned materials.\n",
         )
 
 

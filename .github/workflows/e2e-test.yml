@@ -87,8 +87,11 @@ jobs:
         id: bundle
         env:
           UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/insomnia-bundle-builder
+          UV_PYTHON: "3.14.8"
+          UV_PYTHON_INSTALL_DIR: ${{ runner.temp }}/insomnia-run-python
+          UV_PYTHON_DOWNLOADS: never
         run: |
-          uv sync --frozen --dev --no-build --no-install-project --python "$(command -v python3)"
+          uv sync --frozen --dev --no-build --no-install-project --python "3.14.8"
           uv run --frozen --no-sync python scripts/build_release.py build --directory "${RUNNER_TEMP}/consumer-bundle" --bundle-only
           python3 - <<'PY'
           import hashlib, os
@@ -435,3 +438,117 @@ jobs:
             echo "Expected exit code 0 for passing tests"
             exit 1
           fi
+
+  test-container:
+    # Harden-Runner cannot install its host agent inside a GitHub-hosted job container.
+    # https://github.com/step-security/harden-runner/blob/main/docs/limitations.md
+    name: Test Container Job
+    if: github.actor != 'dependabot[bot]' && github.actor != 'pre-commit-ci[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: python:3.14.8-bookworm@sha256:d971782704801eedcce987f5a3aa473500e255094e86400e2078a74652973b74
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify container ownership boundary
+        run: |
+          test "$(id -u)" = 0
+          test "$(stat -c %u "$RUNNER_TEMP")" != 0
+      - name: Start local API fixture
+        run: |
+          python3 tests/fixtures/e2e_server.py >"${RUNNER_TEMP}/insomnia-run-e2e-server.log" 2>&1 &
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8765/health >/dev/null; then
+              exit 0
+            fi
+            echo "Waiting for local API fixture (attempt ${attempt}/20)"
+            sleep 1
+          done
+          cat "${RUNNER_TEMP}/insomnia-run-e2e-server.log"
+          exit 1
+      - name: Run collection as container root
+        id: run
+        uses: ./
+        with:
+          working-directory: tests/fixtures/passing_suite.yaml
+          environment: Test Environment
+          pr-comment: "false"
+      - name: Verify complete container report
+        env:
+          JSON_FILE: ${{ steps.run.outputs.json-file }}
+          COMPLETE: ${{ steps.run.outputs.complete }}
+        run: |
+          test "$COMPLETE" = true
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = json.loads(Path(os.environ['JSON_FILE']).read_text())
+          assert report['complete'] and not report['run_error']
+          assert len(report['results']) == 3
+          assert all(result['status'] == 'PASS' for result in report['results'])
+          PY
+
+  test-comment-upsert:
+    name: Test PR Comment Upsert
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' && github.actor != 'pre-commit-ci[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Start local API fixture
+        run: |
+          python3 tests/fixtures/e2e_server.py >"${RUNNER_TEMP}/insomnia-run-e2e-server.log" 2>&1 &
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8765/health >/dev/null; then
+              exit 0
+            fi
+            echo "Waiting for local API fixture (attempt ${attempt}/20)"
+            sleep 1
+          done
+          cat "${RUNNER_TEMP}/insomnia-run-e2e-server.log"
+          exit 1
+      - name: Publish first report
+        id: first
+        uses: ./
+        with:
+          working-directory: tests/fixtures/passing_suite.yaml
+          environment: Test Environment
+          github-token: ${{ github.token }}
+          comment-tag: e2e-upsert
+      - name: Publish replacement report
+        id: second
+        uses: ./
+        with:
+          working-directory: tests/fixtures/passing_suite.yaml
+          environment: Test Environment
+          github-token: ${{ github.token }}
+          comment-tag: e2e-upsert
+      - name: Verify owned comment reuse
+        env:
+          FIRST_ID: ${{ steps.first.outputs.comment-id }}
+          SECOND_ID: ${{ steps.second.outputs.comment-id }}
+          FIRST_STATUS: ${{ steps.first.outputs.comment-status }}
+          SECOND_STATUS: ${{ steps.second.outputs.comment-status }}
+        run: |
+          [[ "$FIRST_ID" =~ ^[1-9][0-9]*$ ]]
+          test "$FIRST_ID" = "$SECOND_ID"
+          case "$FIRST_STATUS" in created|updated|unchanged) ;; *) exit 1 ;; esac
+          case "$SECOND_STATUS" in updated|unchanged) ;; *) exit 1 ;; esac

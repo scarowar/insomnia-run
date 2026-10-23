@@ -12,6 +12,7 @@ import tarfile
 from urllib.error import HTTPError, URLError
 
 import pytest
+from http_fakes import ArchiveResponse
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -170,7 +171,7 @@ def test_corrupt_inso_cache_fetches_once_only_when_online(
             assert request.full_url == location
             assert cached.read_bytes() == b"corrupt cache"
             requests.append(request)
-            return io.BytesIO(trusted if replacement_valid else b"bad download")
+            return ArchiveResponse(trusted if replacement_valid else b"bad download")
 
     monkeypatch.setattr("install_runtime.build_opener", lambda handler: Opener())
     if offline or not replacement_valid:
@@ -204,7 +205,7 @@ def test_github_asset_api_downloads_binary_with_origin_scoped_auth(
                 assert request.full_url == location
                 assert request.get_header("Authorization") == "Bearer " + token
                 if request.get_header("Accept") != "application/octet-stream":
-                    return io.BytesIO(b'{"id":7,"name":"archive.tar.xz"}')
+                    return ArchiveResponse(b'{"id":7,"name":"archive.tar.xz"}')
                 if redirect:
                     raise HTTPError(
                         location, 302, "Found", {"Location": cdn}, io.BytesIO()
@@ -213,7 +214,7 @@ def test_github_asset_api_downloads_binary_with_origin_scoped_auth(
                 assert len(requests) == 2
                 assert request.full_url == cdn
                 assert request.get_header("Authorization") is None
-            return io.BytesIO(b"binary archive")
+            return ArchiveResponse(b"binary archive")
 
     monkeypatch.setattr("install_runtime.build_opener", lambda handler: Opener())
     cached = tmp_path / "archive"
@@ -406,9 +407,15 @@ def test_verification_uses_current_preinstalled_binary_after_an_install(
     verify = next(
         s["run"] for s in ACTION["runs"]["steps"] if s.get("name") == "Verify Inso CLI"
     )
+    output = tmp_path / "verify-output"
     result = subprocess.run(
         ["bash", "-euo", "pipefail", "-c", verify],
-        env={**env, "INSO_VERSION": "12.2.0", "USE_INSTALLED_INSO": "false"},
+        env={
+            **env,
+            "INSO_VERSION": "12.2.0",
+            "USE_INSTALLED_INSO": "false",
+            "GITHUB_OUTPUT": str(output),
+        },
         text=True,
         capture_output=True,
         timeout=20,
@@ -416,3 +423,4 @@ def test_verification_uses_current_preinstalled_binary_after_an_install(
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "12.2.0" in result.stdout
+    assert output.read_text() == "version=12.2.0\n"
