@@ -86,7 +86,7 @@ jobs:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.commit }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -96,6 +96,7 @@ jobs:
         with:
           version: '0.13.1'
           checksum: ${{ matrix.uv-sha256 }}
+          enable-cache: false
       - name: Install locked build tools
         run: uv sync --frozen --dev --no-install-project --no-build
       - name: Build distributions, SBOM, and native runtime bundle
@@ -121,7 +122,7 @@ jobs:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -151,6 +152,7 @@ jobs:
     needs: [verify, assemble]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    environment: release
     permissions:
       contents: write
       checks: read
@@ -161,9 +163,17 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
+      - name: Require release authorization
+        env:
+          RELEASE_PUBLISH_TOKEN: ${{ secrets.RELEASE_PUBLISH_TOKEN }}
+        run: |
+          if [[ -z "$RELEASE_PUBLISH_TOKEN" ]]; then
+            echo "::error::Configure RELEASE_PUBLISH_TOKEN in the protected release environment."
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -183,7 +193,7 @@ jobs:
           subject-path: release-assets/*
       - name: Verify and publish complete draft
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PUBLISH_TOKEN }}
           RELEASE_TAG: ${{ inputs.tag }}
           RELEASE_COMMIT: ${{ inputs.commit }}
           GNUPGHOME: ${{ runner.temp }}/release-gnupg
