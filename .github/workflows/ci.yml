@@ -67,7 +67,13 @@ jobs:
       - name: Run tests
         env:
           INSOMNIA_RUN_UV_BINARY: ${{ steps.uv.outputs.uv-path }}
-        run: uv run --frozen --no-sync --no-build pytest -q --basetemp "${RUNNER_TEMP}/insomnia-run-unit-tests" --tb=short --cov=insomnia_run --cov=scripts --cov-report=term-missing --cov-fail-under=95
+        run: |
+          coverage=(--cov=insomnia_run)
+          # Release builders use tomllib and run on 3.11+; their full coverage is enforced there.
+          if [[ "$UV_PYTHON" != "3.10" ]]; then
+            coverage+=(--cov=scripts)
+          fi
+          uv run --frozen --no-sync --no-build pytest -q --basetemp "${RUNNER_TEMP}/insomnia-run-unit-tests" --tb=short "${coverage[@]}" --cov-report=term-missing --cov-fail-under=95
 
   lint:
     name: Lint
