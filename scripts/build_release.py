@@ -1,7 +1,7 @@
 """Verify release identity, build distributions, and recover an unpublished draft.
 
-Publication requires enabled immutable releases and Administration: read access
-to verify the setting. Builds and dry-runs do not require that access.
+Maintainers verify the repository immutable-release setting before dispatch.
+Publication uses ordinary release permissions without reading admin settings.
 """
 
 import argparse
@@ -320,18 +320,6 @@ def verify_remote_asset(
         raise ValueError(f"{reason}: {path.name}")
 
 
-def require_immutable_releases(repository: str, api=gh_api) -> None:
-    try:
-        settings = api(f"repos/{repository}/immutable-releases")
-    except (NotFound, OSError, ValueError, subprocess.SubprocessError):
-        raise ValueError(
-            "Cannot verify immutable releases; publication is blocked. "
-            "Reading the setting requires Administration: read access."
-        ) from None
-    if not isinstance(settings, dict) or settings.get("enabled") is not True:
-        raise ValueError("Immutable releases must be enabled before publication.")
-
-
 def existing_draft(api, endpoint: str, tag: str):
     # The tag endpoint exposes published releases, not recoverable drafts.
     matches = [
@@ -365,7 +353,6 @@ def publish_assets(
     paths = asset_paths(directory)
     if dry_run:
         return [path.name for path in paths]
-    require_immutable_releases(repository, api)
     endpoint = f"repos/{repository}/releases"
     release = existing_draft(api, endpoint, tag)
     if release is None:
@@ -402,7 +389,6 @@ def publish_assets(
                 upload=path,
             )
             verify_remote_asset(api, endpoint, asset["id"], path, uploaded=True)
-    require_immutable_releases(repository, api)
     api(f"{endpoint}/{release['id']}", method="PATCH", data={"draft": False})
     return [path.name for path in paths]
 

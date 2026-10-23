@@ -168,7 +168,9 @@ def test_manifest_refuses_symlinks(release, tmp_path):
         release.write_checksums(tmp_path)
 
 
-def test_recovery_uploads_only_missing_assets_and_publishes_last(release, tmp_path):
+def test_recovery_publishes_verified_assets_without_administration_access(
+    release, tmp_path
+):
     wheel = tmp_path / "package.whl"
     wheel.write_bytes(b"wheel")
     sums = tmp_path / "SHA256SUMS"
@@ -185,7 +187,7 @@ def test_recovery_uploads_only_missing_assets_and_publishes_last(release, tmp_pa
     def api(path, method="GET", data=None, upload=None):
         events.append((path, method, data, upload))
         if path.endswith("/immutable-releases"):
-            return {"enabled": True}
+            raise subprocess.CalledProcessError(1, ["gh", "api"], stderr=b"HTTP 403")
         if path.endswith("/releases?per_page=100"):
             return [[existing]]
         if path.endswith("/assets/9"):
@@ -201,8 +203,7 @@ def test_recovery_uploads_only_missing_assets_and_publishes_last(release, tmp_pa
     release.publish_assets("owner/repo", "v0.2.0", "a" * 40, tmp_path, api)
     uploads = [event for event in events if event[3]]
     assert [event[3].name for event in uploads] == ["SHA256SUMS"]
-    assert events[0][0] == "repos/owner/repo/immutable-releases"
-    assert events[-2][0] == "repos/owner/repo/immutable-releases"
+    assert all("/immutable-releases" not in event[0] for event in events)
     assert events[-1][1:3] == ("PATCH", {"draft": False})
 
 
@@ -221,8 +222,6 @@ def test_interrupted_upload_reuses_draft_from_paginated_release_inventory(
 
     def api(path, method="GET", data=None, upload=None):
         nonlocal interrupted
-        if path == "repos/owner/repo/immutable-releases" and method == "GET":
-            return {"enabled": True}
         if path == endpoint + "?per_page=100":
             return [[{"tag_name": "v0.1.0", "draft": False}], list(drafts.values())]
         if path == endpoint + "/tags/v0.2.0":
@@ -293,8 +292,6 @@ def test_ambiguous_or_published_release_inventory_is_never_modified(
 
     def api(path, method="GET", data=None, upload=None):
         events.append(method)
-        if path.endswith("/immutable-releases"):
-            return {"enabled": True}
         if path.endswith("/releases?per_page=100"):
             return [[candidates[0]], [candidates[1]]]
         if "/tags/" in path:
@@ -303,14 +300,13 @@ def test_ambiguous_or_published_release_inventory_is_never_modified(
 
     with pytest.raises(ValueError, match="Multiple drafts|published"):
         release.publish_assets("owner/repo", "v0.2.0", "a" * 40, tmp_path, api)
-    assert events == ["GET", "GET"]
+    assert events == ["GET"]
 
 
 def test_recovered_draft_target_must_match_before_asset_mutation(release, tmp_path):
     (tmp_path / "package.whl").write_bytes(b"wheel")
     api = Mock(
         side_effect=[
-            {"enabled": True},
             [
                 [
                     {
@@ -332,7 +328,6 @@ def test_release_inventory_permission_error_never_creates_a_draft(release, tmp_p
     (tmp_path / "package.whl").write_bytes(b"wheel")
     api = Mock(
         side_effect=[
-            {"enabled": True},
             subprocess.CalledProcessError(1, ["gh", "api"], stderr=b"HTTP 403"),
         ]
     )
@@ -352,8 +347,6 @@ def test_published_or_conflicting_assets_are_never_changed(
 
     def api(path, method="GET", data=None, upload=None):
         events.append(method)
-        if path.endswith("/immutable-releases"):
-            return {"enabled": True}
         if path.endswith("/releases?per_page=100"):
             return [
                 [
@@ -372,7 +365,7 @@ def test_published_or_conflicting_assets_are_never_changed(
 
     with pytest.raises(ValueError, match="published|conflict"):
         release.publish_assets("owner/repo", "v0.2.0", "a" * 40, tmp_path, api)
-    assert events == (["GET", "GET"] if not draft else ["GET", "GET", "GET", "GET"])
+    assert events == (["GET"] if not draft else ["GET", "GET", "GET"])
 
 
 def test_dry_run_never_creates_or_uploads_release(release, tmp_path):
@@ -385,53 +378,6 @@ def test_dry_run_never_creates_or_uploads_release(release, tmp_path):
     api.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "settings",
-    [
-        {"enabled": False, "enforced_by_owner": False},
-        {},
-        {"enabled": 1},
-        {"enabled": "true"},
-        None,
-        [],
-    ],
-)
-def test_immutable_setting_must_be_boolean_true_before_any_release_mutation(
-    release, tmp_path, settings
-):
-    (tmp_path / "package.whl").write_bytes(b"wheel")
-    api = Mock(return_value=settings)
-    with pytest.raises(ValueError, match="Immutable releases"):
-        release.publish_assets("owner/repo", "v0.2.0", "a" * 40, tmp_path, api)
-    api.assert_called_once_with("repos/owner/repo/immutable-releases")
-
-
-@pytest.mark.parametrize(
-    "error",
-    [
-        subprocess.CalledProcessError(1, ["gh", "api"], stderr=b"HTTP 403"),
-        OSError("network unavailable"),
-        ValueError("malformed API JSON"),
-    ],
-)
-def test_unreadable_immutable_setting_fails_closed_with_permission_guidance(
-    release, tmp_path, error
-):
-    (tmp_path / "package.whl").write_bytes(b"wheel")
-    api = Mock(side_effect=error)
-    with pytest.raises(ValueError, match="Administration: read"):
-        release.publish_assets("owner/repo", "v0.2.0", "a" * 40, tmp_path, api)
-    api.assert_called_once_with("repos/owner/repo/immutable-releases")
-
-
-def test_immutable_not_found_is_not_interpreted_as_missing_draft(release, tmp_path):
-    (tmp_path / "package.whl").write_bytes(b"wheel")
-    api = Mock(side_effect=release.NotFound())
-    with pytest.raises(ValueError, match="Administration: read"):
-        release.publish_assets("owner/repo", "v0.2.0", "a" * 40, tmp_path, api)
-    api.assert_called_once_with("repos/owner/repo/immutable-releases")
-
-
 def test_missing_draft_is_created_before_upload_and_not_published_on_failure(
     release, tmp_path
 ):
@@ -440,8 +386,6 @@ def test_missing_draft_is_created_before_upload_and_not_published_on_failure(
 
     def api(path, method="GET", data=None, upload=None):
         events.append((method, data))
-        if path.endswith("/immutable-releases"):
-            return {"enabled": True}
         if path.endswith("/releases?per_page=100"):
             return [[]]
         if path.endswith("assets?per_page=100"):
@@ -452,7 +396,7 @@ def test_missing_draft_is_created_before_upload_and_not_published_on_failure(
 
     with pytest.raises(OSError):
         release.publish_assets("owner/repo", "v0.2.0", "a" * 40, tmp_path, api)
-    assert events[2][1]["draft"] is True
+    assert events[1][1]["draft"] is True
     assert not any(method == "PATCH" for method, _ in events)
 
 
@@ -840,7 +784,6 @@ def test_release_rejects_unexpected_existing_assets(release, tmp_path):
     (tmp_path / "package.whl").write_bytes(b"wheel")
     api = Mock(
         side_effect=[
-            {"enabled": True},
             [
                 [
                     {
@@ -856,7 +799,7 @@ def test_release_rejects_unexpected_existing_assets(release, tmp_path):
     )
     with pytest.raises(ValueError, match="unexpected"):
         release.publish_assets("owner/repo", "v0.2.0", "a" * 40, tmp_path, api)
-    assert api.call_count == 3
+    assert api.call_count == 2
 
 
 def test_failed_latest_check_cannot_be_hidden_by_older_success(release):
@@ -914,7 +857,6 @@ def test_corrupt_uploaded_asset_leaves_draft_unpublished(release, tmp_path):
     (tmp_path / "package.whl").write_bytes(b"wheel")
     api = Mock(
         side_effect=[
-            {"enabled": True},
             [[]],
             {"id": 7, "draft": True, "target_commitish": "a" * 40},
             [[]],

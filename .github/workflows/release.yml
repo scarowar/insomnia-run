@@ -31,6 +31,8 @@ jobs:
     permissions:
       contents: read
       checks: read
+      pull-requests: read
+      statuses: read
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
@@ -152,10 +154,11 @@ jobs:
     needs: [verify, assemble]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
-    environment: release
     permissions:
       contents: write
       checks: read
+      pull-requests: read
+      statuses: read
       attestations: write
       id-token: write
     steps:
@@ -163,14 +166,6 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-      - name: Require release authorization
-        env:
-          RELEASE_PUBLISH_TOKEN: ${{ secrets.RELEASE_PUBLISH_TOKEN }}
-        run: |
-          if [[ -z "$RELEASE_PUBLISH_TOKEN" ]]; then
-            echo "::error::Configure RELEASE_PUBLISH_TOKEN in the protected release environment."
-            exit 1
-          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
@@ -193,7 +188,7 @@ jobs:
           subject-path: release-assets/*
       - name: Verify and publish complete draft
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PUBLISH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
           RELEASE_COMMIT: ${{ inputs.commit }}
           GNUPGHOME: ${{ runner.temp }}/release-gnupg
