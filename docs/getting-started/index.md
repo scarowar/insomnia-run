@@ -1,6 +1,6 @@
 # Getting Started
 
-v0.2.0 is unreleased. Examples use its intended tag; use a reviewed full commit SHA until the release exists, and keep SHA pinning in production.
+Examples use `@v0.2.0`. For production workflows, pin the action to the full commit SHA of the reviewed release.
 
 ## Prerequisites
 

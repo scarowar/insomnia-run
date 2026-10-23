@@ -2,7 +2,7 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.0] - Unreleased
+## [0.2.0]
 
 ### Added
 
@@ -63,7 +63,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Initial Insomnia Run action release.
 
-[0.2.0]: https://github.com/scarowar/insomnia-run/compare/v0.1.2...release/v0.2.0-hardening
+[0.2.0]: https://github.com/scarowar/insomnia-run/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/scarowar/insomnia-run/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/scarowar/insomnia-run/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/scarowar/insomnia-run/releases/tag/v0.1.0

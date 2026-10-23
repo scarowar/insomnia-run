@@ -2,7 +2,7 @@
 
 ## v0.1.x to v0.2.0
 
-v0.2.0 is unreleased. Use a reviewed full commit SHA until an approved release tag exists; production callers should retain SHA pinning.
+For production workflows, pin the action to the full commit SHA of the reviewed release.
 
 ### Execution and Failure Policy
 

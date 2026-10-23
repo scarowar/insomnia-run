@@ -1,6 +1,6 @@
 # Examples
 
-v0.2.0 is unreleased; use a reviewed full commit SHA until its tag exists. Examples use an explicit YAML export path. For legacy Git Sync, pass the parent repository root instead; see [input paths](../reference/inputs.md#input-paths).
+Examples use an explicit YAML export path. For legacy Git Sync, pass the parent repository root instead; see [input paths](../reference/inputs.md#input-paths).
 
 ## Basic Collection
 

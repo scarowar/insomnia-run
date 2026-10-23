@@ -47,6 +47,6 @@ The Python 3.15 test environment permits hash-locked PyYAML 6.0.3 source builds 
 ## Publish
 
 - Confirm **Settings → General → Releases → Enable release immutability** is enabled before dispatching the release workflow. This is a maintainer check; the workflow uses `GITHUB_TOKEN` and does not read the administration-only setting.
-- Update `CHANGELOG.md` with user-facing changes and the release date. Update version references and remove unreleased notices.
+- Update `CHANGELOG.md` with user-facing changes and the release date. Confirm documentation examples and changelog comparison links reference the release tag.
 - Use the tested commit for the version tag and release notes.
 - Describe supported platforms and migration requirements without claiming unverified compatibility or security certification.

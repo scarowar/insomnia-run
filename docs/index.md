@@ -5,8 +5,6 @@
 
 Run Insomnia collections and legacy test suites in GitHub Actions with request-grouped reports, redacted failure details, and CI outputs. Insomnia Run is unofficial and is not maintained by Kong.
 
-v0.2.0 is unreleased. Examples use its intended tag; use a reviewed full commit SHA until that tag exists.
-
 ## Usage
 
 ```yaml

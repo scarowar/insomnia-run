@@ -2,7 +2,7 @@
 
 ## Verified Release
 
-The default is Inso **13.3.1**. Compatibility covers its versioned command interfaces and report formats. v0.2.0 is unreleased.
+The default is Inso **13.3.1**. Compatibility covers its versioned command interfaces and report formats.
 
 Sources: [official release](https://github.com/Kong/insomnia/releases/tag/core%4013.3.1), [collection reference](https://developer.konghq.com/inso-cli/reference/run_collection/), [test reference](https://developer.konghq.com/inso-cli/reference/run_test/), and [exact-release CLI source](https://github.com/Kong/insomnia/blob/abbf55892e16adafea6eb1d6c12af2fa85d32dc9/packages/insomnia-inso/src/cli.ts). Where published documentation and this release disagree, the verified binary and versioned implementation take precedence.
 
