@@ -43,24 +43,34 @@ def require_digest(value: str) -> str:
     return value.lower()
 
 
-def _check_directory_permissions(descriptor: int, *, temporary_anchor: bool) -> None:
+def _check_directory_permissions(
+    descriptor: int, *, temporary_anchor: bool, runner_anchor: bool = False
+) -> None:
     metadata = os.fstat(descriptor)
-    if temporary_anchor and metadata.st_mode & stat.S_ISVTX:
-        return
-    if metadata.st_uid not in (0, os.getuid()):
+    container_mount = runner_anchor and os.getuid() == 0
+    if metadata.st_uid not in (0, os.getuid()) and not container_mount:
         raise ValueError("Installer directory must belong to the current user or root")
-    if metadata.st_mode & 0o022:
+    shared_sticky = (
+        temporary_anchor
+        and metadata.st_uid == 0
+        and bool(metadata.st_mode & stat.S_ISVTX)
+    )
+    if metadata.st_mode & 0o022 and not shared_sticky:
         raise ValueError("Installer directory must not be writable by other users")
+
+
+def _anchor_candidates() -> list[Path]:
+    values = (os.environ.get("RUNNER_TEMP", ""), tempfile.gettempdir())
+    candidates = [Path(os.path.abspath(value)) for value in values if value]
+    candidates.extend(path.resolve() for path in tuple(candidates))
+    candidates.extend(parent for path in tuple(candidates) for parent in path.parents)
+    return list(dict.fromkeys(candidates))
 
 
 @contextmanager
 def open_directory(path: Path, *, create: bool = False) -> Iterator[int]:
     absolute = Path(os.path.abspath(path))
-    system_temporary_roots = {Path("/tmp").resolve(), Path("/var/tmp").resolve()}
-    roots = [Path(os.environ["RUNNER_TEMP"])] if os.environ.get("RUNNER_TEMP") else []
-    roots.extend([Path("/tmp"), Path("/var/tmp"), *system_temporary_roots])
-    if sys.platform == "darwin":
-        roots.append(Path("/var"))
+    roots = _anchor_candidates()
     root = Path(absolute.anchor)
     relative = absolute.relative_to(root)
     for candidate in roots:
@@ -72,9 +82,14 @@ def open_directory(path: Path, *, create: bool = False) -> Iterator[int]:
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     descriptor = os.open(root, flags)
     try:
-        temporary_anchor = root in system_temporary_roots
-        _check_directory_permissions(descriptor, temporary_anchor=temporary_anchor)
-        for part in relative.parts:
+        temporary_anchor = root in {candidate.resolve() for candidate in roots}
+        runner_temp = os.environ.get("RUNNER_TEMP")
+        runner_anchor = bool(runner_temp and root == Path(runner_temp).resolve())
+        _check_directory_permissions(
+            descriptor, temporary_anchor=temporary_anchor, runner_anchor=runner_anchor
+        )
+        system_walk = root == Path(absolute.anchor)
+        for index, part in enumerate(relative.parts):
             try:
                 child = os.open(part, flags, dir_fd=descriptor)
             except FileNotFoundError:
@@ -84,7 +99,12 @@ def open_directory(path: Path, *, create: bool = False) -> Iterator[int]:
                 child = os.open(part, flags, dir_fd=descriptor)
             os.close(descriptor)
             descriptor = child
-            _check_directory_permissions(descriptor, temporary_anchor=False)
+            _check_directory_permissions(
+                descriptor,
+                temporary_anchor=system_walk and index < len(relative.parts) - 1,
+            )
+            if os.fstat(descriptor).st_mode & stat.S_ISVTX:
+                system_walk = False
         yield descriptor
     finally:
         os.close(descriptor)
