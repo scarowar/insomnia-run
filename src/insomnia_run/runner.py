@@ -4,6 +4,8 @@ from pathlib import Path
 import re
 import tempfile
 import time
+from threading import Event, Thread
+from typing import IO
 from urllib.parse import urlencode
 
 # Inso must be executed as a subprocess.
@@ -18,6 +20,91 @@ from .models import (
 )
 from .native import parse_native_report, validate_capture_headers
 from .parser import TapParser
+from .privacy import Redactor
+
+_MAX_CAPTURE_BYTES = 32 * 1024 * 1024
+
+
+class _OutputLimitError(subprocess.SubprocessError):
+    def __init__(self):
+        super().__init__(
+            f"Inso CLI output exceeded the capture limit ({_MAX_CAPTURE_BYTES} bytes). Reduce collection logging."
+        )
+
+
+def _terminate_process(process: subprocess.Popen[str]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    except OSError:
+        try:
+            process.kill()
+        except OSError:
+            pass
+
+
+def _capture_size(streams: tuple[IO[bytes], IO[bytes]]) -> int:
+    return sum(os.fstat(stream.fileno()).st_size for stream in streams)
+
+
+def _read_captures(streams: tuple[IO[bytes], IO[bytes]]) -> tuple[str, str]:
+    if _capture_size(streams) > _MAX_CAPTURE_BYTES:
+        raise _OutputLimitError()
+    stdout, stderr = streams
+    stdout.seek(0)
+    stderr.seek(0)
+    return (
+        stdout.read(_MAX_CAPTURE_BYTES).decode("utf-8", errors="replace"),
+        stderr.read(_MAX_CAPTURE_BYTES).decode("utf-8", errors="replace"),
+    )
+
+
+def _watch_output(
+    process: subprocess.Popen[str],
+    streams: tuple[IO[bytes], IO[bytes]],
+    stopped: Event,
+    exceeded: Event,
+) -> None:
+    while not stopped.wait(0.01):
+        if _capture_size(streams) > _MAX_CAPTURE_BYTES:
+            exceeded.set()
+            _terminate_process(process)
+            return
+
+
+def _wait_for_inso(
+    process: subprocess.Popen[str], streams: tuple[IO[bytes], IO[bytes]], timeout: int
+) -> tuple[str, str]:
+    stopped, exceeded = Event(), Event()
+    watcher = Thread(
+        target=_watch_output,
+        args=(process, streams, stopped, exceeded),
+        name="insomnia-output-limit",
+        daemon=True,
+    )
+    watcher.start()
+    try:
+        process.communicate(timeout=timeout)
+    except BaseException as error:
+        _terminate_process(process)
+        try:
+            process.communicate(timeout=1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        if isinstance(error, subprocess.TimeoutExpired):
+            stdout, stderr = _read_captures(streams)
+            error.output, error.stderr = stdout.encode("utf-8"), stderr.encode("utf-8")
+        raise
+    else:
+        # Descendants must not keep writing to capture files after the parent exits.
+        _terminate_process(process)
+    finally:
+        stopped.set()
+        watcher.join()
+    if exceeded.is_set():
+        raise _OutputLimitError()
+    return _read_captures(streams)
 
 
 class InsoConfigurationError(ValueError):
@@ -25,6 +112,12 @@ class InsoConfigurationError(ValueError):
 
 
 class InsoRunner:
+    def __init__(
+        self, *, verified_version: str | None = None, redactor: Redactor | None = None
+    ):
+        self._verified_version = verified_version
+        self._redactor = redactor or Redactor()
+
     @staticmethod
     def _run_command(cmd: list[str], timeout: int):
         if os.name != "posix":
@@ -32,55 +125,47 @@ class InsoRunner:
                 "InsoRunner requires POSIX process groups (Linux/macOS); Windows is unsupported."
             )
         # Arguments are passed without a shell.
-        with subprocess.Popen(  # nosec B603
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            encoding="utf-8",
-            errors="replace",
-            start_new_session=True,
-            shell=False,
-            umask=0o077,
-            env={
-                **{
-                    key: value
-                    for key, value in os.environ.items()
-                    if key
-                    not in {"REDACT_VALUES", "ENV_VAR", "GITHUB_TOKEN", "GH_TOKEN"}
-                    and not key.startswith(
-                        ("INPUT_", "ACTION_", "INSOMNIA_RUN_", "ACTIONS_ID_TOKEN_")
-                    )
+        with (
+            tempfile.TemporaryFile() as stdout_capture,
+            tempfile.TemporaryFile() as stderr_capture,
+            subprocess.Popen(  # nosec B603
+                cmd,
+                stdout=stdout_capture,
+                stderr=stderr_capture,
+                encoding="utf-8",
+                errors="replace",
+                start_new_session=True,
+                shell=False,
+                umask=0o077,
+                env={
+                    **{
+                        key: value
+                        for key, value in os.environ.items()
+                        if key
+                        not in {"REDACT_VALUES", "ENV_VAR", "GITHUB_TOKEN", "GH_TOKEN"}
+                        and not key.startswith(
+                            ("INPUT_", "ACTION_", "INSOMNIA_RUN_", "ACTIONS_ID_TOKEN_")
+                        )
+                    },
+                    "INSO_TELEMETRY_DISABLED": "1",
                 },
-                "INSO_TELEMETRY_DISABLED": "1",
-            },
-        ) as process:
-            try:
-                stdout, stderr = process.communicate(timeout=timeout)
-            except BaseException as error:
-                # A new session does not inherit terminal interrupts; stop it too.
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                except OSError:
-                    try:
-                        process.kill()
-                    except OSError:
-                        pass
-                try:
-                    drained_stdout, drained_stderr = process.communicate(timeout=1)
-                    if isinstance(error, subprocess.TimeoutExpired):
-                        error.output = drained_stdout.encode("utf-8")
-                        error.stderr = drained_stderr.encode("utf-8")
-                except (OSError, subprocess.TimeoutExpired):
-                    pass
-                raise
+            ) as process,
+        ):
+            stdout, stderr = _wait_for_inso(
+                process, (stdout_capture, stderr_capture), timeout
+            )
             return subprocess.CompletedProcess(cmd, process.returncode, stdout, stderr)
 
     def _supports_native_report(self) -> bool:
+        if self._verified_version in {"12.2.0", "12.6.0", "13.1.0", "13.3.1"}:
+            return True
         try:
             # Capability discovery never runs a collection or interprets script logs.
             result = self._run_command(["inso", "run", "collection", "--help"], 15)
+        except _OutputLimitError as error:
+            raise InsoConfigurationError(
+                "Inso capability discovery exceeded its output capture limit."
+            ) from error
         except subprocess.TimeoutExpired as error:
             raise InsoConfigurationError(
                 "Inso capability discovery timed out. Check that "
@@ -91,7 +176,7 @@ class InsoRunner:
                 "Inso capability discovery failed. Check that "
                 "'inso run collection --help' succeeds, then retry."
             )
-        return bool(re.search(r"^\s+--output(?:\s|$)", result.stdout, re.M))
+        return bool(re.search(r"^\s+(?:-\w,\s+)?--output\b", result.stdout, re.M))
 
     @staticmethod
     def _base_cmd(run_type: RunType, working_dir: str):
@@ -233,9 +318,28 @@ class InsoRunner:
             report.complete = False
             report.run_error = RunError(
                 kind="execution",
-                message=f"Inso CLI exited with code {result.returncode}.",
+                message=self._execution_error_message(result, options),
             )
         return report
+
+    def _execution_error_message(
+        self, result: subprocess.CompletedProcess[str], options
+    ) -> str:
+        redactor = Redactor(
+            self._redactor.values, env_vars=getattr(options, "env_var", None)
+        )
+        lines = [
+            line.strip()
+            for line in redactor.redact(result.stderr).splitlines()
+            if line.strip()
+        ]
+        diagnostic = (
+            "\n".join(lines[-6:])
+            .encode("utf-8")[-2048:]
+            .decode("utf-8", errors="ignore")
+        )
+        message = f"Inso CLI exited with code {result.returncode}."
+        return message + ("\n" + diagnostic if diagnostic else "")
 
     @staticmethod
     def _missing_native_report(
@@ -260,6 +364,33 @@ class InsoRunner:
                 ),
             )
 
+    def _timeout_report(
+        self, error: subprocess.TimeoutExpired, options, native_path: Path | None
+    ) -> InsoRunReport:
+        stdout, stderr = self._text(error.output), self._text(error.stderr)
+        if native_path is not None and native_path.exists():
+            report = self._native_report(native_path, options)
+            if (
+                report.run_error
+                and report.run_error.kind == "protocol"
+                and not options.verbose
+            ):
+                report = TapParser().parse(stdout, require_tap=True)
+        elif options.verbose:
+            report = InsoRunReport(plan_end=0)
+        else:
+            report = TapParser().parse(stdout, require_tap=True)
+        report.complete = False
+        report.run_error = RunError(
+            kind="timeout",
+            message=(
+                f"Inso CLI timed out after {options.execution_timeout} seconds."
+                + (f" {report.run_error.message}" if report.run_error else "")
+            ),
+        )
+        report.raw_output = stdout + stderr
+        return report
+
     def _execute(
         self,
         cmd: list[str],
@@ -270,32 +401,19 @@ class InsoRunner:
         started = time.monotonic()
         try:
             result = self._run_command(cmd, options.execution_timeout)
-        except subprocess.TimeoutExpired as error:
-            stdout, stderr = self._text(error.output), self._text(error.stderr)
-            if native_path is not None and native_path.exists():
-                report = self._native_report(native_path, options)
-                if (
-                    report.run_error
-                    and report.run_error.kind == "protocol"
-                    and not options.verbose
-                ):
-                    report = TapParser().parse(stdout, require_tap=True)
-            elif options.verbose:
-                report = InsoRunReport(plan_end=0)
-            else:
-                report = TapParser().parse(stdout, require_tap=True)
-            report.complete = False
-            report.run_error = RunError(
-                kind="timeout",
-                message=(
-                    f"Inso CLI timed out after {options.execution_timeout} seconds."
-                    + (f" {report.run_error.message}" if report.run_error else "")
-                ),
+        except _OutputLimitError as error:
+            report = (
+                self._native_report(native_path, options)
+                if native_path is not None and native_path.exists()
+                else InsoRunReport(plan_end=0)
             )
+            report.complete = False
+            report.run_error = RunError(kind="execution", message=str(error))
+        except subprocess.TimeoutExpired as error:
+            report = self._timeout_report(error, options, native_path)
         else:
-            stdout, stderr = result.stdout, result.stderr
             report = self._completed_report(result, options, run_type, native_path)
-        report.raw_output = stdout + stderr
+            report.raw_output = result.stdout + result.stderr
         report.duration_seconds = time.monotonic() - started
         report.run_type = run_type
         report.target_name = options.identifier

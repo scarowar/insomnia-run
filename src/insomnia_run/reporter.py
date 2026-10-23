@@ -84,8 +84,10 @@ def _result_block(result: InsoResult) -> str:
 
 
 def _request_frame(
-    execution: RequestExecution, results: list[InsoResult]
+    execution: RequestExecution | None, results: list[InsoResult]
 ) -> tuple[str, str]:
+    if execution is None:
+        return "", ""
     metadata = [f"Execution {execution.id}"]
     if execution.iteration is not None:
         metadata.append(f"Iteration {execution.iteration + 1}")
@@ -109,7 +111,7 @@ def _request_frame(
         )
     if not results:
         opening += "No assertions recorded.\n\n"
-    return opening, closing
+    return opening, "\n" + closing
 
 
 def _result_groups(
@@ -308,12 +310,7 @@ class Reporter:
         shown_failures = 0
         shown_executions = 0
         groups = _result_groups(report)
-        frames = []
-        for execution, results in groups:
-            opening, closing = (
-                _request_frame(execution, results) if execution else ("", "")
-            )
-            frames.append((opening, ("\n" if execution else "") + closing))
+        frames = [_request_frame(execution, results) for execution, results in groups]
         selected_groups = _select_group_results(groups, frames, available)
         selected_size = sum(
             len(

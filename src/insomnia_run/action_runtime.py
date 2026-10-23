@@ -136,8 +136,17 @@ def _run_reports(
     from .main import _execute_report, _finalize_report, _report_redactor
 
     raw = env.get("INCLUDE_RAW_OUTPUT", "").lower() == "true"
+    redactor = _report_redactor(
+        env.get("REDACT_VALUES", "").splitlines(),
+        env_vars=options.env_var
+        if isinstance(options, InsoCollectionOptions)
+        else None,
+        proxies=(options.http_proxy, options.https_proxy),
+    )
     try:
-        runner = InsoRunner()
+        runner = InsoRunner(
+            verified_version=env.get("INSOMNIA_RUN_INSO_VERSION"), redactor=redactor
+        )
         report = _execute_report(
             lambda: (
                 runner.run_collection(options)
@@ -162,13 +171,7 @@ def _run_reports(
                 else None,
                 "raw": str(report_dir / _RAW_REPORT) if raw else None,
             },
-            redactor=_report_redactor(
-                env.get("REDACT_VALUES", "").splitlines(),
-                env_vars=options.env_var
-                if isinstance(options, InsoCollectionOptions)
-                else None,
-                proxies=(options.http_proxy, options.https_proxy),
-            ),
+            redactor=redactor,
             annotations=env.get("ANNOTATIONS", "").lower() == "true",
         )
     except typer.Exit as error:

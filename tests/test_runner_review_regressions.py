@@ -9,6 +9,7 @@ import pytest
 
 from insomnia_run.models import InsoCollectionOptions
 from insomnia_run.runner import InsoRunner
+from insomnia_run.privacy import Redactor
 
 
 def test_inso_child_cannot_read_action_or_oidc_credentials(monkeypatch):
@@ -94,3 +95,44 @@ def test_large_diagnostics_do_not_drop_assertions_before_publication(monkeypatch
     report = InsoRunner().run_collection(InsoCollectionOptions(working_dir="fixture"))
     assert report.passed_count == 1
     assert report.raw_output.endswith("last diagnostic\n")
+
+
+def test_execution_error_includes_redacted_stderr_without_raw_publication(monkeypatch):
+    monkeypatch.setattr(InsoRunner, "_supports_native_report", lambda self: False)
+    monkeypatch.setattr(
+        InsoRunner,
+        "_run_command",
+        staticmethod(
+            lambda cmd, timeout: subprocess.CompletedProcess(
+                cmd,
+                23,
+                "1..1\nok 1 - completed\n",
+                "Cannot connect to the selected server\nGITHUB_TOKEN=private-token\ninline-private-value\n",
+            )
+        ),
+    )
+    report = InsoRunner(redactor=Redactor(["inline-private-value"])).run_collection(
+        InsoCollectionOptions(working_dir="fixture")
+    )
+    assert report.run_error.kind == "execution"
+    assert "code 23" in report.run_error.message
+    assert "Cannot connect" in report.run_error.message
+    assert "private-token" not in report.run_error.message
+    assert "inline-private-value" not in report.run_error.message
+
+
+def test_execution_error_keeps_only_the_last_six_nonempty_diagnostics(monkeypatch):
+    monkeypatch.setattr(InsoRunner, "_supports_native_report", lambda self: False)
+    stderr = "\n\n".join(f"diagnostic {index}" for index in range(10))
+    monkeypatch.setattr(
+        InsoRunner,
+        "_run_command",
+        staticmethod(
+            lambda cmd, timeout: subprocess.CompletedProcess(cmd, 23, "1..0\n", stderr)
+        ),
+    )
+    report = InsoRunner().run_collection(InsoCollectionOptions(working_dir="fixture"))
+    assert report.run_error.message.endswith(
+        "\n".join(f"diagnostic {index}" for index in range(4, 10))
+    )
+    assert "diagnostic 3" not in report.run_error.message

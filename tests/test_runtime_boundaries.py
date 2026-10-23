@@ -37,16 +37,16 @@ def fake_inso(tmp_path, monkeypatch):
 @pytest.mark.parametrize("stream", ["STDOUT", "STDERR"])
 @pytest.mark.parametrize("include_raw", [False, True])
 @pytest.mark.parametrize("has_tap", [False, True])
-def test_cli_errors_keep_arbitrary_diagnostics_only_in_opt_in_raw_output(
+def test_cli_errors_redact_diagnostics_with_or_without_raw_publication(
     fake_inso, tmp_path, monkeypatch, command, stream, include_raw, has_tap
 ):
     secret = "PRIVATE_DIAGNOSTIC_SENTINEL"
     stdout = "1..1\nok 1 - passes\n" if has_tap else ""
     stderr = ""
     if stream == "STDOUT":
-        stdout += f"Error: {secret}\n"
+        stdout += f"Cannot connect: {secret}\n"
     else:
-        stderr = f"Error: {secret}\n"
+        stderr = f"Cannot connect: {secret}\n"
     monkeypatch.setenv("FAKE_INSO_STDOUT", stdout.encode().hex())
     monkeypatch.setenv("FAKE_INSO_STDERR", stderr.encode().hex())
     monkeypatch.setenv("FAKE_INSO_EXIT", "23")
@@ -59,6 +59,8 @@ def test_cli_errors_keep_arbitrary_diagnostics_only_in_opt_in_raw_output(
         "json",
         "--junit-output",
         str(junit),
+        "--redact-value",
+        secret,
     ]
     if include_raw:
         args.append("--include-raw-output")
@@ -73,8 +75,9 @@ def test_cli_errors_keep_arbitrary_diagnostics_only_in_opt_in_raw_output(
     assert all(r["status"] == "PASS" for r in payload["results"])
     assert all(secret not in r["description"] for r in payload["results"])
     assert secret not in payload["run_error"]["message"]
-    assert (secret in result.stdout) is include_raw
-    assert (secret in result.stderr) is include_raw
+    assert secret not in result.stdout + result.stderr
+    if stream == "STDERR" and payload["run_error"]["kind"] == "execution":
+        assert "Cannot connect" in payload["run_error"]["message"]
     assert ("raw_output" in payload) is include_raw
     assert secret not in junit.read_text(encoding="utf-8")
 

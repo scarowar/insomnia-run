@@ -6,7 +6,7 @@ import threading
 import time
 from urllib.parse import unquote, urlsplit
 import typer
-from typing import Optional
+from typing import Annotated, Optional
 
 from .models import InsoCollectionOptions, InsoRunReport, InsoStatus, InsoTestOptions
 from .native import validate_capture_headers
@@ -24,6 +24,95 @@ app = typer.Typer(
 
 SUPPORTED_OUTPUT_FORMATS = {"json"}
 _PROGRESS_INTERVAL_SECONDS = 15
+
+_WorkingDirOption = Annotated[
+    str,
+    typer.Option(
+        "--working-dir",
+        "-w",
+        help="Path to an Insomnia export, legacy Git Sync repository root, or app-data directory",
+    ),
+]
+_EnvironmentOption = Annotated[
+    Optional[str], typer.Option("--env", "-e", help="Environment name to use")
+]
+_RequestTimeoutOption = Annotated[
+    Optional[int], typer.Option("--request-timeout", min=0, help="Request timeout (ms)")
+]
+_BailOption = Annotated[
+    bool, typer.Option("--bail", "-b", help="Stop on first failure")
+]
+_DisableCertValidationOption = Annotated[
+    bool,
+    typer.Option("--disable-cert-validation", "-k", help="Disable SSL verification"),
+]
+_HttpsProxyOption = Annotated[
+    Optional[str], typer.Option("--https-proxy", help="HTTPS proxy URL")
+]
+_HttpProxyOption = Annotated[
+    Optional[str], typer.Option("--http-proxy", help="HTTP proxy URL")
+]
+_NoProxyOption = Annotated[
+    Optional[str], typer.Option("--no-proxy", help="Hosts to bypass proxy")
+]
+_VerboseOption = Annotated[bool, typer.Option("--verbose", help="Show additional logs")]
+_ExecutionTimeoutOption = Annotated[
+    int,
+    typer.Option(
+        "--execution-timeout",
+        min=1,
+        help="Execution timeout for the entire process (seconds)",
+    ),
+]
+_WorkflowUrlOption = Annotated[
+    Optional[str],
+    typer.Option("--workflow-url", help="GitHub workflow URL for report links"),
+]
+_OutputFormatOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--output-format",
+        help="The format to use for the report output (e.g., 'json').",
+    ),
+]
+_IncludeRawOutputOption = Annotated[
+    bool,
+    typer.Option(
+        "--include-raw-output",
+        help="Include raw Inso output in Markdown and JSON reports.",
+    ),
+]
+_JunitOutputOption = Annotated[
+    Optional[str],
+    typer.Option("--junit-output", help="Write a JUnit XML report to this path."),
+]
+_JsonOutputOption = Annotated[
+    Optional[str],
+    typer.Option("--json-output", help="Write a normalized JSON report to this path."),
+]
+_MarkdownOutputOption = Annotated[
+    Optional[str],
+    typer.Option("--markdown-output", help="Write a Markdown report to this path."),
+]
+_RawOutputFileOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--raw-output-file", help="Write redacted raw Inso output to this path."
+    ),
+]
+_RedactValueOption = Annotated[
+    Optional[list[str]],
+    typer.Option("--redact-value", help="Additional value to redact (repeatable)."),
+]
+_ProgressOption = Annotated[
+    bool,
+    typer.Option(
+        "--progress", help="Show execution stages and elapsed-time heartbeats."
+    ),
+]
+_AnnotationsOption = Annotated[
+    bool, typer.Option("--annotations", help="Emit bounded GitHub failure annotations.")
+]
 
 
 def _get_version() -> str:
@@ -183,14 +272,12 @@ def _finalize_report(
         report, output_format, include_raw_output=include_raw_output
     )
     write_failed = False
+    if workflow_url and not trusted_workflow_url:
+        workflow_url = redactor.redact(workflow_url)
     try:
         markdown = reporter.generate_markdown(
             report,
-            workflow_url=(
-                workflow_url if trusted_workflow_url else redactor.redact(workflow_url)
-            )
-            if workflow_url
-            else None,
+            workflow_url=workflow_url,
             include_raw_output=include_raw_output,
         )
     except (OSError, ValueError):
@@ -291,18 +378,11 @@ def version_callback(
 
 @app.command()
 def run_collection(  # NOSONAR - CLI command requires many options
-    working_dir: str = typer.Option(
-        ...,
-        "--working-dir",
-        "-w",
-        help="Path to an Insomnia export, legacy Git Sync repository root, or app-data directory",
-    ),
+    working_dir: _WorkingDirOption,
     identifier: Optional[str] = typer.Option(
         None, "--identifier", "-i", help="Collection name or workspace ID"
     ),
-    environment: Optional[str] = typer.Option(
-        None, "--env", "-e", help="Environment name to use"
-    ),
+    environment: _EnvironmentOption = None,
     request_name_pattern: Optional[str] = typer.Option(
         None, "--request-name-pattern", help="Regex to filter requests"
     ),
@@ -315,9 +395,7 @@ def run_collection(  # NOSONAR - CLI command requires many options
     delay_request: Optional[int] = typer.Option(
         None, "--delay-request", min=0, help="Delay between requests (ms)"
     ),
-    request_timeout: Optional[int] = typer.Option(
-        None, "--request-timeout", min=0, help="Request timeout (ms)"
-    ),
+    request_timeout: _RequestTimeoutOption = None,
     iteration_count: Optional[int] = typer.Option(
         None, "--iteration-count", "-n", min=1, help="Number of iterations"
     ),
@@ -332,70 +410,31 @@ def run_collection(  # NOSONAR - CLI command requires many options
         "--env-var",
         help="Override env vars (KEY=VALUE, repeatable; Inso URL decoding)",
     ),
-    bail: bool = typer.Option(False, "--bail", "-b", help="Stop on first failure"),
-    disable_cert_validation: bool = typer.Option(
-        False, "--disable-cert-validation", "-k", help="Disable SSL verification"
-    ),
-    https_proxy: Optional[str] = typer.Option(
-        None, "--https-proxy", help="HTTPS proxy URL"
-    ),
-    http_proxy: Optional[str] = typer.Option(
-        None, "--http-proxy", help="HTTP proxy URL"
-    ),
-    no_proxy: Optional[str] = typer.Option(
-        None, "--no-proxy", help="Hosts to bypass proxy"
-    ),
+    bail: _BailOption = False,
+    disable_cert_validation: _DisableCertValidationOption = False,
+    https_proxy: _HttpsProxyOption = None,
+    http_proxy: _HttpProxyOption = None,
+    no_proxy: _NoProxyOption = None,
     data_folders: Optional[list[str]] = typer.Option(
         None, "--data-folders", "-f", help="Folders Insomnia can access (repeatable)"
     ),
-    verbose: bool = typer.Option(False, "--verbose", help="Show additional logs"),
-    execution_timeout: int = typer.Option(
-        300,
-        "--execution-timeout",
-        min=1,
-        help="Execution timeout for the entire process (seconds)",
-    ),
-    workflow_url: Optional[str] = typer.Option(
-        None, "--workflow-url", help="GitHub workflow URL for report links"
-    ),
-    output_format: Optional[str] = typer.Option(
-        None,
-        "--output-format",
-        help="The format to use for the report output (e.g., 'json').",
-    ),
-    include_raw_output: bool = typer.Option(
-        False,
-        "--include-raw-output",
-        help="Include raw Inso output in Markdown and JSON reports.",
-    ),
-    junit_output: Optional[str] = typer.Option(
-        None,
-        "--junit-output",
-        help="Write a JUnit XML report to this path.",
-    ),
-    json_output: Optional[str] = typer.Option(
-        None, "--json-output", help="Write a normalized JSON report to this path."
-    ),
-    markdown_output: Optional[str] = typer.Option(
-        None, "--markdown-output", help="Write a Markdown report to this path."
-    ),
-    raw_output_file: Optional[str] = typer.Option(
-        None, "--raw-output-file", help="Write redacted raw Inso output to this path."
-    ),
-    redact_value: Optional[list[str]] = typer.Option(
-        None, "--redact-value", help="Additional value to redact (repeatable)."
-    ),
+    verbose: _VerboseOption = False,
+    execution_timeout: _ExecutionTimeoutOption = 300,
+    workflow_url: _WorkflowUrlOption = None,
+    output_format: _OutputFormatOption = None,
+    include_raw_output: _IncludeRawOutputOption = False,
+    junit_output: _JunitOutputOption = None,
+    json_output: _JsonOutputOption = None,
+    markdown_output: _MarkdownOutputOption = None,
+    raw_output_file: _RawOutputFileOption = None,
+    redact_value: _RedactValueOption = None,
     capture_response_headers: Optional[str] = typer.Option(
         None,
         "--capture-response-headers",
         help="Comma-separated response header names to retain.",
     ),
-    progress: bool = typer.Option(
-        False, "--progress", help="Show execution stages and elapsed-time heartbeats."
-    ),
-    annotations: bool = typer.Option(
-        False, "--annotations", help="Emit bounded GitHub failure annotations."
-    ),
+    progress: _ProgressOption = False,
+    annotations: _AnnotationsOption = False,
 ):
     """Run Insomnia collections and generate a markdown report."""
 
@@ -447,7 +486,10 @@ def run_collection(  # NOSONAR - CLI command requires many options
         capture_response_headers=headers,
     )
 
-    runner = InsoRunner()
+    redactor = _report_redactor(
+        redact_value, env_vars=env_var, proxies=(http_proxy, https_proxy)
+    )
+    runner = InsoRunner(redactor=redactor)
     report = _execute_report(
         lambda: runner.run_collection(options),
         progress=progress,
@@ -460,98 +502,48 @@ def run_collection(  # NOSONAR - CLI command requires many options
         include_raw_output=include_raw_output,
         output_format=output_format,
         destinations=destinations,
-        redactor=_report_redactor(
-            redact_value, env_vars=env_var, proxies=(http_proxy, https_proxy)
-        ),
+        redactor=redactor,
         annotations=annotations,
     )
 
 
 @app.command()
 def run_test(  # NOSONAR - CLI command requires many options
-    working_dir: str = typer.Option(
-        ...,
-        "--working-dir",
-        "-w",
-        help="Path to an Insomnia export, legacy Git Sync repository root, or app-data directory",
-    ),
+    working_dir: _WorkingDirOption,
     identifier: Optional[str] = typer.Option(
         None, "--identifier", "-i", help="Test suite or API spec ID"
     ),
-    environment: Optional[str] = typer.Option(
-        None, "--env", "-e", help="Environment name to use"
-    ),
+    environment: _EnvironmentOption = None,
     test_name_pattern: Optional[str] = typer.Option(
         None,
         "--test-name-pattern",
         "-t",
         help="Literal substring to filter test titles (Inso 13.3.1)",
     ),
-    bail: bool = typer.Option(False, "--bail", "-b", help="Stop on first failure"),
+    bail: _BailOption = False,
     keep_file: bool = typer.Option(
         False, "--keep-file", help="Keep generated test file"
     ),
-    request_timeout: Optional[int] = typer.Option(
-        None, "--request-timeout", min=0, help="Request timeout (ms)"
-    ),
-    disable_cert_validation: bool = typer.Option(
-        False, "--disable-cert-validation", "-k", help="Disable SSL verification"
-    ),
-    https_proxy: Optional[str] = typer.Option(
-        None, "--https-proxy", help="HTTPS proxy URL"
-    ),
-    http_proxy: Optional[str] = typer.Option(
-        None, "--http-proxy", help="HTTP proxy URL"
-    ),
-    no_proxy: Optional[str] = typer.Option(
-        None, "--no-proxy", help="Hosts to bypass proxy"
-    ),
+    request_timeout: _RequestTimeoutOption = None,
+    disable_cert_validation: _DisableCertValidationOption = False,
+    https_proxy: _HttpsProxyOption = None,
+    http_proxy: _HttpProxyOption = None,
+    no_proxy: _NoProxyOption = None,
     data_folders: Optional[list[str]] = typer.Option(
         None, "--data-folders", "-f", help="Folders Insomnia can access"
     ),
-    verbose: bool = typer.Option(False, "--verbose", help="Show additional logs"),
-    execution_timeout: int = typer.Option(
-        300,
-        "--execution-timeout",
-        min=1,
-        help="Execution timeout for the entire process (seconds)",
-    ),
-    workflow_url: Optional[str] = typer.Option(
-        None, "--workflow-url", help="GitHub workflow URL for report links"
-    ),
-    output_format: Optional[str] = typer.Option(
-        None,
-        "--output-format",
-        help="The format to use for the report output (e.g., 'json').",
-    ),
-    include_raw_output: bool = typer.Option(
-        False,
-        "--include-raw-output",
-        help="Include raw Inso output in Markdown and JSON reports.",
-    ),
-    junit_output: Optional[str] = typer.Option(
-        None,
-        "--junit-output",
-        help="Write a JUnit XML report to this path.",
-    ),
-    json_output: Optional[str] = typer.Option(
-        None, "--json-output", help="Write a normalized JSON report to this path."
-    ),
-    markdown_output: Optional[str] = typer.Option(
-        None, "--markdown-output", help="Write a Markdown report to this path."
-    ),
-    raw_output_file: Optional[str] = typer.Option(
-        None, "--raw-output-file", help="Write redacted raw Inso output to this path."
-    ),
-    redact_value: Optional[list[str]] = typer.Option(
-        None, "--redact-value", help="Additional value to redact (repeatable)."
-    ),
-    progress: bool = typer.Option(
-        False, "--progress", help="Show execution stages and elapsed-time heartbeats."
-    ),
-    annotations: bool = typer.Option(
-        False, "--annotations", help="Emit bounded GitHub failure annotations."
-    ),
+    verbose: _VerboseOption = False,
+    execution_timeout: _ExecutionTimeoutOption = 300,
+    workflow_url: _WorkflowUrlOption = None,
+    output_format: _OutputFormatOption = None,
+    include_raw_output: _IncludeRawOutputOption = False,
+    junit_output: _JunitOutputOption = None,
+    json_output: _JsonOutputOption = None,
+    markdown_output: _MarkdownOutputOption = None,
+    raw_output_file: _RawOutputFileOption = None,
+    redact_value: _RedactValueOption = None,
+    progress: _ProgressOption = False,
+    annotations: _AnnotationsOption = False,
 ):
     """Run Insomnia unit tests and generate a markdown report."""
 
@@ -585,7 +577,8 @@ def run_test(  # NOSONAR - CLI command requires many options
         execution_timeout=execution_timeout,
     )
 
-    runner = InsoRunner()
+    redactor = _report_redactor(redact_value, proxies=(http_proxy, https_proxy))
+    runner = InsoRunner(redactor=redactor)
     report = _execute_report(
         lambda: runner.run_test(options),
         progress=progress,
@@ -598,7 +591,7 @@ def run_test(  # NOSONAR - CLI command requires many options
         include_raw_output=include_raw_output,
         output_format=output_format,
         destinations=destinations,
-        redactor=_report_redactor(redact_value, proxies=(http_proxy, https_proxy)),
+        redactor=redactor,
         annotations=annotations,
     )
 

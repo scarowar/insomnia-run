@@ -62,15 +62,57 @@ def test_long_dotted_non_url_input_finishes_within_a_bounded_time():
         "text = 'a.' * 50_000; "
         "assert Redactor().redact(text) == text"
     )
-    try:
-        result = subprocess.run(
-            [sys.executable, "-c", program],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        pytest.fail("Redacting 100 KB of dotted text exceeded five seconds")
+    result = subprocess.run(
+        [sys.executable, "-c", program],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
 
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("quote", ["", '"', "'"])
+def test_large_assignment_values_are_hidden_whole(quote):
+    value = "private-value" * 10000
+    assert (
+        Redactor().redact(f"DB_PASSWORD={quote}{value}{quote} public")
+        == f"DB_PASSWORD={quote}[REDACTED]{quote} public"
+    )
+
+
+def test_unclosed_quoted_assignment_hides_the_remaining_value():
+    assert Redactor().redact('DB_PASSWORD="private-value') == 'DB_PASSWORD="[REDACTED]'
+
+
+def test_large_quoted_assignment_does_not_allocate_a_regex_stack_per_character():
+    program = (
+        "import tracemalloc; from insomnia_run.privacy import Redactor; "
+        "text = 'password=\"' + 's' * 1_000_000 + '\"'; redactor = Redactor(); "
+        "tracemalloc.start(); assert redactor.redact(text) == 'password=\"[REDACTED]\"'; "
+        "peak = tracemalloc.get_traced_memory()[1]; assert peak < 16 * 1024 * 1024, peak"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", program],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_nested_assignments_do_not_rescan_an_already_hidden_value():
+    program = (
+        "from insomnia_run.privacy import Redactor; "
+        "assert Redactor().redact('token=' * 20_000 + 'private') == 'token=[REDACTED]'"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", program],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
     assert result.returncode == 0, result.stderr

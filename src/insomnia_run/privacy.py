@@ -27,14 +27,36 @@ _HEADER = re.compile(
 _ASSIGNMENT = re.compile(
     rf"(?i)([\"']?(?<![A-Za-z0-9])(?:[A-Za-z0-9]{{1,32}}[_-]){{0,4}}"
     rf"{_CREDENTIAL_NAME}[\"']?\s*[:=]\s*)"
-    r"""("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s&,;<>"']+)"""
 )
+_ASSIGNMENT_VALUE = re.compile(r"""[^\s&,;<>"']{1,16384}""")
 _URL_USERINFO = re.compile(r"(?i)(\b[a-z][a-z0-9+.-]{0,31}://)[^\s/@<>\"']{1,1024}@")
 _QUERY_VALUE = re.compile(r"([?&])([^\s?&#=<>\"']+)=([^\s&#<>\"']*)")
 _QUERY_CREDENTIAL = re.compile(rf"(?i)^{_CREDENTIAL_NAME}$")
 _ENV_CREDENTIAL = re.compile(
     rf"(?i)^(?:[A-Za-z0-9]{{1,32}}[_-]){{0,4}}{_CREDENTIAL_NAME}$"
 )
+
+
+def _quoted_assignment_end(text: str, start: int) -> int:
+    quote = text[start]
+    end = text.find(quote, start + 1)
+    while end != -1:
+        preceding = end - 1
+        while preceding > start and text[preceding] == "\\":
+            preceding -= 1
+        if (end - preceding - 1) % 2 == 0:
+            return end
+        end = text.find(quote, end + 1)
+    return len(text)
+
+
+def _assignment_value_span(text: str, start: int) -> tuple[int, int] | None:
+    if start < len(text) and text[start] in ('"', "'"):
+        return start + 1, _quoted_assignment_end(text, start)
+    end = start
+    while match := _ASSIGNMENT_VALUE.match(text, end):
+        end = match.end()
+    return (start, end) if end > start else None
 
 
 def _variants(value: str) -> set[str]:
@@ -117,11 +139,14 @@ class Redactor:
             if _QUERY_CREDENTIAL.fullmatch(unquote_plus(match[2]))
         )
         spans.extend(match.span(2) for match in _HEADER.finditer(text))
+        assignment_end = 0
         for match in _ASSIGNMENT.finditer(text):
-            start, end = match.span(2)
-            if match[2].startswith(('"', "'")):
-                start, end = start + 1, end - 1
-            spans.append((start, end))
+            if match.start() < assignment_end:
+                continue
+            span = _assignment_value_span(text, match.end())
+            if span is not None:
+                spans.append(span)
+                assignment_end = span[1]
         return _replace_spans(text, spans)
 
     def _known_spans(self, text: str) -> list[tuple[int, int]]:

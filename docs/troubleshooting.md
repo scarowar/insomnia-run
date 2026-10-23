@@ -113,7 +113,9 @@ Assertion counts exclude structured run errors. `requests` is completed native e
 
 ## Debug Mode
 
-Start with redacted failure reasons, run errors, and trusted progress. For a trusted collection debugging run, opt into raw diagnostics explicitly:
+Inso stdout and stderr share a 32 MiB capture limit. Exceeding it stops the process group and returns exit `3` with an incomplete report. Captured streams are discarded; valid completed native evidence can still be reported. Reduce collection logging before retrying. Published raw diagnostics are limited to the last 1 MiB after redaction.
+
+Start with redacted failure reasons, run errors, and trusted progress. Generic execution errors include up to six redacted stderr lines (at most 2 KiB) so startup and connection problems can be diagnosed without raw publication. Add unknown sensitive values to `redact-values`; redaction cannot recognize every credential. For a trusted collection debugging run, opt into raw diagnostics explicitly:
 
 ```yaml
 verbose: "true"

@@ -16,9 +16,19 @@ def inso_output(stdout, stderr="", returncode=0):
     with (
         patch("insomnia_run.runner.subprocess.Popen") as popen,
         patch.object(InsoRunner, "_supports_native_report", return_value=False),
+        patch("insomnia_run.runner.os.killpg"),
     ):
         process = popen.return_value.__enter__.return_value
-        process.communicate.return_value = (stdout, stderr)
+
+        def communicate(**kwargs):
+            for key, value in (("stdout", stdout), ("stderr", stderr)):
+                stream = popen.call_args.kwargs[key]
+                stream.write(value.encode("utf-8"))
+                stream.flush()
+            return None, None
+
+        process.communicate.side_effect = communicate
+        process.pid = 12345
         process.returncode = returncode
         yield popen
 
