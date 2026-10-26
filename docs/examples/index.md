@@ -29,7 +29,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: scarowar/insomnia-run@v0.2.0
+      - uses: scarowar/insomnia-run@v0.2.1
         with:
           command: collection
           working-directory: insomnia-export.yaml
@@ -60,7 +60,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: scarowar/insomnia-run@v0.2.0
+      - uses: scarowar/insomnia-run@v0.2.1
         with:
           command: test
           working-directory: insomnia-export.yaml
@@ -72,7 +72,7 @@ jobs:
 Map URL-safe secrets into the collection environment:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -106,7 +106,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: scarowar/insomnia-run@v0.2.0
+      - uses: scarowar/insomnia-run@v0.2.1
         with:
           command: collection
           working-directory: insomnia-export.yaml
@@ -118,7 +118,7 @@ jobs:
 Allow assertion failures while retaining fatal configuration, execution, timeout, and report errors, then handle the assertion result:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   id: tests
   with:
     command: collection
@@ -141,7 +141,7 @@ Publish a JUnit report while keeping the final failure decision explicit:
 Grant `checks: write` when publishing a GitHub test report.
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   id: tests
   with:
     command: collection
@@ -187,7 +187,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: scarowar/insomnia-run@v0.2.0
+      - uses: scarowar/insomnia-run@v0.2.1
         with:
           command: collection
           working-directory: insomnia-export.yaml
@@ -199,7 +199,7 @@ jobs:
 Route requests through a corporate proxy:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -213,7 +213,7 @@ Route requests through a corporate proxy:
 Retain only named, non-credential headers in native collection reports:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -228,7 +228,7 @@ This does not publish response bodies or native exports. See [header privacy](..
     Disabling certificate validation is insecure. Only use in development environments.
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -258,7 +258,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: scarowar/insomnia-run@v0.2.0
+      - uses: scarowar/insomnia-run@v0.2.1
         id: tests
         with:
           command: collection
@@ -288,7 +288,7 @@ jobs:
 Send email notification on test failure. This example uses AWS SES, but any SMTP server works (SendGrid, Mailgun, Gmail, etc.):
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   id: tests
   with:
     command: collection
@@ -317,7 +317,7 @@ Send email notification on test failure. This example uses AWS SES, but any SMTP
 Send test results to Slack:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   id: tests
   with:
     command: collection
@@ -350,7 +350,7 @@ Send test results to Slack:
 For large collections or slow APIs, increase the execution timeout:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -362,7 +362,7 @@ For large collections or slow APIs, increase the execution timeout:
 Run collections with external data files:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -375,7 +375,7 @@ Run collections with external data files:
 Read or upload the complete JSON file rather than copying the bounded convenience output:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   id: run-cli
   with:
     command: collection

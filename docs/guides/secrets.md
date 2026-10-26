@@ -27,7 +27,7 @@ Map secrets explicitly into the collection's Insomnia environment with `env-var`
             print(f"{name}={encoded}", file=output)
     PY
 
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -53,7 +53,7 @@ A GitHub `env:` block sets operating-system variables. It does not automatically
 env:
   API_KEY: ${{ secrets.API_KEY }}
 steps:
-  - uses: scarowar/insomnia-run@v0.2.0
+  - uses: scarowar/insomnia-run@v0.2.1
     with:
       command: collection
       working-directory: insomnia-export.yaml
@@ -74,12 +74,12 @@ The `env-var` input is available only for `command: collection`. For legacy `com
 
 Insomnia Run disables Inso CLI telemetry for its child process. It does not change the environment of later workflow steps.
 
-Failure reasons are included by default after shared redaction. Environment overrides are automatically redacted and masked when their key names indicate credentials or their decoded values contain at least eight characters. Short configuration values such as `RETRIES=1` and `DEBUG=true` remain readable. Explicit `redact-values` apply regardless of length. Known encoded/decoded values, proxy credentials, and recognized credential-bearing headers/URLs/query parameters are removed from published names, messages, selected headers, and optional raw diagnostics. JSON, Markdown, JUnit, annotations, comments, and uploaded files use the redacted projection.
+Failure reasons are included by default after shared redaction. Environment overrides are automatically redacted and masked when their key names indicate credentials or their literal/decoded values contain at least eight characters. Literal assignment values are registered in addition to Inso’s URL-form-decoded values; this does not change Inso’s decoding behavior. Short configuration values such as `RETRIES=1` and `DEBUG=true` remain readable. Explicit `redact-values` apply regardless of length. Known encoded/decoded values, proxy credentials, and recognized credential-bearing headers/URLs/query parameters are removed from published names, messages, selected headers, and optional raw diagnostics. JSON, Markdown, JUnit, annotations, comments, and uploaded files use the redacted projection.
 
 Add sensitive values that are not collection overrides, including legacy-suite credentials:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -91,7 +91,7 @@ The action input accepts one value per line. For standalone use, repeat `--redac
 
 Raw Inso output is captured, not streamed. It is hidden by default. `verbose: "true"` alone does not publish it and is rejected for legacy suites. `include-raw-output: "true"` adds redacted diagnostics to reports and a raw file, including summaries, enabled comments, and uploads. Disabling comments/uploads does not remove them from the job summary. See [Debug Mode](../troubleshooting.md#debug-mode).
 
-Log masks are additional protection for logs, not sanitizers for files, comments, artifacts, or process listings. Percent-encoded and other transformed values remain credentials. Inso receives collection overrides as command-line arguments, and standalone `--redact-value` is also an argument. Other processes with access to process listings may see them. The action calls the runner in-process, keeping `redact-values` out of child Python command lines. Before starting Inso, it removes action inputs, internal action variables, `GITHUB_TOKEN`, `GH_TOKEN`, and runner OIDC credentials from the child environment. Other runner environment variables remain available to collection scripts and are not automatically known to the report redactor. Use isolated runners, trusted collections, minimal environment credentials, and explicit redaction values.
+Log masks are additional protection for logs, not sanitizers for files, comments, artifacts, or process listings. Percent-encoded and other transformed values remain credentials. Inso receives collection overrides as command-line arguments, and standalone `--redact-value` is also an argument. Other processes with access to process listings may see them. The action calls the runner in-process, keeping `redact-values` out of child Python command lines. Before starting Inso, it removes action inputs, internal GitHub/Actions/state variables, runner runtime/OIDC tokens, and recognized credential environment variables (including cloud secrets, package tokens, and credential-file locations) from the child environment. Reviewed GitHub metadata such as workspace, repository, ref, and commit SHA remain available, along with runtime configuration, proxies, certificate settings, and ordinary non-credential variables. GitHub control-file paths and credentials are removed. This also applies to standalone CLI execution. Inherited credential-based integrations must use explicit collection overrides or supported vault configuration instead; do not rely on ambient cloud/package tokens reaching collection scripts. Filtering is not a filesystem sandbox and does not make an untrusted collection safe. Use isolated runners, trusted collections, minimal environment credentials, and explicit redaction values.
 
 ## Response Headers
 
@@ -121,7 +121,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: scarowar/insomnia-run@v0.2.0
+      - uses: scarowar/insomnia-run@v0.2.1
         with:
           command: collection
           working-directory: insomnia-export.yaml
@@ -135,7 +135,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: scarowar/insomnia-run@v0.2.0
+      - uses: scarowar/insomnia-run@v0.2.1
         with:
           command: collection
           working-directory: insomnia-export.yaml

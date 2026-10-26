@@ -640,7 +640,7 @@ def test_custom_junit_cannot_collide_with_any_canonical_report(
 
     assert run(JUNIT_OUTPUT_FILE=str(reports / report_name)) == 2
     assert calls == []
-    assert list(reports.iterdir()) == []
+    assert not reports.exists()
 
 
 def test_custom_junit_rejects_symlink_escape_before_launch(run_action, tmp_path):

@@ -1,6 +1,6 @@
 # Getting Started
 
-Examples use `@v0.2.0`. For production workflows, pin the action to the full commit SHA of the reviewed release.
+Examples use `@v0.2.1`. For production workflows, pin the action to the full commit SHA of the reviewed release.
 
 ## Prerequisites
 
@@ -52,7 +52,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: scarowar/insomnia-run@v0.2.0
+      - uses: scarowar/insomnia-run@v0.2.1
         with:
           command: collection
           working-directory: insomnia-export.yaml

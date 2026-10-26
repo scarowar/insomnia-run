@@ -267,7 +267,7 @@ def test_long_backtick_names_use_short_gfm_code_delimiters(run_length):
         if child.type == "code_inline"
     ]
 
-    expected = name if len(name) <= 160 else name[:160] + " ... (truncated)"
+    expected = name if len(name) <= 160 else name[:144] + " ... (truncated)"
     assert [token.content for token in code_tokens] == [expected] * 3
     assert all(len(token.markup) <= 80 for token in code_tokens)
 
@@ -296,13 +296,13 @@ def test_name_code_delimiter_uses_the_shortest_unused_run(name, delimiter):
 @pytest.mark.parametrize(
     ("name", "expected"),
     [
-        ("a" * 511 + "*tail", "a" * 160 + " ... (truncated)"),
-        ("a" * 510 + "<tail", "a" * 160 + " ... (truncated)"),
+        ("a" * 511 + "*tail", "a" * 144 + " ... (truncated)"),
+        ("a" * 510 + "<tail", "a" * 144 + " ... (truncated)"),
         *[
-            ("a" * 159 + char + "tail", "a" * 159 + char + " ... (truncated)")
+            ("a" * 159 + char + "tail", "a" * 144 + " ... (truncated)")
             for char in ("*", "\\", "<", "&", "`")
         ],
-        ("\u754c" * 54, "\u754c" * 53 + " ... (truncated)"),
+        ("\u754c" * 54, "\u754c" * 48 + " ... (truncated)"),
         ("a" * 160, "a" * 160),
     ],
     ids=[
@@ -429,7 +429,7 @@ def test_raw_output_truncation_preserves_complete_utf8_characters():
 
 
 @pytest.mark.parametrize("count", [50, 51, 300])
-def test_markdown_limits_displayed_results_without_changing_counts(count):
+def test_markdown_keeps_all_results_that_fit_without_changing_counts(count):
     report = InsoRunReport(
         plan_end=count,
         results=[
@@ -443,11 +443,9 @@ def test_markdown_limits_displayed_results_without_changing_counts(count):
     assert f"**{count} test results** (all passed)" in markdown
     dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
     assert [node.text for node in dom.findall(".//li/strong/code")] == [
-        f"result-{index}" for index in range(1, 51)
+        f"result-{index}" for index in range(1, count + 1)
     ]
-    assert ("more results omitted" in markdown) == (count > 50)
-    if count > 50:
-        assert f"{count - 50} more results omitted" in markdown
+    assert "more results omitted" not in markdown
 
 
 @pytest.mark.parametrize(
@@ -489,15 +487,15 @@ def test_hostile_long_reports_fit_comments_without_losing_full_details(
     assert len(markdown.encode("utf-8")) < 60000
     assert "**300 test results** (100 passed, 100 failed, 100 skipped)" in markdown
     assert "Insomnia Collection Failed" in markdown
-    assert "250 more results omitted" in markdown
+    assert "more results omitted" in markdown
     result_lines = [
         line for line in markdown.splitlines() if line.startswith("- \u274c **")
     ]
-    assert len(result_lines) == 50
+    assert 0 < len(result_lines) <= 100
     assert all(len(line.encode("utf-8")) < 600 for line in result_lines)
     assert all("(truncated)" in line for line in result_lines)
     assert "Raw output truncated at 8192 bytes" in markdown
-    assert markdown.count("(truncated)") == 52
+    assert markdown.count("(truncated)") >= len(result_lines) + 2
     assert report.model_dump_json() == original_json
     assert reporter.generate_junit(report) == original_junit
     suite = ElementTree.fromstring(original_junit)
@@ -647,9 +645,10 @@ def test_native_requests_are_grouped_by_occurrence_with_failures_first():
     assert "requests executed" not in markdown
     dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
     details = dom.findall(".//details")
-    assert len(details) == 1
-    assert "Execution 1" in "".join(details[0].find("summary").itertext())
-    assert "first request" in "".join(details[0].itertext())
+    assert len(details) == 2
+    assert "passed assertions" in "".join(details[0].find("summary").itertext())
+    assert "Execution 1" in "".join(details[1].find("summary").itertext())
+    assert "first request" in "".join(details[1].itertext())
 
 
 def test_request_without_assertions_and_unattributed_results_are_not_lost():
@@ -712,12 +711,7 @@ def test_recovered_collection_tap_explains_missing_native_detail(
     )
     markdown = Reporter().generate_markdown(report)
 
-    expected = (
-        run_type == RunType.COLLECTION
-        and source == "tap"
-        and not complete
-        and has_results
-    )
+    expected = run_type == RunType.COLLECTION and source == "tap" and has_results
     assert (
         "recovered TAP may omit request details and assertion reasons" in markdown
     ) is expected
@@ -813,7 +807,7 @@ def test_markdown_byte_budget_keeps_complete_blocks_and_unabridged_artifacts(tmp
     suite = ElementTree.parse(artifact).getroot()
 
     assert len(markdown.encode("utf-8")) <= 60000
-    assert "more results omitted" in markdown
+    assert "assertion reasons omitted" in markdown
     assert "300 test results" in markdown
     assert len(dom.findall(".//pre")) == len(dom.findall(".//pre/code"))
     assert len(suite.findall("testcase")) == 300

@@ -34,7 +34,7 @@ def test_inso_child_cannot_read_action_or_oidc_credentials(monkeypatch):
     inherited = json.loads(result.stdout)
     leaked_keys = sorted(private.keys() & inherited.keys())
     assert leaked_keys == []
-    assert inherited["COLLECTION_API_TOKEN"] == "caller-authorized"
+    assert "COLLECTION_API_TOKEN" not in inherited
     assert inherited["INSO_TELEMETRY_DISABLED"] == "1"
     assert all(os.environ[key] == value for key, value in private.items())
 

@@ -17,9 +17,9 @@ def test_footer_diagnostic_is_not_guessed_to_belong_to_a_failure():
     assert all(result.message is None for result in report.results)
 
 
-def test_truncated_diagnostic_is_not_published_as_complete_evidence():
+def test_truncated_diagnostic_retains_available_failure_evidence():
     report = TapParser().parse("not ok 1 - fails\n  ---\n  message: truncated\n1..1\n")
-    assert report.results[0].message is None
+    assert report.results[0].message == "message: truncated"
 
 
 @pytest.mark.parametrize("indent", [" ", "  ", "\t"])

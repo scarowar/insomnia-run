@@ -8,7 +8,7 @@ Run Insomnia collections and legacy test suites in GitHub Actions with request-g
 ## Usage
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   id: api
   with:
     command: collection

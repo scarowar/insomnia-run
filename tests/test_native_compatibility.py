@@ -13,6 +13,7 @@ from xml.etree import ElementTree
 
 import pytest
 import yaml
+from markdown_it import MarkdownIt
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -221,7 +222,46 @@ def test_real_three_hundred_requests_keep_complete_files_and_bounded_markdown(
     report = json.loads((tmp_path / "report.json").read_text())
     assert len(report["executions"]) == len(report["results"]) == 300
     assert len((tmp_path / "report.md").read_bytes()) <= 60000
+    markdown = (tmp_path / "report.md").read_text()
+    dom = ElementTree.fromstring("<div>" + MarkdownIt().render(markdown) + "</div>")
+    names = {code.text for code in dom.findall(".//summary/code")}
+    assert names == {f"R{index}" for index in range(1, 301)}
+    assert "request groups omitted" not in markdown
     assert (
         len(ElementTree.parse(tmp_path / "junit.xml").getroot().findall("testcase"))
         == 300
+    )
+
+
+def test_real_uneven_sixty_two_assertions_keep_every_request(tmp_path, native_runtime):
+    scripts = []
+    for request, count in enumerate((29, 10, 21, 1, 1), 1):
+        scripts.append(
+            "\n".join(
+                f"insomnia.test('check-{request}-{index}', () => insomnia.expect(1).to.eql({2 if request == 1 and index < 2 else 1}));"
+                for index in range(count)
+            )
+        )
+    path = collection_file(tmp_path, native_runtime, scripts)
+    result = run_report(tmp_path, native_runtime, path)
+    assert result.returncode == 1, result.stdout + result.stderr
+    payload = json.loads((tmp_path / "report.json").read_text())
+    assert payload["source"] == "native"
+    assert payload["complete"]
+    assert len(payload["executions"]) == 5
+    assert len(payload["results"]) == 62
+    assert sum(item["status"] == "FAIL" for item in payload["results"]) == 2
+    markdown = (tmp_path / "report.md").read_text()
+    dom = ElementTree.fromstring("<div>" + MarkdownIt().render(markdown) + "</div>")
+    names = {
+        code.text for code in dom.findall(".//summary/code") + dom.findall(".//h4/code")
+    }
+    assert names == {f"R{index}" for index in range(1, 6)}
+    assert len(dom.findall(".//li/strong/code")) == 62
+    assert "more results omitted" not in markdown
+    assert "27 passed" in markdown
+    assert "21 passed" in markdown
+    assert (
+        len(ElementTree.parse(tmp_path / "junit.xml").getroot().findall("testcase"))
+        == 62
     )

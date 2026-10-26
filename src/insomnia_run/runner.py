@@ -20,9 +20,40 @@ from .models import (
 )
 from .native import parse_native_report, validate_capture_headers
 from .parser import TapParser
-from .privacy import Redactor
+from .privacy import Redactor, credential_name
 
 _MAX_CAPTURE_BYTES = 32 * 1024 * 1024
+_PUBLIC_GITHUB_CONTEXT = {
+    "GITHUB_ACTIONS",
+    "GITHUB_ACTION",
+    "GITHUB_ACTION_PATH",
+    "GITHUB_ACTION_REF",
+    "GITHUB_ACTION_REPOSITORY",
+    "GITHUB_ACTOR",
+    "GITHUB_ACTOR_ID",
+    "GITHUB_API_URL",
+    "GITHUB_BASE_REF",
+    "GITHUB_EVENT_NAME",
+    "GITHUB_GRAPHQL_URL",
+    "GITHUB_HEAD_REF",
+    "GITHUB_JOB",
+    "GITHUB_REF",
+    "GITHUB_REF_NAME",
+    "GITHUB_REF_TYPE",
+    "GITHUB_REPOSITORY",
+    "GITHUB_REPOSITORY_ID",
+    "GITHUB_REPOSITORY_OWNER",
+    "GITHUB_REPOSITORY_OWNER_ID",
+    "GITHUB_RUN_ATTEMPT",
+    "GITHUB_RUN_ID",
+    "GITHUB_RUN_NUMBER",
+    "GITHUB_SERVER_URL",
+    "GITHUB_SHA",
+    "GITHUB_WORKFLOW",
+    "GITHUB_WORKFLOW_REF",
+    "GITHUB_WORKFLOW_SHA",
+    "GITHUB_WORKSPACE",
+}
 
 
 class _OutputLimitError(subprocess.SubprocessError):
@@ -141,10 +172,20 @@ class InsoRunner:
                     **{
                         key: value
                         for key, value in os.environ.items()
-                        if key
-                        not in {"REDACT_VALUES", "ENV_VAR", "GITHUB_TOKEN", "GH_TOKEN"}
-                        and not key.startswith(
-                            ("INPUT_", "ACTION_", "INSOMNIA_RUN_", "ACTIONS_ID_TOKEN_")
+                        if key not in {"REDACT_VALUES", "ENV_VAR"}
+                        and not credential_name(key)
+                        and (
+                            key.upper() in _PUBLIC_GITHUB_CONTEXT
+                            or not key.upper().startswith(
+                                (
+                                    "INPUT_",
+                                    "ACTION_",
+                                    "ACTIONS_",
+                                    "STATE_",
+                                    "GITHUB_",
+                                    "INSOMNIA_RUN_",
+                                )
+                            )
                         )
                     },
                     "INSO_TELEMETRY_DISABLED": "1",

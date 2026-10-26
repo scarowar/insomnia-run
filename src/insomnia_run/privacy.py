@@ -35,6 +35,15 @@ _QUERY_CREDENTIAL = re.compile(rf"(?i)^{_CREDENTIAL_NAME}$")
 _ENV_CREDENTIAL = re.compile(
     rf"(?i)^(?:[A-Za-z0-9]{{1,32}}[_-]){{0,4}}{_CREDENTIAL_NAME}$"
 )
+_CREDENTIAL_COMPONENT = re.compile(
+    r"(?i)(?:^|[_-])(?:token|secret|password|passwd|passphrase|pwd|"
+    r"credentials?|private[_-]?key|api[_-]?key|access[_-]?key|"
+    r"connection[_-]?string|authorization)(?:$|[_-])"
+)
+
+
+def credential_name(name: str) -> bool:
+    return bool(_ENV_CREDENTIAL.fullmatch(name) or _CREDENTIAL_COMPONENT.search(name))
 
 
 def _quoted_assignment_end(text: str, start: int) -> int:
@@ -99,17 +108,16 @@ class Redactor:
         if isinstance(env_vars, Mapping):
             pairs = env_vars.items()
         elif env_vars is not None:
-            pairs = [
-                pair
-                for item in env_vars
-                for pair in parse_qsl(item, keep_blank_values=True)
-            ]
+            pairs = []
+            for item in env_vars:
+                pairs.extend(parse_qsl(item, keep_blank_values=True))
+                key, separator, value = item.partition("=")
+                if separator:
+                    pairs.append((key, value))
         else:
             pairs = []
         secrets.extend(
-            value
-            for key, value in pairs
-            if _ENV_CREDENTIAL.fullmatch(key) or len(value) >= 8
+            value for key, value in pairs if credential_name(key) or len(value) >= 8
         )
         self.values = tuple(dict.fromkeys(value for value in secrets if value))
         variants = {variant for value in self.values for variant in _variants(value)}
@@ -186,19 +194,30 @@ class Redactor:
         if isinstance(value, BaseModel):
             self._redact_model(value)
         elif isinstance(value, dict):
-            return {
-                key: (
-                    _REDACTED
-                    if isinstance(key, str) and _QUERY_CREDENTIAL.fullmatch(key)
-                    else self._redact_value(item)
-                )
-                for key, item in value.items()
-            }
+            return self._redact_mapping(value)
         elif isinstance(value, list):
             return [self._redact_value(item) for item in value]
         elif isinstance(value, tuple):
             return tuple(self._redact_value(item) for item in value)
         return value
+
+    def _redact_mapping(self, value: dict) -> dict:
+        result = {}
+        reserved = set(value)
+        for key, item in value.items():
+            redacted_key = self.redact(key) if isinstance(key, str) else key
+            if redacted_key != key:
+                base = redacted_key
+                occurrence = 1
+                while redacted_key in result or redacted_key in reserved:
+                    occurrence += 1
+                    redacted_key = f"{base} ({occurrence})"
+            result[redacted_key] = (
+                _REDACTED
+                if isinstance(key, str) and credential_name(key)
+                else self._redact_value(item)
+            )
+        return result
 
 
 def _replace_spans(text: str, spans: list[tuple[int, int]]) -> str:

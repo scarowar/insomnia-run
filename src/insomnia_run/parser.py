@@ -69,19 +69,21 @@ class _TapDiagnostics:
     lines: list[str] | None = None
     indent: str = ""
 
+    def flush(self) -> None:
+        if self.previous is not None and self.lines is not None:
+            self.previous.message = "\n".join(self.lines)
+        self.lines = None
+        self.previous = None
+
     def consume(self, raw_line: str) -> bool:
         if self.lines is not None:
             if raw_line == self.indent + "...":
-                if self.previous is not None:
-                    self.previous.message = "\n".join(self.lines)
-                self.lines = None
-                self.previous = None
+                self.flush()
                 return True
             if raw_line.startswith(self.indent):
                 self.lines.append(raw_line[len(self.indent) :])
                 return True
-            self.lines = None
-            self.previous = None
+            self.flush()
         start = re.fullmatch(r"([ \t]+)---", raw_line)
         if (
             start
@@ -142,4 +144,5 @@ class TapParser:
                 state.add_result(int(match.group(2)), result)
                 diagnostics.previous = result
 
+        diagnostics.flush()
         return state.finish(require_tap=require_tap, bailed_out=bailed_out)

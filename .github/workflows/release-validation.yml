@@ -1,0 +1,91 @@
+name: Release validation
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/release-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Release validation
+    if: github.actor != 'dependabot[bot]' && github.actor != 'pre-commit-ci[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install verified uv
+        id: uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: '0.13.1'
+          checksum: eadd9d27c134ab5ac1ffd4473b97a741407f3ea238288f03121fc4deddf90220
+          enable-cache: false
+      - name: Install the candidate wheel and locked validation tools
+        run: |
+          uv build --wheel --out-dir dist
+          uv sync --frozen --all-groups --no-build --no-install-project
+          requirement="$(python -c 'import hashlib; from pathlib import Path; wheel, = Path("dist").glob("*.whl"); print(f"{wheel.resolve().as_uri()} --hash=sha256:{hashlib.sha256(wheel.read_bytes()).hexdigest()}")')"
+          uv pip install --no-build --no-deps --no-index --require-hashes -r <(printf '%s\n' "$requirement")
+          uv run --frozen --no-sync --no-build pre-commit run gitleaks-ci --hook-stage manual --all-files
+      - name: Start API fixture
+        id: fixture
+        run: |
+          python tests/fixtures/e2e_server.py >"${RUNNER_TEMP}/release-fixture.log" 2>&1 &
+          echo "pid=$!" >> "$GITHUB_OUTPUT"
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8765/health >/dev/null; then
+              exit 0
+            fi
+            echo "Waiting for API fixture (${attempt}/20)"
+            sleep 1
+          done
+          exit 1
+      - name: Install and exercise verified Inso through the action
+        uses: ./
+        with:
+          working-directory: tests/fixtures/passing_suite.yaml
+          environment: Test Environment
+          pr-comment: 'false'
+          annotations: 'false'
+      - name: Stop API fixture
+        if: always() && steps.fixture.outputs.pid != ''
+        env:
+          FIXTURE_PID: ${{ steps.fixture.outputs.pid }}
+        run: kill "$FIXTURE_PID"
+      - name: Validate installed wheel, real integrations, and rendered reports
+        env:
+          INSOMNIA_RUN_INSO_BINARY: ${{ runner.temp }}/insomnia-run-inso/bin/inso
+          INSOMNIA_RUN_UV_BINARY: ${{ steps.uv.outputs.uv-path }}
+          INSOMNIA_RUN_TEST_PYTHON_DOWNLOADS: '1'
+          INSOMNIA_RELEASE_TOOL_BINARY: ${{ github.workspace }}/.venv/bin/semantic-release
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --frozen --no-sync --no-build python scripts/validate_release.py --output "${RUNNER_TEMP}/release-validation"
+      - name: Preserve validation evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-validation
+          path: ${{ runner.temp }}/release-validation/*
+          if-no-files-found: error
+          retention-days: 14

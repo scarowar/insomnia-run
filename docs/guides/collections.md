@@ -5,7 +5,7 @@
 Run all requests in a YAML export. For legacy Git Sync, use the parent repository root instead; see [input paths](../reference/inputs.md#input-paths).
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -28,7 +28,7 @@ Empty runs retain exit code `0`, but **No assertions executed** is not successfu
 Target a specific Insomnia environment:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -40,7 +40,7 @@ Target a specific Insomnia environment:
 By pattern:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -50,7 +50,7 @@ By pattern:
 By ID:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -62,7 +62,7 @@ By ID:
 Run the collection multiple times with data from a CSV or JSON file:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -75,7 +75,7 @@ Run the collection multiple times with data from a CSV or JSON file:
 Control request delays and timeouts:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -93,7 +93,7 @@ Control request delays and timeouts:
 Stop after the first failed assertion. Add status assertions when HTTP errors should fail:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -105,7 +105,7 @@ Stop after the first failed assertion. Add status assertions when HTTP errors sh
 Map URL-safe secrets into the collection environment:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -122,7 +122,7 @@ For arbitrary secret values, use the [encoding step](secrets.md#collection-overr
 Header capture is off by default. Retain only explicit, non-credential header names when troubleshooting a request:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml

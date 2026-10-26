@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import secrets
+import shutil
 import tempfile
 
 import typer
@@ -305,6 +306,28 @@ def _report_outputs(
     return outputs
 
 
+def _write_job_summary(env: dict[str, str], report: InsoRunReport | None) -> None:
+    summary_path = Path(env["GITHUB_STEP_SUMMARY"])
+    remaining = max(
+        0, 1024 * 1024 - (summary_path.stat().st_size if summary_path.exists() else 0)
+    )
+    if remaining:
+        from .reporter import Reporter
+
+        summary_markdown = (
+            Reporter().generate_markdown(
+                report,
+                workflow_url=env.get("WORKFLOW_URL"),
+                include_raw_output=env.get("INCLUDE_RAW_OUTPUT", "").lower() == "true",
+                max_bytes=remaining,
+            )
+            if report
+            else ""
+        )
+        with summary_path.open("a", encoding="utf-8") as summary:
+            summary.write(summary_markdown)
+
+
 def run_action(env: dict[str, str]) -> int:
     if env.get("GITHUB_ACTIONS", "").lower() == "true":
         from .privacy import Redactor, mask_commands
@@ -317,19 +340,25 @@ def run_action(env: dict[str, str]) -> int:
             print(command, flush=True)
     try:
         _validate_inputs(env)
+        if not env.get("RUNNER_TEMP"):
+            raise ValueError("RUNNER_TEMP is required.")
     except ValueError as error:
         print(f"::error::{error}")
         return 2
     if not _artifact_options_valid(env):
         return 2
-    report_dir = Path(
-        tempfile.mkdtemp(prefix="insomnia-run-reports.", dir=env["RUNNER_TEMP"])
-    )
     try:
         options = _action_options(env)
     except ValueError:
         print("::error::Invalid Inso configuration. Check command options.")
         return 2
+    for required_path in ("GITHUB_OUTPUT", "GITHUB_STEP_SUMMARY"):
+        if not env.get(required_path):
+            print(f"::error::{required_path} is required.")
+            return 2
+    report_dir = Path(
+        tempfile.mkdtemp(prefix="insomnia-run-reports.", dir=env["RUNNER_TEMP"])
+    )
     try:
         if (
             env.get("JUNIT_OUTPUT_FILE")
@@ -343,6 +372,7 @@ def run_action(env: dict[str, str]) -> int:
                 other_paths=[report_dir / name for name in _REPORT_FILES],
             )
     except ValueError as error:
+        shutil.rmtree(report_dir)
         print(f"::error::{error}")
         return 2
     code = _run_reports(env, report_dir, options)
@@ -360,8 +390,7 @@ def run_action(env: dict[str, str]) -> int:
         **_report_outputs(env, report_dir, report, junit),
     }
     write_outputs(Path(env["GITHUB_OUTPUT"]), outputs)
-    with Path(env["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as summary:
-        summary.write(markdown)
+    _write_job_summary(env, report)
     return 0
 
 

@@ -8,6 +8,12 @@
 - Check that action inputs, CLI options, examples, and the [compatibility reference](docs/reference/compatibility.md) agree.
 - Review migration guidance for changed defaults, output schemas, and runner requirements.
 
+## Extended Release Validation
+
+- Require the `Release validation` check on the exact candidate tree. Publication refuses missing, skipped, or failed validation even if the aggregate coverage gate passes.
+- The validation workflow runs for version/lockfile PRs and can also be dispatched on a candidate branch. It installs the candidate wheel, verified Inso, locked release tools, and the pinned secret scanner before running the complete suite. Unexpected skips fail validation.
+- Inspect the retained `release-validation` artifact: pytest results, JSON/JUnit evidence, Markdown and GitHub-rendered HTML for mixed, large, assertion-free, and hostile raw-output cases, plus machine-readable acceptance results.
+
 ## Check Installation and Reports
 
 - Test a cold install, verified cache hit, corrupt-cache recovery, and an exact-version preinstalled Inso.

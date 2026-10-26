@@ -1,5 +1,12 @@
 # Migration
 
+## v0.2.0 to v0.2.1
+
+- Markdown no longer cuts off after 50 assertions. Request summaries, per-request omission counts, and failure-first allocation use the actual output budget; job summaries have a separate budget from comments.
+- Credential-bearing dynamic dictionary keys/values and literal override forms receive additional redaction. The child environment now filters recognized cloud/package credentials and GitHub/Actions/state variables. Reviewed GitHub metadata (workspace, repository, ref, and SHA), proxy configuration, and certificate configuration remain supported; GitHub control-file paths are removed. Review integrations that relied on inherited credentials; filtering does not sandbox collection scripts or hide credentials in files.
+- Incomplete evidence with no failures or recorded execution error is a protocol error (exit `3`). Assertion-only bail retains exit `1` and `complete: false`; `fail-on-error: false` still permits that case.
+- Available truncated TAP failure diagnostics are retained. Markdown simplifies native error wrappers; JSON and JUnit bodies retain the original redacted reason. JUnit summary attributes are bounded and unknown empty-suite duration is omitted.
+
 ## v0.1.x to v0.2.0
 
 For production workflows, pin the action to the full commit SHA of the reviewed release.
@@ -30,7 +37,7 @@ Raw output is off by default. Failure details now appear in redacted reports by 
 
 Header capture is off by default; `capture-response-headers` accepts literal, non-credential header names only. Raw diagnostics still need `include-raw-output: "true"`. They may reach summaries, comments, artifacts, and JSON files.
 
-Encoded secrets remain sensitive. CLI arguments can appear in process listings, and collection scripts inherit runner environment variables. Use isolated runners and minimum credentials; see [secret handling](guides/secrets.md).
+Encoded secrets remain sensitive. CLI arguments can appear in process listings, and collection scripts retain access to ordinary runner environment variables and filesystem resources. Use isolated runners and minimum credentials; see [secret handling](guides/secrets.md).
 
 ### Comments and Artifacts
 

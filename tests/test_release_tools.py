@@ -93,14 +93,32 @@ def test_locked_semantic_release_configuration_dry_run(tmp_path):
         for key, value in os.environ.items()
         if key not in {"GH_TOKEN", "GITHUB_TOKEN"}
     }
-    result = subprocess.run(
-        [binary, "--config", str(config), "--noop", "version", "--print"],
-        cwd=ROOT,
+    checkout = tmp_path / "checkout"
+    subprocess.run(
+        ["git", "clone", "--quiet", "--shared", str(ROOT), str(checkout)],
         env=environment,
         check=True,
         capture_output=True,
+    )
+    for args in (
+        ("remote", "set-url", "origin", "https://github.com/scarowar/insomnia-run.git"),
+        ("checkout", "-B", "release-validation"),
+    ):
+        subprocess.run(
+            ["git", "-C", str(checkout), *args],
+            env=environment,
+            check=True,
+            capture_output=True,
+        )
+    result = subprocess.run(
+        [binary, "--config", str(config), "--noop", "version", "--print"],
+        cwd=checkout,
+        env=environment,
+        check=False,
+        capture_output=True,
         text=True,
     )
+    assert result.returncode == 0, result.stdout + result.stderr
     import re
 
     assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+\s*", result.stdout)
@@ -414,7 +432,10 @@ def test_signed_tag_validation_requires_exact_primary_identity(release):
 
 
 def test_required_checks_require_success_from_expected_apps(release):
-    checks = [{"name": "Lint", "conclusion": "success", "app": {"id": 15368}}]
+    checks = [
+        {"name": "Lint", "conclusion": "success", "app": {"id": 15368}},
+        {"name": "Release validation", "conclusion": "success", "app": {"id": 15368}},
+    ]
     release.validate_checks(checks, [], {"Lint": 15368})
     checks[0]["app"]["id"] = 999
     with pytest.raises(ValueError, match="Lint"):
@@ -568,7 +589,12 @@ def release_checkout(tmp_path, release, monkeypatch):
             [
                 {
                     "check_runs": [
-                        {"name": "Test", "conclusion": "success", "app": {"id": 1}}
+                        {"name": "Test", "conclusion": "success", "app": {"id": 1}},
+                        {
+                            "name": "Release validation",
+                            "conclusion": "success",
+                            "app": {"id": 15368},
+                        },
                     ]
                 }
             ],
@@ -730,6 +756,35 @@ def test_release_verifier_allows_untracked_generated_assets(release, release_che
     assert api.call_count == 3
 
 
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="Release requires tomllib")
+@pytest.mark.parametrize("conclusion", [None, "skipped", "failure"])
+def test_release_refuses_missing_or_unsuccessful_extended_validation(
+    release, release_checkout, monkeypatch, conclusion
+):
+    root, _, commit, api = release_checkout
+
+    def response(path):
+        value = api(path)
+        if "/check-runs?" in path:
+            checks = value[0]["check_runs"]
+            checks[:] = [
+                check for check in checks if check["name"] != "Release validation"
+            ]
+            if conclusion is not None:
+                checks.append(
+                    {
+                        "name": "Release validation",
+                        "conclusion": conclusion,
+                        "app": {"id": 15368},
+                    }
+                )
+        return value
+
+    monkeypatch.setattr(release, "gh_api", response)
+    with pytest.raises(ValueError, match="Release validation"):
+        release.verify(root, "v0.2.0", commit)
+
+
 def test_release_build_allows_untracked_assets_before_bundle_identity(
     release, release_checkout, monkeypatch
 ):
@@ -833,7 +888,12 @@ def test_pr_only_checks_require_merged_identical_tree(release, tmp_path, monkeyp
             return [
                 {
                     "check_runs": [
-                        {"name": "Lint", "conclusion": "success", "app": {"id": 15368}}
+                        {"name": "Lint", "conclusion": "success", "app": {"id": 15368}},
+                        {
+                            "name": "Release validation",
+                            "conclusion": "success",
+                            "app": {"id": 15368},
+                        },
                     ]
                 }
             ]
@@ -970,7 +1030,12 @@ def test_verifier_checks_exact_signed_tree_and_required_results(
             [
                 {
                     "check_runs": [
-                        {"name": "Lint", "conclusion": "success", "app": {"id": 15368}}
+                        {"name": "Lint", "conclusion": "success", "app": {"id": 15368}},
+                        {
+                            "name": "Release validation",
+                            "conclusion": "success",
+                            "app": {"id": 15368},
+                        },
                     ]
                 }
             ],

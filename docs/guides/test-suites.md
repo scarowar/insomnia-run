@@ -7,7 +7,7 @@ Legacy unit tests are hidden by default in Insomnia 13.3+ and are planned for de
 Run a test suite by name:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: test
     working-directory: insomnia-export.yaml
@@ -23,7 +23,7 @@ Legacy suites use TAP rather than native collection JSON. Their request count is
 Inso 13.3.1 filters tests by a literal substring (Mocha `fgrep`), despite the upstream help describing a regex. Run only tests whose full title contains `login`:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: test
     working-directory: insomnia-export.yaml
@@ -38,7 +38,7 @@ If the filter matches no tests, Inso can exit successfully without running asser
 Stop execution immediately when a test fails:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: test
     working-directory: insomnia-export.yaml
@@ -51,7 +51,7 @@ Stop execution immediately when a test fails:
 Set a timeout for individual requests:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: test
     working-directory: insomnia-export.yaml
@@ -68,7 +68,7 @@ Set a timeout for individual requests:
 Select an Insomnia environment for the suite:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: test
     working-directory: insomnia-export.yaml

@@ -61,9 +61,17 @@ class InsoRunReport(BaseModel):
 
     @property
     def exit_code(self) -> int:
-        if self.run_error:
+        if self.run_error or (not self.complete and not self.failed_count):
             return 3
         return 1 if self.failed_count else 0
+
+    @property
+    def evidence_error(self) -> Optional[RunError]:
+        if self.run_error:
+            return self.run_error
+        if not self.complete and not self.failed_count:
+            return RunError(kind="protocol", message="Run evidence is incomplete.")
+        return None
 
     @property
     def passed_count(self) -> int:

@@ -174,6 +174,7 @@ def _finalize_report(
     trusted_workflow_url: bool = False,
 ) -> None:
     reporter = Reporter()
+    report = report.model_copy(update={"run_error": report.evidence_error})
     if not include_raw_output and not destinations.get("raw"):
         report = report.model_copy(update={"raw_output": None})
     report = redactor.redact_report(report)

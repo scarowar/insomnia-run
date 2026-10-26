@@ -470,11 +470,21 @@ def failure_annotations(
         return []
     commands = []
     for message in islice(redacted_messages, max(0, min(limit, 10))):
-        text = message.encode("utf-8")[:2000].decode("utf-8", errors="ignore")
-        text = "".join(
-            c if (ord(c) >= 32 and ord(c) != 127) or c in "\r\n" else " " for c in text
-        )
-        commands.append("::error title=Insomnia Run::" + escape_workflow_command(text))
+        prefix = "::error title=Insomnia Run::"
+        remaining = 2000 - len(prefix.encode("utf-8"))
+        parts = [prefix]
+        for char in message:
+            if 0xD800 <= ord(char) <= 0xDFFF:
+                char = "\ufffd"
+            if (ord(char) < 32 or ord(char) == 127) and char not in "\r\n":
+                char = " "
+            escaped = escape_workflow_command(char)
+            size = len(escaped.encode("utf-8", errors="replace"))
+            if size > remaining:
+                break
+            parts.append(escaped)
+            remaining -= size
+        commands.append("".join(parts))
     return commands
 
 
