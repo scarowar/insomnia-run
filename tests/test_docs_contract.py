@@ -43,7 +43,8 @@ def action_steps(path):
 @pytest.mark.parametrize("path", MARKDOWN_FILES, ids=lambda p: str(p.relative_to(ROOT)))
 def test_workflow_examples_use_pinned_actions(path):
     for step in action_steps(path):
-        action = step["uses"]
+        # Instantiate the documented release-SHA parameter before validating the template.
+        action = step["uses"].replace("REVIEWED_RELEASE_SHA", "f" * 40)
         if action.startswith("./"):
             continue
         name, reference = action.rsplit("@", 1)
