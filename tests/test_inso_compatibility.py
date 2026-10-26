@@ -210,7 +210,8 @@ def test_real_inso_assertion_free_collection_is_neutral(runtime, tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads(result.stderr)["results"] == []
     assert "No assertions executed" in result.stdout
-    assert "Passed" not in result.stdout
+    assert "**Result: No Assertions Executed**" in result.stdout
+    assert "**Result: Passed**" not in result.stdout
 
 
 def test_real_inso_environment_overrides_preserve_occurrences(runtime, tmp_path):
@@ -295,7 +296,8 @@ def test_real_inso_test_filter_uses_literal_substrings(runtime, pattern, count):
     assert len(json.loads(result.stderr)["results"]) == count
     if count == 0:
         assert "No assertions executed" in result.stdout
-        assert "Passed" not in result.stdout
+        assert "**Result: No Assertions Executed**" in result.stdout
+        assert "**Result: Passed**" not in result.stdout
 
 
 def test_runner_environment_is_not_an_implicit_insomnia_override(runtime):

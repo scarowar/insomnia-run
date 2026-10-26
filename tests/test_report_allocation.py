@@ -1,4 +1,3 @@
-import re
 from xml.etree import ElementTree
 
 from markdown_it import MarkdownIt
@@ -8,8 +7,20 @@ from insomnia_run.reporter import Reporter
 
 
 def _rendered_results(markdown: str) -> list[str]:
-    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
-    return [node.text for node in dom.findall(".//li//strong/code")]
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt().enable('table').render(markdown)}</div>"
+    )
+    results = [node.text for node in dom.findall(".//li//strong/code")]
+    for table in dom.findall(".//table"):
+        if [node.text for node in table.findall("./thead/tr/th")] == [
+            "Request",
+            "Assertion",
+            "Failure",
+        ]:
+            results.extend(
+                "".join(row[1].itertext()) for row in table.findall("./tbody/tr")
+            )
+    return results
 
 
 def test_failures_across_requests_take_result_slots_before_passes():
@@ -50,9 +61,9 @@ def test_failures_across_requests_take_result_slots_before_passes():
 
     assert "first failure" in shown
     assert "later failure" in shown
-    assert len(shown) == 50
-    assert len([name for name in shown if name.startswith("passing assertion")]) == 48
-    assert "1 more results omitted" in markdown
+    assert len(shown) == 51
+    assert len([name for name in shown if name.startswith("passing assertion")]) == 49
+    assert "more results omitted" not in markdown
 
 
 def test_failures_across_requests_take_byte_budget_before_pass_messages():
@@ -95,7 +106,8 @@ def test_failures_across_requests_take_byte_budget_before_pass_messages():
 
     assert "first failure" in shown
     assert "later failure" in shown
-    assert len(shown) < report.total_tests < 50
+    assert len(shown) == report.total_tests
+    assert "assertion reasons omitted" in markdown
     assert len(markdown.encode("utf-8")) <= 60000
 
 
@@ -119,9 +131,9 @@ def test_oversized_failure_does_not_hide_a_later_failure_that_fits():
     markdown = Reporter().generate_markdown(report)
     shown = _rendered_results(markdown)
 
-    assert "large failure 5" not in shown
+    assert "large failure 5" in shown
     assert "small later failure" in shown
-    assert len(shown) == 6
+    assert len(shown) == 7
     assert len(markdown.encode("utf-8")) <= 60000
 
 
@@ -138,13 +150,13 @@ def test_truncation_notice_counts_omitted_failures_separately():
         ],
     )
 
-    markdown = Reporter().generate_markdown(report)
+    markdown = Reporter().generate_markdown(report, max_bytes=2000)
 
-    assert len(_rendered_results(markdown)) == 50
-    assert "10 more results omitted" in markdown
-    assert re.search(
-        r"\b5 (?:more )?(?:failures|failed (?:results|assertions))\b", markdown
-    )
+    shown = _rendered_results(markdown)
+    assert 0 < len(shown) < 55
+    assert "5 passed assertions omitted" in markdown
+    assert f"{55 - len(shown)} failed assertions omitted" in markdown
+    assert len(markdown.encode("utf-8")) <= 2000
 
 
 def test_junit_distinguishes_repeated_assertions_by_request_and_iteration():

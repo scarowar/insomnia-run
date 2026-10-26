@@ -66,7 +66,7 @@ def test_real_inso_child_disables_telemetry_without_changing_parent(
     assert report.failed_count == 0
     assert json.loads(report.raw_output.splitlines()[0]) == {
         "telemetry": "1",
-        "inherited": "keep-this-value",
+        "inherited": None,
     }
     assert dict(os.environ) == parent_environment
 

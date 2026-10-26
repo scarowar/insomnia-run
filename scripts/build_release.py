@@ -204,6 +204,7 @@ def verify(root: Path, tag: str, commit: str) -> None:
         if rule["type"] == "required_status_checks"
         for check in rule["parameters"]["required_status_checks"]
     }
+    required["Release validation"] = 15368
     check_pages = gh_api(f"repos/{REPOSITORY}/commits/{tested}/check-runs?per_page=100")
     status_pages = gh_api(f"repos/{REPOSITORY}/commits/{tested}/statuses?per_page=100")
     validate_checks(

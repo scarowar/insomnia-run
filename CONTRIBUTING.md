@@ -6,6 +6,8 @@ Open bugs and feature requests in [GitHub Issues](https://github.com/scarowar/in
 
 Use Python 3.12 and uv 0.13.1 for local development. CI tests Python 3.10 through 3.15.
 
+Development-only pre-commit and dependency-audit tools require Python 3.11+ so their patched filelock dependency can be used. The runtime and `test` dependency group still support Python 3.10.
+
 ```sh
 uv sync --frozen --dev --no-build --no-install-project
 uv pip install --no-deps --editable .

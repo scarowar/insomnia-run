@@ -387,8 +387,8 @@ jobs:
         run: |
           echo "Markdown output:"
           echo "$MARKDOWN_OUTPUT"
-          if [[ ! "$MARKDOWN_OUTPUT" =~ "Insomnia Collection" ]]; then
-            echo "Expected markdown to contain 'Insomnia Collection'"
+          if [[ "$MARKDOWN_OUTPUT" != *"## Insomnia Run"* || "$MARKDOWN_OUTPUT" != *"**Result: Passed**"* ]]; then
+            echo "Expected a passing Insomnia Run report"
             exit 1
           fi
 

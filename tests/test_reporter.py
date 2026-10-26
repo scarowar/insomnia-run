@@ -1,4 +1,5 @@
 import pytest
+import re
 from markdown_it import MarkdownIt
 from xml.etree import ElementTree
 
@@ -11,6 +12,64 @@ from insomnia_run.models import (
     RequestExecution,
     RunError,
 )
+
+
+def render_dom(markdown):
+    return ElementTree.fromstring(
+        f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+    )
+
+
+def table_with_headers(dom, headers):
+    matches = [
+        table
+        for table in dom.findall(".//table")
+        if ["".join(cell.itertext()) for cell in table.findall("./thead/tr/th")]
+        == headers
+    ]
+    assert len(matches) == 1, f"Expected one table with headers {headers}"
+    return matches[0]
+
+
+def assert_totals(markdown, *, requests="Unknown", assertions, passed, failed, skipped):
+    dom = render_dom(markdown)
+    table = table_with_headers(
+        dom, ["Requests", "Assertions", "Passed", "Failed", "Skipped"]
+    )
+    assert [
+        ["".join(cell.itertext()) for cell in row.findall("td")]
+        for row in table.findall("./tbody/tr")
+    ] == [[str(value) for value in (requests, assertions, passed, failed, skipped)]]
+
+
+def failure_rows(dom):
+    tables = [
+        table
+        for table in dom.findall(".//table")
+        if ["".join(cell.itertext()) for cell in table.findall("./thead/tr/th")]
+        == ["Request", "Assertion", "Failure"]
+    ]
+    assert len(tables) <= 1
+    return tables[0].findall("./tbody/tr") if tables else []
+
+
+def assertion_names(dom):
+    return ["".join(row.findall("td")[1].itertext()) for row in failure_rows(dom)] + [
+        node.text for node in dom.findall(".//li/strong/code")
+    ]
+
+
+def assert_target(dom, expected):
+    assert dom.find("./h2").text == "Insomnia Run"
+    assert ["".join(node.itertext()) for node in dom.findall("./p/strong")].count(
+        expected
+    ) == 1
+
+
+def assert_result(markdown, expected):
+    assert re.search(
+        rf"Result:\s*{re.escape(expected)}", "".join(render_dom(markdown).itertext())
+    )
 
 
 class TestReporterMarkdownGeneration:
@@ -30,8 +89,9 @@ class TestReporterMarkdownGeneration:
         )
         markdown = reporter.generate_markdown(report)
 
-        assert "## ✅ Insomnia Collection Passed: ` My Collection `" in markdown
-        assert "**2 test results** (all passed)" in markdown
+        assert_result(markdown, "Passed")
+        assert_target(render_dom(markdown), "My Collection")
+        assert_totals(markdown, assertions=2, passed=2, failed=0, skipped=0)
         assert "- ✅ **` Test 1 `**" in markdown
         assert "- ✅ **` Test 2 `**" in markdown
 
@@ -47,10 +107,14 @@ class TestReporterMarkdownGeneration:
         )
         markdown = reporter.generate_markdown(report)
 
-        assert "## ❌ Insomnia Collection Failed: ` My Collection `" in markdown
-        assert "(1 passed, 1 failed)" in markdown
+        assert_result(markdown, "Failed")
+        assert_target(render_dom(markdown), "My Collection")
+        assert_totals(markdown, assertions=2, passed=1, failed=1, skipped=0)
         assert "- ✅ **` Test 1 `**" in markdown
-        assert "- ❌ **` Test 2 `**" in markdown
+        assert [
+            "".join(row.findall("td")[1].itertext())
+            for row in failure_rows(render_dom(markdown))
+        ] == ["Test 2"]
 
     def test_test_suite_report(self, reporter):
         report = InsoRunReport(
@@ -63,7 +127,8 @@ class TestReporterMarkdownGeneration:
         )
         markdown = reporter.generate_markdown(report)
 
-        assert "## ✅ Insomnia Test Suite Passed: ` My Test Suite `" in markdown
+        assert_result(markdown, "Passed")
+        assert_target(render_dom(markdown), "My Test Suite")
 
     def test_workflow_url_link(self, reporter):
         report = InsoRunReport(plan_end=0)
@@ -78,7 +143,7 @@ class TestReporterMarkdownGeneration:
         report = InsoRunReport(plan_end=0)
         markdown = reporter.generate_markdown(report)
 
-        assert "See the workflow run for execution details." in markdown
+        assert "Use JSON or JUnit output for complete assertion evidence." in markdown
         assert "[workflow run]" not in markdown
 
     def test_raw_output_is_hidden_by_default(self, reporter):
@@ -89,11 +154,10 @@ class TestReporterMarkdownGeneration:
         )
         markdown = reporter.generate_markdown(report)
 
-        assert "<details>" not in markdown
+        assert "View raw output" not in markdown
         assert "ok 1 - Test" not in markdown
-        assert "diagnostics are omitted" in markdown
-        assert "`--include-raw-output`" in markdown
-        assert "contain secrets" in markdown
+        assert "diagnostics are omitted" not in markdown
+        assert "`--include-raw-output`" not in markdown
 
     def test_raw_output_can_be_included(self, reporter):
         report = InsoRunReport(
@@ -118,14 +182,14 @@ class TestReporterMarkdownGeneration:
         report = InsoRunReport(plan_end=0, target_name="API Collection")
         markdown = reporter.generate_markdown(report)
 
-        assert "**Target:** ` API Collection `" in markdown
+        assert_target(render_dom(markdown), "API Collection")
 
     def test_empty_results(self, reporter):
         report = InsoRunReport(plan_end=0)
         markdown = reporter.generate_markdown(report)
 
-        assert "**0 test results**" in markdown
-        assert "### Test Results" in markdown
+        assert_totals(markdown, assertions=0, passed=0, failed=0, skipped=0)
+        assert "No assertions executed." in markdown
 
 
 class TestReporterEdgeCases:
@@ -146,7 +210,9 @@ class TestReporterEdgeCases:
         )
         markdown = reporter.generate_markdown(report)
 
-        dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+        dom = ElementTree.fromstring(
+            f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+        )
         assert dom.find(".//li/strong/code").text == "Test with <special> & 'chars'"
 
     def test_long_target_name(self, reporter):
@@ -162,8 +228,8 @@ class TestReporterEdgeCases:
 def test_empty_report_does_not_claim_assertions_passed():
     markdown = Reporter().generate_markdown(InsoRunReport(plan_end=0))
 
-    assert "No assertions executed" in markdown
-    assert "Passed" not in markdown
+    assert_result(markdown, "No Assertions Executed")
+    assert not re.search(r"Result:\s*Passed", "".join(render_dom(markdown).itertext()))
     assert "all passed" not in markdown
 
 
@@ -177,8 +243,8 @@ def test_all_skipped_report_is_not_labelled_passed():
 
     markdown = Reporter().generate_markdown(report)
 
-    assert "Skipped" in markdown
-    assert "Passed" not in markdown
+    assert_result(markdown, "Skipped")
+    assert not re.search(r"Result:\s*Passed", "".join(render_dom(markdown).itertext()))
 
 
 def test_summary_counts_results_without_claiming_request_execution():
@@ -192,7 +258,7 @@ def test_summary_counts_results_without_claiming_request_execution():
 
     markdown = Reporter().generate_markdown(report)
 
-    assert "2 test results" in markdown
+    assert_totals(markdown, assertions=2, passed=2, failed=0, skipped=0)
     assert "requests executed" not in markdown
 
 
@@ -218,12 +284,13 @@ def test_result_descriptions_render_as_literal_inline_text(description):
     )
 
     markdown = Reporter().generate_markdown(report)
-    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+    )
 
     expected = " ".join(description.split())
-    assert dom.find(".//li/strong/code").text == expected
-    assert dom.find("./h2/code").text == expected
-    assert dom.find("./ul/li/code").text == expected
+    assert assertion_names(dom) == [expected]
+    assert_target(dom, expected)
     assert dom.findall(".//a") == dom.findall(".//img") == []
     assert dom.findall(".//h1") == []
 
@@ -241,11 +308,12 @@ def test_target_name_renders_as_literal_inline_text(target_name):
     report = InsoRunReport(plan_end=0, target_name=target_name)
 
     markdown = Reporter().generate_markdown(report)
-    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+    )
 
     expected = " ".join(target_name.split())
-    assert dom.find("./h2/code").text == expected
-    assert dom.find("./ul/li/code").text == expected
+    assert_target(dom, expected)
     assert dom.findall(".//a") == dom.findall(".//b") == []
 
 
@@ -259,7 +327,7 @@ def test_long_backtick_names_use_short_gfm_code_delimiters(run_length):
     )
 
     markdown = Reporter().generate_markdown(report, include_raw_output=True)
-    tokens = MarkdownIt().parse(markdown)
+    tokens = MarkdownIt("commonmark").enable("table").parse(markdown)
     code_tokens = [
         child
         for token in tokens
@@ -267,8 +335,11 @@ def test_long_backtick_names_use_short_gfm_code_delimiters(run_length):
         if child.type == "code_inline"
     ]
 
-    expected = name if len(name) <= 160 else name[:160] + " ... (truncated)"
-    assert [token.content for token in code_tokens] == [expected] * 3
+    expected = name if len(name) <= 160 else name[:144] + " ... (truncated)"
+    assert 1 <= len(code_tokens) <= 2
+    assert all(token.content == expected for token in code_tokens)
+    assert assertion_names(render_dom(markdown)) == [expected]
+    assert_target(render_dom(markdown), expected)
     assert all(len(token.markup) <= 80 for token in code_tokens)
 
 
@@ -282,7 +353,11 @@ def test_name_code_delimiter_uses_the_shortest_unused_run(name, delimiter):
         results=[InsoResult(id=1, status=InsoStatus.PASS, description=name)],
     )
 
-    tokens = MarkdownIt().parse(Reporter().generate_markdown(report))
+    tokens = (
+        MarkdownIt("commonmark")
+        .enable("table")
+        .parse(Reporter().generate_markdown(report))
+    )
     result_code = next(
         child
         for token in tokens
@@ -296,13 +371,13 @@ def test_name_code_delimiter_uses_the_shortest_unused_run(name, delimiter):
 @pytest.mark.parametrize(
     ("name", "expected"),
     [
-        ("a" * 511 + "*tail", "a" * 160 + " ... (truncated)"),
-        ("a" * 510 + "<tail", "a" * 160 + " ... (truncated)"),
+        ("a" * 511 + "*tail", "a" * 144 + " ... (truncated)"),
+        ("a" * 510 + "<tail", "a" * 144 + " ... (truncated)"),
         *[
-            ("a" * 159 + char + "tail", "a" * 159 + char + " ... (truncated)")
+            ("a" * 159 + char + "tail", "a" * 144 + " ... (truncated)")
             for char in ("*", "\\", "<", "&", "`")
         ],
-        ("\u754c" * 54, "\u754c" * 53 + " ... (truncated)"),
+        ("\u754c" * 54, "\u754c" * 48 + " ... (truncated)"),
         ("a" * 160, "a" * 160),
     ],
     ids=[
@@ -325,11 +400,12 @@ def test_name_truncation_preserves_original_text_before_code_formatting(name, ex
     )
 
     markdown = Reporter().generate_markdown(report)
-    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+    )
 
-    assert dom.find(".//li/strong/code").text == expected
-    assert dom.find("./h2/code").text == expected
-    assert dom.find("./ul/li/code").text == expected
+    assert assertion_names(dom) == [expected]
+    assert_target(dom, expected)
     assert dom.findall(".//a") == []
 
 
@@ -361,7 +437,7 @@ def test_invalid_or_oversized_workflow_urls_use_static_fallback(workflow_url):
         InsoRunReport(plan_end=0), workflow_url=workflow_url
     )
 
-    assert "See the workflow run for execution details." in markdown
+    assert "Use JSON or JUnit output for complete assertion evidence." in markdown
     assert "[workflow run]" not in markdown
     assert workflow_url not in markdown
     assert len(markdown.encode("utf-8")) < 60000
@@ -397,14 +473,19 @@ def test_raw_output_is_literal_html_code_without_markdown_fences(raw_output):
     report = InsoRunReport(plan_end=0, raw_output=raw_output)
 
     markdown = Reporter().generate_markdown(report, include_raw_output=True)
-    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+    )
     expected = raw_output.encode("utf-8")[:8192].decode("utf-8")
 
     assert dom.find(".//details/pre/code").text == expected
     assert len(dom.findall(".//details")) == 1
     assert dom.findall(".//h1") == dom.findall(".//a") == dom.findall(".//img") == []
-    assert all(token.type != "fence" for token in MarkdownIt().parse(markdown))
-    assert markdown.endswith("</details>")
+    assert all(
+        token.type != "fence"
+        for token in MarkdownIt("commonmark").enable("table").parse(markdown)
+    )
+    assert markdown.rstrip().endswith("</details>")
 
 
 @pytest.mark.parametrize("size", [8191, 8192, 8193])
@@ -412,7 +493,9 @@ def test_raw_output_byte_budget_boundary(size):
     report = InsoRunReport(plan_end=0, raw_output="x" * size)
 
     markdown = Reporter().generate_markdown(report, include_raw_output=True)
-    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+    )
 
     assert dom.find(".//details/pre/code").text == "x" * min(size, 8192)
     assert ("Raw output truncated" in markdown) == (size > 8192)
@@ -422,14 +505,16 @@ def test_raw_output_truncation_preserves_complete_utf8_characters():
     report = InsoRunReport(plan_end=0, raw_output="\u754c" * 3000)
 
     markdown = Reporter().generate_markdown(report, include_raw_output=True)
-    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+    )
 
     assert dom.find(".//details/pre/code").text == "\u754c" * 2730
     assert "Raw output truncated at 8192 bytes" in markdown
 
 
 @pytest.mark.parametrize("count", [50, 51, 300])
-def test_markdown_limits_displayed_results_without_changing_counts(count):
+def test_markdown_keeps_all_results_that_fit_without_changing_counts(count):
     report = InsoRunReport(
         plan_end=count,
         results=[
@@ -440,14 +525,14 @@ def test_markdown_limits_displayed_results_without_changing_counts(count):
 
     markdown = Reporter().generate_markdown(report)
 
-    assert f"**{count} test results** (all passed)" in markdown
-    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    assert_totals(markdown, assertions=count, passed=count, failed=0, skipped=0)
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+    )
     assert [node.text for node in dom.findall(".//li/strong/code")] == [
-        f"result-{index}" for index in range(1, 51)
+        f"result-{index}" for index in range(1, count + 1)
     ]
-    assert ("more results omitted" in markdown) == (count > 50)
-    if count > 50:
-        assert f"{count - 50} more results omitted" in markdown
+    assert "more results omitted" not in markdown
 
 
 @pytest.mark.parametrize(
@@ -487,17 +572,38 @@ def test_hostile_long_reports_fit_comments_without_losing_full_details(
     )
 
     assert len(markdown.encode("utf-8")) < 60000
-    assert "**300 test results** (100 passed, 100 failed, 100 skipped)" in markdown
-    assert "Insomnia Collection Failed" in markdown
-    assert "250 more results omitted" in markdown
-    result_lines = [
-        line for line in markdown.splitlines() if line.startswith("- \u274c **")
-    ]
-    assert len(result_lines) == 50
-    assert all(len(line.encode("utf-8")) < 600 for line in result_lines)
-    assert all("(truncated)" in line for line in result_lines)
-    assert "Raw output truncated at 8192 bytes" in markdown
-    assert markdown.count("(truncated)") == 52
+    assert_totals(markdown, assertions=300, passed=100, failed=100, skipped=100)
+    assert_result(markdown, "Failed")
+    assert "**Details omitted:**" in markdown
+    assert "raw diagnostics omitted" in markdown
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+    )
+    names = assertion_names(dom)
+    indices = [int(re.match(r"result-(\d+):", name)[1]) for name in names]
+    assert len(indices) == len(set(indices))
+    visible = {
+        "passed": sum(index < 100 for index in indices),
+        "failed": sum(100 <= index < 200 for index in indices),
+        "skipped": sum(index >= 200 for index in indices),
+    }
+    for status, count in visible.items():
+        missing = 100 - count
+        if missing:
+            noun = "assertion" if missing == 1 else "assertions"
+            assert f"{missing} {status} {noun} omitted" in markdown
+    failed = failure_rows(dom)
+    assert 0 < len(failed) <= 100
+    assert all(
+        len("".join(row.findall("td")[1].itertext()).encode("utf-8")) <= 160
+        for row in failed
+    )
+    assert all(
+        "(truncated)" in "".join(row.findall("td")[1].itertext()) for row in failed
+    )
+    assert "View raw output" not in markdown
+    assert "Raw output truncated at 8192 bytes" not in markdown
+    assert markdown.count("(truncated)") == len(names) + 1
     assert report.model_dump_json() == original_json
     assert reporter.generate_junit(report) == original_junit
     suite = ElementTree.fromstring(original_junit)
@@ -643,13 +749,36 @@ def test_native_requests_are_grouped_by_occurrence_with_failures_first():
     assert "1.250 s" in markdown
     assert "Iteration 2" in markdown
     assert "expected a JSON body" in markdown
-    assert "**Completed requests:** 2" in markdown
+    assert_totals(markdown, requests=2, assertions=3, passed=2, failed=1, skipped=0)
     assert "requests executed" not in markdown
-    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+    )
     details = dom.findall(".//details")
-    assert len(details) == 1
-    assert "Execution 1" in "".join(details[0].find("summary").itertext())
-    assert "first request" in "".join(details[0].itertext())
+    overview = table_with_headers(
+        dom, ["Request", "Passed", "Failed", "Skipped", "Response"]
+    )
+    assert [code.text for code in overview.findall(".//tbody/tr/td[1]/code")] == [
+        "GET users",
+        "GET users",
+    ]
+    assert dom.findall(".//h4") == []
+    rows = failure_rows(dom)
+    assert len(rows) == 1
+    assert "Execution 2" in "".join(rows[0].findall("td")[0].itertext())
+    assert "Iteration 2" in "".join(rows[0].findall("td")[0].itertext())
+    assert "".join(rows[0].findall("td")[1].itertext()) == "body check"
+    passing = [
+        node
+        for node in details
+        if "Passed assertions (2)" in "".join(node.find("summary").itertext())
+    ]
+    assert len(passing) == 1
+    assert "Execution 1" in "".join(passing[0].itertext())
+    assert "first request" in "".join(passing[0].itertext())
+    assert "status check" in "".join(passing[0].itertext())
+    assert "body check" not in "".join(passing[0].itertext())
+    assert dom.findall(".//details/details") == []
 
 
 def test_request_without_assertions_and_unattributed_results_are_not_lost():
@@ -668,7 +797,12 @@ def test_request_without_assertions_and_unattributed_results_are_not_lost():
 
     assert "health endpoint" in markdown
     assert "unattributed assertion" in markdown
-    assert "No assertions recorded" in markdown
+    assert [
+        "".join(cell.itertext())
+        for cell in table_with_headers(
+            render_dom(markdown), ["Request", "Passed", "Failed", "Skipped", "Response"]
+        ).findall("./tbody/tr/td")[1:4]
+    ] == ["0", "0", "0"]
     assert "0.000 s" not in markdown
 
 
@@ -687,7 +821,7 @@ def test_run_error_and_incomplete_evidence_remain_visible(prior_failure):
 
     markdown = Reporter().generate_markdown(report)
 
-    assert "Insomnia Collection Failed" in markdown
+    assert_result(markdown, "Failed")
     assert "### Run Error" in markdown
     assert "execution exceeded its deadline" in markdown
     assert "Incomplete" in markdown
@@ -712,12 +846,7 @@ def test_recovered_collection_tap_explains_missing_native_detail(
     )
     markdown = Reporter().generate_markdown(report)
 
-    expected = (
-        run_type == RunType.COLLECTION
-        and source == "tap"
-        and not complete
-        and has_results
-    )
+    expected = run_type == RunType.COLLECTION and source == "tap"
     assert (
         "recovered TAP may omit request details and assertion reasons" in markdown
     ) is expected
@@ -744,9 +873,22 @@ def test_failure_messages_remain_literal_without_guessing_actual_expected(messag
     )
 
     markdown = Reporter().generate_markdown(report)
-    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+    )
 
-    assert dom.find(".//pre/code").text == message
+    assert (
+        "".join(failure_rows(dom)[0].findall("td")[2].itertext())
+        == message.splitlines()[0]
+    )
+    if "\n" in message:
+        diagnostics = [
+            node
+            for node in dom.findall("./details")
+            if node.find("summary").text == "Failure output"
+        ]
+        assert len(diagnostics) == 1
+        assert diagnostics[0].find(".//pre/code").text == message
     assert dom.findall(".//h1") == dom.findall(".//img") == dom.findall(".//a") == []
     assert "**Actual:**" not in markdown
     assert "**Expected:**" not in markdown
@@ -774,10 +916,23 @@ def test_hostile_request_metadata_and_headers_are_literal():
     )
 
     markdown = Reporter().generate_markdown(report)
-    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+    )
 
-    assert dom.find(".//summary/code").text == name
-    assert len(dom.findall(".//details")) == 1
+    assert (
+        table_with_headers(dom, ["Request", "Passed", "Failed", "Skipped", "Response"])
+        .find(".//tbody/tr/td[1]/code")
+        .text
+        == name
+    )
+    details = dom.findall(".//details")
+    assert len(details) == 2
+    assert ["".join(detail.find("summary").itertext()) for detail in details] == [
+        "Passed assertion (1)",
+        "Captured response headers",
+    ]
+    assert dom.findall(".//details/details") == []
     assert (
         dom.findall(".//img") == dom.findall(".//script") == dom.findall(".//h1") == []
     )
@@ -807,14 +962,16 @@ def test_markdown_byte_budget_keeps_complete_blocks_and_unabridged_artifacts(tmp
     reporter = Reporter()
 
     markdown = reporter.generate_markdown(report, include_raw_output=True)
-    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt('commonmark').enable('table').render(markdown)}</div>"
+    )
     artifact = tmp_path / "junit.xml"
     artifact.write_text(reporter.generate_junit(report), encoding="utf-8")
     suite = ElementTree.parse(artifact).getroot()
 
     assert len(markdown.encode("utf-8")) <= 60000
-    assert "more results omitted" in markdown
-    assert "300 test results" in markdown
+    assert "assertion reasons omitted" in markdown
+    assert_totals(markdown, requests=1, assertions=300, passed=0, failed=300, skipped=0)
     assert len(dom.findall(".//pre")) == len(dom.findall(".//pre/code"))
     assert len(suite.findall("testcase")) == 300
     assert suite.findall("testcase")[-1].find("failure").text == reason
@@ -898,8 +1055,8 @@ def test_incomplete_success_evidence_is_not_labelled_passed():
 
     markdown = Reporter().generate_markdown(report)
 
-    assert "Insomnia Collection Incomplete" in markdown
-    assert "Insomnia Collection Passed" not in markdown
+    assert_result(markdown, "Incomplete")
+    assert not re.search(r"Result:\s*Passed", "".join(render_dom(markdown).itertext()))
 
 
 @pytest.mark.parametrize("duration", [123.123456789, 0.0000000001])

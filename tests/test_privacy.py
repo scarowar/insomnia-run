@@ -108,7 +108,7 @@ def test_recursion_covers_nested_public_fields_and_preserves_schema_keys():
 
     report = Report(details=[{"private": ["private", None, 3, ("private",)]}])
     copy = Redactor(["private", "ok"]).redact_report(report)
-    assert copy.details == [{"private": ["[REDACTED]", None, 3, ("[REDACTED]",)]}]
+    assert copy.details == [{"[REDACTED]": ["[REDACTED]", None, 3, ("[REDACTED]",)]}]
     assert copy.status is Status.OK
     assert report.details[0]["private"][0] == "private"
 

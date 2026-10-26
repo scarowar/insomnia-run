@@ -1,5 +1,9 @@
 from pathlib import Path
+import os
 import re
+import shlex
+import subprocess
+import sys
 
 import yaml
 
@@ -68,6 +72,23 @@ def test_third_party_actions_are_pinned_to_sha():
             assert ACTION_REF_RE.search(ref), f"{path}:{line_number} uses {ref}"
 
 
+def test_production_workflow_template_requires_reviewed_commit_pins():
+    document = (ROOT / "docs/guides/secrets.md").read_text()
+    examples = [
+        yaml.safe_load(block)
+        for block in re.findall(r"```yaml\n(.*?)\n```", document, re.DOTALL)
+    ]
+    production = next(
+        example["jobs"]["production"]
+        for example in examples
+        if isinstance(example, dict) and "production" in example.get("jobs", {})
+    )
+    for step in production["steps"]:
+        if "uses" in step:
+            reference = step["uses"].replace("REVIEWED_RELEASE_SHA", "f" * 40)
+            assert ACTION_REF_RE.search(reference), step["uses"]
+
+
 def test_jobs_start_with_harden_runner_and_have_timeouts():
     for path in WORKFLOWS:
         workflow = load_yaml(path)
@@ -132,6 +153,76 @@ def test_ci_checks_lockfile_freshness_before_installing():
         index for index, step in enumerate(steps) if "uv sync" in step.get("run", "")
     )
     assert check_index < install_index
+
+
+def test_release_validation_rejects_stale_project_metadata(tmp_path):
+    workflow = load_yaml(ROOT / ".github/workflows/release-validation.yml")
+    install = next(
+        step["run"]
+        for step in workflow["jobs"]["validate"]["steps"]
+        if "uv sync" in step.get("run", "")
+    )
+    command = shlex.split(
+        next(
+            line.strip()
+            for line in install.splitlines()
+            if line.strip().startswith("uv sync ")
+        )
+    )
+    binary = os.environ.get("INSOMNIA_RUN_UV_BINARY", "uv")
+    command[0] = binary
+    command.extend(["--offline", "--no-config", "--python", sys.executable])
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("UV_")
+    }
+    environment.update(
+        UV_PROJECT_ENVIRONMENT=str(tmp_path / "environment"),
+        UV_PYTHON_DOWNLOADS="never",
+    )
+    project = tmp_path / "pyproject.toml"
+    project.write_text(
+        '[project]\nname = "lock-freshness-probe"\nversion = "0.0.0"\nrequires-python = ">=3.10"\n'
+    )
+    subprocess.run(
+        [binary, "lock", "--offline", "--no-config", "--python", sys.executable],
+        cwd=tmp_path,
+        env=environment,
+        check=True,
+        capture_output=True,
+    )
+    lock = (tmp_path / "uv.lock").read_bytes()
+    fresh = subprocess.run(
+        command, cwd=tmp_path, env=environment, capture_output=True, text=True
+    )
+    assert fresh.returncode == 0, fresh.stderr
+    project.write_text(
+        project.read_text().replace('version = "0.0.0"', 'version = "0.0.1"')
+    )
+    stale = subprocess.run(
+        command, cwd=tmp_path, env=environment, capture_output=True, text=True
+    )
+    assert stale.returncode != 0, "Release validation accepted a stale lockfile"
+    assert (tmp_path / "uv.lock").read_bytes() == lock
+
+
+def test_release_validation_checks_locked_metadata_before_building():
+    workflow = load_yaml(ROOT / ".github/workflows/release-validation.yml")
+    commands = [
+        line.strip()
+        for step in workflow["jobs"]["validate"]["steps"]
+        for line in step.get("run", "").splitlines()
+    ]
+    sync = next(
+        index
+        for index, command in enumerate(commands)
+        if command.startswith("uv sync ")
+    )
+    build = next(
+        index
+        for index, command in enumerate(commands)
+        if command.startswith("uv build ")
+    )
+    assert sync < build
 
 
 def test_pull_request_workflows_cancel_superseded_runs():

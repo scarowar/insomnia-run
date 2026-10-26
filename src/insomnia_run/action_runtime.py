@@ -3,9 +3,11 @@
 import os
 from pathlib import Path
 import secrets
+import shutil
 import tempfile
 
 import typer
+from pydantic import ValidationError
 
 from .models import InsoCollectionOptions, InsoRunReport, InsoTestOptions
 from .native import validate_capture_headers
@@ -85,10 +87,18 @@ def _validate_inputs(env: dict[str, str]) -> None:
         if command == "test"
         else ("TEST_NAME_PATTERN",)
     )
-    if any(env.get(variable) for variable in incompatible) or (
-        command == "collection" and env.get("KEEP_FILE", "").lower() == "true"
-    ):
-        raise ValueError("Input is not supported by the selected command.")
+    unsupported = [variable for variable in incompatible if env.get(variable)]
+    if command == "collection" and env.get("KEEP_FILE", "").lower() == "true":
+        unsupported.append("KEEP_FILE")
+    if unsupported:
+        names = ", ".join(
+            variable.lower().replace("_", "-") for variable in unsupported
+        )
+        supported = "collection" if command == "test" else "test"
+        raise ValueError(
+            f"Unsupported inputs for command {command}: {names}. "
+            f"These inputs are {supported}-only. Remove them or use command: {supported}."
+        )
 
 
 def _action_options(env: dict[str, str]) -> InsoCollectionOptions | InsoTestOptions:
@@ -305,6 +315,49 @@ def _report_outputs(
     return outputs
 
 
+def _write_job_summary(env: dict[str, str], report: InsoRunReport | None) -> None:
+    summary_path = Path(env["GITHUB_STEP_SUMMARY"])
+    remaining = max(
+        0, 1024 * 1024 - (summary_path.stat().st_size if summary_path.exists() else 0)
+    )
+    if remaining:
+        from .reporter import Reporter
+
+        summary_markdown = (
+            Reporter().generate_markdown(
+                report,
+                workflow_url=env.get("WORKFLOW_URL"),
+                include_raw_output=env.get("INCLUDE_RAW_OUTPUT", "").lower() == "true",
+                max_bytes=remaining,
+            )
+            if report
+            else ""
+        )
+        with summary_path.open("a", encoding="utf-8") as summary:
+            summary.write(summary_markdown)
+
+
+def _configuration_diagnostics(error: ValidationError) -> str:
+    requirements = {
+        "request_timeout": "an integer in milliseconds (minimum 0)",
+        "execution_timeout": "an integer in seconds (minimum 1)",
+        "delay_request": "an integer in milliseconds (minimum 0)",
+        "iteration_count": "an integer in iterations (minimum 1)",
+    }
+    fields = {issue["loc"][0] for issue in error.errors(include_input=False)}
+    messages = []
+    for field in sorted(fields):
+        if field in requirements:
+            messages.append(
+                f"::error::{field.replace('_', '-')} must be {requirements[field]}."
+            )
+        else:
+            messages.append(
+                "::error::Invalid Inso configuration. Check command options."
+            )
+    return "\n".join(messages)
+
+
 def run_action(env: dict[str, str]) -> int:
     if env.get("GITHUB_ACTIONS", "").lower() == "true":
         from .privacy import Redactor, mask_commands
@@ -317,19 +370,28 @@ def run_action(env: dict[str, str]) -> int:
             print(command, flush=True)
     try:
         _validate_inputs(env)
+        if not env.get("RUNNER_TEMP"):
+            raise ValueError("RUNNER_TEMP is required.")
     except ValueError as error:
         print(f"::error::{error}")
         return 2
     if not _artifact_options_valid(env):
         return 2
-    report_dir = Path(
-        tempfile.mkdtemp(prefix="insomnia-run-reports.", dir=env["RUNNER_TEMP"])
-    )
     try:
         options = _action_options(env)
+    except ValidationError as error:
+        print(_configuration_diagnostics(error))
+        return 2
     except ValueError:
         print("::error::Invalid Inso configuration. Check command options.")
         return 2
+    for required_path in ("GITHUB_OUTPUT", "GITHUB_STEP_SUMMARY"):
+        if not env.get(required_path):
+            print(f"::error::{required_path} is required.")
+            return 2
+    report_dir = Path(
+        tempfile.mkdtemp(prefix="insomnia-run-reports.", dir=env["RUNNER_TEMP"])
+    )
     try:
         if (
             env.get("JUNIT_OUTPUT_FILE")
@@ -343,6 +405,7 @@ def run_action(env: dict[str, str]) -> int:
                 other_paths=[report_dir / name for name in _REPORT_FILES],
             )
     except ValueError as error:
+        shutil.rmtree(report_dir)
         print(f"::error::{error}")
         return 2
     code = _run_reports(env, report_dir, options)
@@ -360,8 +423,7 @@ def run_action(env: dict[str, str]) -> int:
         **_report_outputs(env, report_dir, report, junit),
     }
     write_outputs(Path(env["GITHUB_OUTPUT"]), outputs)
-    with Path(env["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as summary:
-        summary.write(markdown)
+    _write_job_summary(env, report)
     return 0
 
 

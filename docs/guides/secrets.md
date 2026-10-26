@@ -27,7 +27,7 @@ Map secrets explicitly into the collection's Insomnia environment with `env-var`
             print(f"{name}={encoded}", file=output)
     PY
 
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -49,11 +49,23 @@ Inso 13.3.1 applies URL decoding to overrides: `+` becomes a space, `%` introduc
 
 A GitHub `env:` block sets operating-system variables. It does not automatically create Insomnia variables such as `{{ _.API_KEY }}`. Map the specific values you need into `env-var`. The direct mapping below requires URL-safe values; otherwise use the encoding step above.
 
+Inso inherits only supported runtime settings and selected public GitHub context. Every other variable is excluded by default, regardless of its name or whether its value looks like a secret. Custom collection values must use `env-var` or a selected Insomnia environment; placing them in `env:` alone does not forward them to collection scripts.
+
+| Runtime settings | Supported variables |
+| --- | --- |
+| Executables, home, temporary files, and configuration | `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` |
+| Locale and timezone | `LANG`, `LANGUAGE`, `LC_ALL`, `LC_CTYPE`, `LC_COLLATE`, `LC_MESSAGES`, `LC_MONETARY`, `LC_NUMERIC`, `LC_TIME`, `TZ` |
+| Console output | `CI`, `TERM`, `NO_COLOR`, `FORCE_COLOR` |
+| Network proxies | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, and their lowercase forms |
+| Certificate authorities | `SSL_CERT_FILE`, `SSL_CERT_DIR`, `NODE_EXTRA_CA_CERTS`, `NODE_USE_SYSTEM_CA` |
+
+Selected public GitHub context includes repository, workflow, run, actor, ref, commit SHA, and workspace metadata. GitHub control-file paths and new variables sharing a supported prefix are not automatically inherited. Startup injection settings such as `NODE_OPTIONS` and loader paths are excluded. The same policy applies to capability probes, collection runs, and legacy test-suite runs. It does not change the parent environment or restrict access to files on the runner.
+
 ```yaml
 env:
   API_KEY: ${{ secrets.API_KEY }}
 steps:
-  - uses: scarowar/insomnia-run@v0.2.0
+  - uses: scarowar/insomnia-run@v0.2.1
     with:
       command: collection
       working-directory: insomnia-export.yaml
@@ -74,12 +86,12 @@ The `env-var` input is available only for `command: collection`. For legacy `com
 
 Insomnia Run disables Inso CLI telemetry for its child process. It does not change the environment of later workflow steps.
 
-Failure reasons are included by default after shared redaction. Environment overrides are automatically redacted and masked when their key names indicate credentials or their decoded values contain at least eight characters. Short configuration values such as `RETRIES=1` and `DEBUG=true` remain readable. Explicit `redact-values` apply regardless of length. Known encoded/decoded values, proxy credentials, and recognized credential-bearing headers/URLs/query parameters are removed from published names, messages, selected headers, and optional raw diagnostics. JSON, Markdown, JUnit, annotations, comments, and uploaded files use the redacted projection.
+Failure reasons are included by default after shared redaction. Environment overrides are automatically redacted and masked when their key names indicate credentials or their literal/decoded values contain at least eight characters. Literal assignment values are registered in addition to Inso’s URL-form-decoded values; this does not change Inso’s decoding behavior. Short configuration values such as `RETRIES=1` and `DEBUG=true` remain readable. Explicit `redact-values` apply regardless of length. Known encoded/decoded values, proxy credentials, and recognized credential-bearing headers/URLs/query parameters are removed from published names, messages, selected headers, and optional raw diagnostics. JSON, Markdown, JUnit, annotations, comments, and uploaded files use the redacted projection.
 
 Add sensitive values that are not collection overrides, including legacy-suite credentials:
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -91,7 +103,7 @@ The action input accepts one value per line. For standalone use, repeat `--redac
 
 Raw Inso output is captured, not streamed. It is hidden by default. `verbose: "true"` alone does not publish it and is rejected for legacy suites. `include-raw-output: "true"` adds redacted diagnostics to reports and a raw file, including summaries, enabled comments, and uploads. Disabling comments/uploads does not remove them from the job summary. See [Debug Mode](../troubleshooting.md#debug-mode).
 
-Log masks are additional protection for logs, not sanitizers for files, comments, artifacts, or process listings. Percent-encoded and other transformed values remain credentials. Inso receives collection overrides as command-line arguments, and standalone `--redact-value` is also an argument. Other processes with access to process listings may see them. The action calls the runner in-process, keeping `redact-values` out of child Python command lines. Before starting Inso, it removes action inputs, internal action variables, `GITHUB_TOKEN`, `GH_TOKEN`, and runner OIDC credentials from the child environment. Other runner environment variables remain available to collection scripts and are not automatically known to the report redactor. Use isolated runners, trusted collections, minimal environment credentials, and explicit redaction values.
+Log masks are additional protection for logs, not sanitizers for files, comments, artifacts, or process listings. Percent-encoded and other transformed values remain credentials. Inso receives collection overrides as command-line arguments, and standalone `--redact-value` is also an argument. Other processes with access to process listings may see them. The action calls the runner in-process, keeping `redact-values` out of child Python command lines. Both action and standalone execution use the explicit [runtime environment policy](#runner-environment), so unrelated credentials and custom variables do not reach Inso through ambient inheritance. Authenticated proxy settings remain part of the supported network configuration. Integrations must use explicit collection overrides or supported vault configuration instead of relying on ambient credentials. Environment isolation is not a filesystem sandbox and does not make an untrusted collection safe. Use isolated runners, trusted collections, minimal environment credentials, and explicit redaction values.
 
 ## Response Headers
 
@@ -109,6 +121,8 @@ Keep instance comment tokens, GitHub.com download credentials, and runner artifa
 
 Use different secrets for different environments. These direct mappings require URL-safe values; otherwise use the encoding step in [Collection Overrides](#collection-overrides) in each job.
 
+Before using the production job, replace `REVIEWED_RELEASE_SHA` with the full 40-character commit SHA of the v0.2.1 release you reviewed. Obtain it from the verified release tag on the [release page](https://github.com/scarowar/insomnia-run/releases/tag/v0.2.1). The placeholder must be replaced before the workflow can run; keep the version comment when updating the pin.
+
 ```yaml
 permissions:
   contents: read
@@ -121,7 +135,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: scarowar/insomnia-run@v0.2.0
+      - uses: scarowar/insomnia-run@v0.2.1
         with:
           command: collection
           working-directory: insomnia-export.yaml
@@ -135,7 +149,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: scarowar/insomnia-run@v0.2.0
+      - uses: scarowar/insomnia-run@REVIEWED_RELEASE_SHA # v0.2.1
         with:
           command: collection
           working-directory: insomnia-export.yaml

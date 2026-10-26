@@ -104,7 +104,7 @@ Files, not process streams or step-output JSON, are the authoritative reports.
 | --- | --- |
 | `report-directory` | Current invocation's report directory under `RUNNER_TEMP`. |
 | `json-file` | Complete normalized JSON report path, when a report exists. |
-| `markdown` | Bounded Markdown report used for the job summary and comments. |
+| `markdown` | Bounded Markdown report for comments; the job summary is rendered separately with its larger destination budget. |
 | `json-output` | JSON only when requested and within 64 KiB measured as UTF-16. Otherwise empty; never partial JSON. |
 | `json-output-omitted` | `true` when requested JSON exceeds that convenience-output budget. |
 | `junit-file` | Generated JUnit path, or empty if disabled/unavailable. |
@@ -145,7 +145,9 @@ Collections use a private native JSON report when Inso supports it, projecting o
 
 `complete: false` marks partial evidence, including timeouts and the Inso 13.3.1 bail path that omits its native file. Completed native evidence or trustworthy nonverbose TAP may be retained. Verbose stdout is never trusted as TAP: without a native file, verbose timeouts have no recovered assertions, and verbose bail is a protocol error. Both exit `3`. Normal nonverbose assertion bail may recover TAP with exit `1`. `requests` counts completed native records only: it does not count an interrupted request omitted by Inso, and it is unknown for TAP. Run errors have a separate `kind` (`execution`, `timeout`, or `protocol`) and message; they are not synthetic failed assertions.
 
-Markdown groups native results by request, puts failures first, and collapses passing groups. It has a 60,000 UTF-8-byte budget, at most 50 displayed results, bounded names/messages, and at most 8,192 bytes of opted-in raw diagnostics. Truncation is marked. JSON and JUnit result lists are not truncated.
+Markdown starts with the run outcome and a totals table. A request overview shows separate passed, failed, and skipped counts alongside available HTTP status/timing. Up to 10 completed request occurrences are shown directly; larger overviews use one expandable section. A visible failed-assertion table identifies each request, assertion, and first-line failure reason. Full failure output, passed assertions, skipped assertions, captured headers, and opted-in raw diagnostics use separate expandable sections without nested toggles. Repeated requests retain execution and iteration context. Run errors remain visible, and HTTP success alone does not mean assertions passed.
+
+The comment/file output has a 60,000 UTF-8-byte budget. Failure descriptions take priority, followed by request rows, short failure previews, full failure output, skipped assertions, passing assertions, and optional diagnostics. Omitted assertions, reasons, requests, or headers are counted. Names and reasons are bounded; raw diagnostics retain at most 8,192 bytes when space permits. Job summaries use the same layout with the remaining 1 MiB per-step capacity. JSON and JUnit result lists are complete. Native error wrappers are simplified only in Markdown; JSON and JUnit preserve original redacted reasons. JUnit attributes use bounded first-line summaries, and unknown durations are omitted.
 
 ### Standalone CLI
 
@@ -185,7 +187,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: scarowar/insomnia-run@v0.2.0
+      - uses: scarowar/insomnia-run@v0.2.1
         with:
           command: collection
           working-directory: insomnia-export.yaml

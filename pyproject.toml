@@ -1,6 +1,6 @@
 [project]
 name = "insomnia-run"
-version = "0.2.0"
+version = "0.2.1"
 description = "CLI runner for Insomnia API tests and collections."
 readme = "README.md"
 authors = [
@@ -33,13 +33,15 @@ dev = [
     { include-group = "test" },
     "bandit>=1.9.4",
     "cyclonedx-bom>=7.3.0",
-    "pip-audit>=2.10.0",
+    "filelock>=4.2.1; python_version >= '3.11'",
+    "pip-audit>=2.10.0; python_version >= '3.11'",
     "mypy>=2.1.0",
     "pygments>=2.20.0",
     "pymdown-extensions>=11.0.1",
-    "pre-commit>=4.5.0",
+    "pre-commit>=4.5.0; python_version >= '3.11'",
     "ruff>=0.17.1",
     "zensical>=0.0.43",
+    "virtualenv>=21.14.13; python_version >= '3.11'",
     "zizmor>=1.25.2",
 ]
 

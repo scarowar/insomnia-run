@@ -76,13 +76,14 @@ if args == ['--version']:
 if '--help' in args:
     print('  --output <path>  Write native JSON report')
     sys.exit(0)
-if os.environ.get('TEST_ENV_FILE'):
-    Path(os.environ['TEST_ENV_FILE']).write_text(json.dumps({
+configuration = json.loads(Path(__file__).with_suffix('.json').read_text())
+if configuration.get('capture_path'):
+    Path(configuration['capture_path']).write_text(json.dumps({
         'args': args, 'proxy': os.environ.get('HTTPS_PROXY'),
         'selected_binary': str(Path(sys.argv[0]).resolve()),
         'telemetry': os.environ.get('INSO_TELEMETRY_DISABLED'),
     }))
-mode = os.environ.get('TEST_OUTCOME', 'pass')
+mode = configuration.get('outcome', 'pass')
 statuses = ['passed', 'failed' if mode == 'fail' else 'passed', 'skipped']
 names = ['returns orders', 'validates status', 'optional field']
 tests = [dict(testCase=name, status=status, executionTime=2.5)
@@ -127,6 +128,15 @@ def run_action(tmp_path):
         env = action_environment(tmp_path)
         env["PATH"] = f"{fake_bin}:{os.environ['PATH']}"
         env.update(overrides)
+        configuration = json.dumps(
+            {
+                "capture_path": overrides.get("TEST_ENV_FILE"),
+                "outcome": overrides.get("TEST_OUTCOME", "pass"),
+            }
+        )
+        for binary in (inso, tmp_path / "insomnia-run-inso" / "bin" / "inso"):
+            if binary.is_file():
+                binary.with_suffix(".json").write_text(configuration)
         step = next(
             s for s in load_action()["runs"]["steps"] if s.get("id") == "run-cli"
         )
@@ -640,7 +650,7 @@ def test_custom_junit_cannot_collide_with_any_canonical_report(
 
     assert run(JUNIT_OUTPUT_FILE=str(reports / report_name)) == 2
     assert calls == []
-    assert list(reports.iterdir()) == []
+    assert not reports.exists()
 
 
 def test_custom_junit_rejects_symlink_escape_before_launch(run_action, tmp_path):

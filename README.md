@@ -28,7 +28,7 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 
 ## Reports and Installation
 
-- Request-grouped Markdown, normalized JSON files, and JUnit reports, with redacted failure reasons and available timings.
+- Markdown with visible failures and a consistent request overview, plus complete JSON and JUnit reports with redacted reasons and available timings.
 - Per-job/matrix PR comment replacement, bounded annotations, optional artifacts, and separate assertion/run-error outcomes.
 - Verified Inso archive caching, explicit custom archive digests, frozen source installation, and optional verified runtime bundles.
 
@@ -38,13 +38,13 @@ Native collections retain completed request records; legacy suites use TAP. Part
 
 Use Linux or macOS with Python 3.10+, or select the managed Python option. Automatic Inso installation supports Linux x64 and macOS; Apple Silicon requires Rosetta. Linux ARM needs compatible preinstalled tools. Windows is unsupported.
 
-Examples use `@v0.2.0`. For production workflows, pin the action to the full commit SHA of the reviewed release.
+Examples use `@v0.2.1`. For production workflows, pin the action to the full commit SHA of the reviewed release.
 
 Examples use `insomnia-export.yaml`. For legacy Git Sync data under `.insomnia/Workspace/`, use the parent repository root (`working-directory: .`), not `.insomnia`. See [input paths](docs/reference/inputs.md#input-paths).
 
 **Run a collection:**
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: collection
     working-directory: insomnia-export.yaml
@@ -52,7 +52,7 @@ Examples use `insomnia-export.yaml`. For legacy Git Sync data under `.insomnia/W
 
 **Run a test suite:**
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   with:
     command: test
     working-directory: insomnia-export.yaml
@@ -106,7 +106,7 @@ Use `junit-file` with GitHub test report integrations or artifact upload:
 Grant `checks: write` when publishing a GitHub test report.
 
 ```yaml
-- uses: scarowar/insomnia-run@v0.2.0
+- uses: scarowar/insomnia-run@v0.2.1
   id: tests
   with:
     command: collection

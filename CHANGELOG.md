@@ -2,6 +2,23 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.1] - 2026-10-26
+
+### Fixed
+
+- Preserve request summaries and failure descriptions under Markdown budgets, remove the 50-assertion cutoff, and account for omissions within each request.
+- Render job summaries independently from bounded PR-comment Markdown; show compact totals, per-request counts, and failed-assertion tables with separate expandable diagnostics.
+- Redact literal and decoded override values, credential-bearing dictionary entries, and secrets in dynamic keys without losing colliding entries.
+- Give Inso an explicit runtime environment that excludes all unlisted variables, preserving supported proxy, certificate, and public GitHub context settings.
+- Reject incomplete passing evidence consistently, retain interrupted TAP diagnostics, and bound annotations after escaping.
+- Preserve full JUnit evidence while bounding summary attributes, omit unknown empty-suite timing, and validate runtime options before report allocation.
+
+### Changed
+
+- Identify incompatible inputs and explain numeric input types, ranges, and units without echoing supplied values.
+- Require installed-wheel release validation with real integrations, no skipped tests, and rendered-report acceptance evidence before publication.
+- Update development-tool locks to patched filelock 4.2.1 and virtualenv 21.14.13. Pre-commit and dependency auditing require Python 3.11+; Python 3.10 runtime/test support is retained.
+
 ## [0.2.0] - 2026-10-23
 
 ### Added
@@ -63,6 +80,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Initial Insomnia Run action release.
 
+[0.2.1]: https://github.com/scarowar/insomnia-run/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/scarowar/insomnia-run/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/scarowar/insomnia-run/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/scarowar/insomnia-run/compare/v0.1.0...v0.1.1

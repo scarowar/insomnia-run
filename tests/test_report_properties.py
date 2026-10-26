@@ -14,6 +14,7 @@ from insomnia_run.models import (
 from markdown_it import MarkdownIt
 from insomnia_run.parser import TapParser
 from insomnia_run.reporter import Reporter
+from insomnia_run.privacy import Redactor
 
 
 def xml_safe(value):
@@ -57,7 +58,11 @@ def test_junit_is_valid_and_preserves_unicode(description, target):
     assert suite.attrib["failures"] == suite.attrib["skipped"] == "1"
     assert all(case.attrib["name"] == xml_safe(description) for case in cases)
     assert all(case.attrib["classname"] == xml_safe(target) for case in cases)
-    assert suite.find("./testcase/failure").attrib["message"] == xml_safe(description)
+    assert suite.find("./testcase/failure").attrib["message"] == (
+        xml_safe(description).splitlines()[0]
+        if xml_safe(description).splitlines()
+        else ""
+    )
     assert "private raw logs" not in xml
     xml.encode("utf-8")
 
@@ -155,7 +160,11 @@ def test_junit_messages_and_run_errors_preserve_sanitized_unicode(message, error
 
     assert suite.attrib["tests"] == "2"
     assert suite.attrib["failures"] == suite.attrib["errors"] == "1"
-    assert failure.attrib["message"] == xml_safe(message or "assertion")
+    assert failure.attrib["message"] == (
+        xml_safe(message or "assertion").splitlines()[0]
+        if xml_safe(message or "assertion").splitlines()
+        else ""
+    )
     expected_failure = message if message else "Inso reported this test as failed."
     assert failure.text == xml_safe(expected_failure).replace("\r\n", "\n").replace(
         "\r", "\n"
@@ -163,3 +172,95 @@ def test_junit_messages_and_run_errors_preserve_sanitized_unicode(message, error
     assert (run_error.text or "") == xml_safe(error).replace("\r\n", "\n").replace(
         "\r", "\n"
     )
+
+
+@settings(max_examples=150, derandomize=True)
+@given(
+    counts=st.lists(st.integers(min_value=0, max_value=25), min_size=1, max_size=8),
+    failures=st.booleans(),
+)
+@example(counts=[29, 10, 21, 1, 1], failures=True)
+def test_every_request_that_fits_is_visible_with_correct_assertion_counts(
+    counts, failures
+):
+    results = []
+    for occurrence, count in enumerate(counts, 1):
+        results.extend(
+            InsoResult(
+                id=len(results) + index + 1,
+                execution_id=occurrence,
+                description=f"assertion-{occurrence}-{index}",
+                status="FAIL" if failures and index == 0 else "PASS",
+            )
+            for index in range(count)
+        )
+    report = InsoRunReport(
+        source="native",
+        plan_end=len(results),
+        executions=[
+            RequestExecution(id=index, name=f"request-{index}")
+            for index in range(1, len(counts) + 1)
+        ],
+        results=results,
+    )
+    markdown = Reporter().generate_markdown(report)
+    assert all(execution.name in markdown for execution in report.executions)
+    assert all(result.description in markdown for result in report.results)
+    assert "omitted" not in markdown.split("### Additional Information")[0]
+    assert report.total_tests == sum(counts)
+
+
+@settings(max_examples=150, derandomize=True)
+@given(
+    count=st.integers(min_value=1, max_value=100),
+    budget=st.integers(min_value=128, max_value=10_000),
+    message=st.text(max_size=1000),
+)
+def test_serialized_markdown_respects_any_destination_budget(count, budget, message):
+    report = InsoRunReport(
+        source="native",
+        plan_end=count,
+        executions=[
+            RequestExecution(id=index, name="<>&秘密" * 50) for index in range(count)
+        ],
+        results=[
+            InsoResult(
+                id=index,
+                execution_id=index,
+                status="FAIL",
+                description=f"assertion-{index}",
+                message=message,
+            )
+            for index in range(count)
+        ],
+    )
+    before = report.model_dump_json()
+    markdown = Reporter().generate_markdown(report, max_bytes=budget)
+    assert len(markdown.encode("utf-8")) <= budget
+    assert markdown.count("<details>") == markdown.count("</details>")
+    assert report.model_dump_json() == before
+
+
+@settings(max_examples=100, derandomize=True)
+@given(value=st.text(alphabet="abcDEF0123&+=%_/-秘密", min_size=8, max_size=50))
+def test_literal_override_sentinel_never_survives_any_report_surface(value):
+    report = InsoRunReport(
+        plan_end=1,
+        source="native",
+        target_name=value,
+        executions=[RequestExecution(id=1, name=value, headers={"X-Trace": value})],
+        results=[
+            InsoResult(
+                id=1, execution_id=1, status="FAIL", description=value, message=value
+            )
+        ],
+    )
+    redacted = Redactor(env_vars=[f"PASSWORD={value}"]).redact_report(report)
+    for output in (
+        redacted.model_dump_json(),
+        Reporter().generate_markdown(redacted),
+        Reporter().generate_junit(redacted),
+    ):
+        assert value not in output
+    assert redacted.source == "native"
+    assert redacted.results[0].status is InsoStatus.FAIL

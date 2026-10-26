@@ -18,19 +18,32 @@ from insomnia_run.runner import InsoConfigurationError, InsoRunner
 @pytest.fixture
 def fake_inso(tmp_path, monkeypatch):
     binary = tmp_path / "inso"
+    configuration = binary.with_suffix(".json")
     binary.write_text(
         f"#!{sys.executable}\n"
-        "import os, sys\n"
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
         "if sys.argv[1:] == ['run', 'collection', '--help']:\n"
         "    print('Usage: inso run collection [options]\\n  --reporter <reporter>')\n"
         "    sys.exit(0)\n"
-        "os.write(1, bytes.fromhex(os.environ.get('FAKE_INSO_STDOUT', '')))\n"
-        "os.write(2, bytes.fromhex(os.environ.get('FAKE_INSO_STDERR', '')))\n"
-        "sys.exit(int(os.environ.get('FAKE_INSO_EXIT', '0')))\n",
+        "configuration = json.loads(Path(__file__).with_suffix('.json').read_text())\n"
+        "os.write(1, bytes.fromhex(configuration['stdout']))\n"
+        "os.write(2, bytes.fromhex(configuration['stderr']))\n"
+        "sys.exit(configuration['exit_code'])\n",
         encoding="utf-8",
     )
     binary.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+
+    def configure(*, stdout=b"", stderr=b"", exit_code=0):
+        configuration.write_text(
+            json.dumps(
+                {"stdout": stdout.hex(), "stderr": stderr.hex(), "exit_code": exit_code}
+            )
+        )
+
+    configure()
+    return configure
 
 
 @pytest.mark.parametrize("command", ["run-collection", "run-test"])
@@ -38,7 +51,7 @@ def fake_inso(tmp_path, monkeypatch):
 @pytest.mark.parametrize("include_raw", [False, True])
 @pytest.mark.parametrize("has_tap", [False, True])
 def test_cli_errors_redact_diagnostics_with_or_without_raw_publication(
-    fake_inso, tmp_path, monkeypatch, command, stream, include_raw, has_tap
+    fake_inso, tmp_path, command, stream, include_raw, has_tap
 ):
     secret = "PRIVATE_DIAGNOSTIC_SENTINEL"
     stdout = "1..1\nok 1 - passes\n" if has_tap else ""
@@ -47,9 +60,7 @@ def test_cli_errors_redact_diagnostics_with_or_without_raw_publication(
         stdout += f"Cannot connect: {secret}\n"
     else:
         stderr = f"Cannot connect: {secret}\n"
-    monkeypatch.setenv("FAKE_INSO_STDOUT", stdout.encode().hex())
-    monkeypatch.setenv("FAKE_INSO_STDERR", stderr.encode().hex())
-    monkeypatch.setenv("FAKE_INSO_EXIT", "23")
+    fake_inso(stdout=stdout.encode(), stderr=stderr.encode(), exit_code=23)
     junit = tmp_path / "report.xml"
     args = [
         command,
@@ -83,10 +94,8 @@ def test_cli_errors_redact_diagnostics_with_or_without_raw_publication(
 
 
 @pytest.mark.parametrize("command", ["run-collection", "run-test"])
-def test_cli_reports_preserve_unicode_and_replace_invalid_bytes(
-    fake_inso, monkeypatch, command
-):
-    monkeypatch.setenv("FAKE_INSO_STDOUT", b"1..1\nok 1 - caf\xc3\xa9 \xff\n".hex())
+def test_cli_reports_preserve_unicode_and_replace_invalid_bytes(fake_inso, command):
+    fake_inso(stdout=b"1..1\nok 1 - caf\xc3\xa9 \xff\n")
 
     result = CliRunner().invoke(
         app, [command, "-w", "fixture", "--output-format", "json"]
@@ -103,9 +112,9 @@ def test_cli_reports_preserve_unicode_and_replace_invalid_bytes(
     ["1..2\nok 1 - incomplete\n", "1..1\nok 1 - passes\nBail out! private\n"],
 )
 def test_successful_process_with_missing_or_incomplete_tap_fails_cli(
-    fake_inso, monkeypatch, command, output
+    fake_inso, command, output
 ):
-    monkeypatch.setenv("FAKE_INSO_STDOUT", output.encode().hex())
+    fake_inso(stdout=output.encode())
 
     result = CliRunner().invoke(
         app, [command, "-w", "fixture", "--output-format", "json"]
@@ -118,10 +127,8 @@ def test_successful_process_with_missing_or_incomplete_tap_fails_cli(
     assert [result["status"] for result in payload["results"]] == ["PASS"]
 
 
-def test_successful_collection_without_assertions_has_a_neutral_empty_report(
-    fake_inso, monkeypatch
-):
-    monkeypatch.setenv("FAKE_INSO_STDOUT", b"[network] Response succeeded\n".hex())
+def test_successful_collection_without_assertions_has_a_neutral_empty_report(fake_inso):
+    fake_inso(stdout=b"[network] Response succeeded\n")
 
     result = CliRunner().invoke(
         app, ["run-collection", "-w", "fixture", "--output-format", "json"]
@@ -129,7 +136,8 @@ def test_successful_collection_without_assertions_has_a_neutral_empty_report(
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.stderr)["results"] == []
-    assert "Passed" not in result.stdout
+    assert "**Result: No Assertions Executed**" in result.stdout
+    assert "**Result: Passed**" not in result.stdout
     assert "No assertions executed" in result.stdout
 
 

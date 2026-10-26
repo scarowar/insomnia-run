@@ -217,13 +217,12 @@ def test_environment_override_occurrences_reach_inso_unchanged(tmp_path, monkeyp
     inso = tmp_path / "inso"
     inso.write_text(
         f"#!{sys.executable}\n"
-        "import json, os, pathlib, sys\n"
-        "pathlib.Path(os.environ['CAPTURE_ARGUMENTS']).write_text(json.dumps(sys.argv[1:]))\n"
+        "import json, pathlib, sys\n"
+        f"pathlib.Path({str(captured)!r}).write_text(json.dumps(sys.argv[1:]))\n"
         "print('1..0')\n"
     )
     inso.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
-    monkeypatch.setenv("CAPTURE_ARGUMENTS", str(captured))
     overrides = ["A=old&B=keep", "A=new", "ENCODED=one%2Btwo+words"]
     args = ["run-collection", "-w", "fixture"]
     for override in overrides:
