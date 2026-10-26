@@ -1,4 +1,6 @@
 import importlib.util
+from html import escape
+import json
 from pathlib import Path
 import sys
 
@@ -110,6 +112,62 @@ def test_rendered_report_validation_checks_exact_request_identity(
     )
     with pytest.raises(ValueError, match="lost an executed request"):
         validator.validate_reports(tmp_path)
+
+
+def inject_publication_text(validator, monkeypatch, artifact, text):
+    from insomnia_run.models import InsoRunReport
+    from insomnia_run.reporter import Reporter
+    from markdown_it import MarkdownIt
+
+    render = MarkdownIt("commonmark").enable("table").render
+    monkeypatch.setattr(validator, "render_gfm", render)
+    comment = "\n<!-- " + text + " -->\n"
+    if artifact == "html":
+        monkeypatch.setattr(
+            validator, "render_gfm", lambda markdown: render(markdown) + comment
+        )
+    elif artifact == "json":
+        original = InsoRunReport.model_dump_json
+
+        def serialize(report, *args, **kwargs):
+            payload = json.loads(original(report, *args, **kwargs))
+            payload["publication_probe"] = text
+            return json.dumps(payload)
+
+        monkeypatch.setattr(InsoRunReport, "model_dump_json", serialize)
+    else:
+        method = "generate_markdown" if artifact == "markdown" else "generate_junit"
+        original = getattr(Reporter, method)
+
+        def serialize(reporter, *args, **kwargs):
+            return original(reporter, *args, **kwargs) + comment
+
+        monkeypatch.setattr(Reporter, method, serialize)
+
+
+@pytest.mark.parametrize("artifact", ["json", "markdown", "junit", "html"])
+@pytest.mark.parametrize(
+    "escape_depth", [0, 1, 2], ids=["raw", "escaped", "double-escaped"]
+)
+def test_report_validation_rejects_complete_credentials_in_serialized_forms(
+    validator, tmp_path, monkeypatch, artifact, escape_depth
+):
+    credential = "synthetic&credential+value"
+    for _ in range(escape_depth):
+        credential = escape(credential)
+    inject_publication_text(validator, monkeypatch, artifact, credential)
+    with pytest.raises(ValueError, match="credential survived"):
+        validator.validate_reports(tmp_path)
+
+
+@pytest.mark.parametrize("artifact", ["json", "markdown", "junit", "html"])
+@pytest.mark.parametrize("fragment", ["synthetic", "credential+value"])
+def test_report_validation_accepts_unrelated_words_and_credential_fragments(
+    validator, tmp_path, monkeypatch, artifact, fragment
+):
+    inject_publication_text(validator, monkeypatch, artifact, fragment)
+    validator.validate_reports(tmp_path)
+    assert (tmp_path / "report-checks.json").is_file()
 
 
 def test_release_preflight_rejects_editable_source(validator, tmp_path, monkeypatch):

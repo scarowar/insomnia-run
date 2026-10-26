@@ -4,6 +4,7 @@ import argparse
 from collections import Counter
 from importlib.metadata import version
 from html.parser import HTMLParser
+from html import unescape
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,9 @@ import sys
 import tempfile
 import tomllib
 from xml.etree import ElementTree  # nosec B405 # locally generated pytest XML only
+
+
+_ACCEPTANCE_CREDENTIAL = "synthetic&credential+value"
 
 
 class RenderedReport(HTMLParser):
@@ -165,7 +169,7 @@ def _acceptance_report(label: str, counts: tuple[int, ...]):
                     if label == "mixed" and execution == 1 and number < 2
                     else InsoStatus.PASS,
                     description=f"check-{execution}-{number}",
-                    message="error: Error: synthetic&credential+value | ACTUAL: undefined | EXPECTED: undefined"
+                    message=f"error: Error: {_ACCEPTANCE_CREDENTIAL} | ACTUAL: undefined | EXPECTED: undefined"
                     if label == "mixed" and number == 0
                     else None,
                 )
@@ -187,10 +191,10 @@ def _acceptance_report(label: str, counts: tuple[int, ...]):
             0
         ].message = "literal | ![image](https://example.invalid) @ghost #1\n<details>full diagnostic</details>"
         report.raw_output = (
-            "</details><img src=x><script>bad</script>\nsynthetic&credential+value\n"
+            f"</details><img src=x><script>bad</script>\n{_ACCEPTANCE_CREDENTIAL}\n"
             + "```" * 3000
         )
-    return Redactor(values=["synthetic&credential+value"]).redact_report(report)
+    return Redactor(values=[_ACCEPTANCE_CREDENTIAL]).redact_report(report)
 
 
 def _require_rendered_identities(report, html: str) -> None:
@@ -233,8 +237,9 @@ def validate_reports(output: Path) -> None:
         if len(cases) != report.total_tests or len(markdown.encode("utf-8")) > 60_000:
             raise ValueError("Report evidence counts or Markdown size differ.")
         payload = report.model_dump_json(indent=2)
+        # Rendered HTML can escape an already escaped Markdown or XML fragment.
         if any(
-            "synthetic&credential+value" in value
+            _ACCEPTANCE_CREDENTIAL in unescape(unescape(value))
             for value in (payload, markdown, junit, html)
         ):
             raise ValueError("Synthetic credential survived publication redaction.")

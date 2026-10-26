@@ -121,6 +121,8 @@ Keep instance comment tokens, GitHub.com download credentials, and runner artifa
 
 Use different secrets for different environments. These direct mappings require URL-safe values; otherwise use the encoding step in [Collection Overrides](#collection-overrides) in each job.
 
+Before using the production job, replace `REVIEWED_RELEASE_SHA` with the full 40-character commit SHA of the v0.2.1 release you reviewed. Obtain it from the verified release tag on the [release page](https://github.com/scarowar/insomnia-run/releases/tag/v0.2.1). The placeholder must be replaced before the workflow can run; keep the version comment when updating the pin.
+
 ```yaml
 permissions:
   contents: read
@@ -147,7 +149,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: scarowar/insomnia-run@v0.2.1
+      - uses: scarowar/insomnia-run@REVIEWED_RELEASE_SHA # v0.2.1
         with:
           command: collection
           working-directory: insomnia-export.yaml
