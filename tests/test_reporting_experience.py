@@ -283,7 +283,9 @@ def test_failure_table_assertions_and_first_line_reasons_are_literal(
     assert len(rows[0]) == 3
     assert [cell.text for cell in rows[0][1:]] == [text, text]
     for cell in rows[0][1:]:
-        assert not cell.find("img") and not cell.find("a") and not cell.find("strong")
+        assert not cell.find("img")
+        assert not cell.find("a")
+        assert not cell.find("strong")
     assert "full diagnostic detail" not in failure_table(document).text
 
 

@@ -262,6 +262,41 @@ def _request_response(execution: RequestExecution) -> str:
     return _LINE_BREAK.join(response)
 
 
+def _request_identity(
+    execution: RequestExecution, *, repeated: bool
+) -> tuple[str, str]:
+    context = []
+    if repeated:
+        context.append(f"Execution {execution.id}")
+    if execution.iteration is not None:
+        context.append(f"Iteration {execution.iteration + 1}")
+    label = f"\n**{_inline_code(execution.name)}**\n\n"
+    name = _table_code(execution.name)
+    if context:
+        label += "\n".join(context) + "\n\n"
+        name += _LINE_BREAK + _LINE_BREAK.join(context)
+    return name, label
+
+
+def _make_assertion(result: InsoResult, name: str, *, native: bool) -> _Assertion:
+    reason = ""
+    if result.message:
+        message = result.message
+        if native:
+            message = _display_message(message)
+        reason = _literal_block(message)
+    return _Assertion(
+        result,
+        f"| {name} | {_table_text(result.description)} | "
+        if result.status == InsoStatus.FAIL
+        else _result_block(result, include_message=False),
+        reason,
+        preview=_failure_preview(result, native=native)
+        if result.status == InsoStatus.FAIL
+        else "",
+    )
+
+
 def _make_group(
     execution: RequestExecution | None,
     results: list[InsoResult],
@@ -273,39 +308,13 @@ def _make_group(
     name = "Request details unavailable"
     row = headers = ""
     if execution is not None:
-        context = f"Execution {execution.id}" if repeated else ""
-        if execution.iteration is not None:
-            context += (
-                "\n" if context else ""
-            ) + f"Iteration {execution.iteration + 1}"
-        label = f"\n**{_inline_code(execution.name)}**\n\n"
-        if context:
-            label += context + "\n\n"
-        name = _table_code(execution.name)
-        if repeated or execution.iteration is not None:
-            name += _LINE_BREAK + context.replace("\n", _LINE_BREAK)
+        name, label = _request_identity(execution, repeated=repeated)
         row = f"| {name} | {_request_counts(results)} | {_request_response(execution)} |\n"
         if execution.headers:
             headers = _literal_block(
                 "\n".join(f"{k}: {v}" for k, v in execution.headers.items())
             )
-    assertions = [
-        _Assertion(
-            result,
-            f"| {name} | {_table_text(result.description)} | "
-            if result.status == InsoStatus.FAIL
-            else _result_block(result, include_message=False),
-            _literal_block(
-                _display_message(result.message) if native else result.message
-            )
-            if result.message
-            else "",
-            preview=_failure_preview(result, native=native)
-            if result.status == InsoStatus.FAIL
-            else "",
-        )
-        for result in results
-    ]
+    assertions = [_make_assertion(result, name, native=native) for result in results]
     return _RequestGroup(
         execution, assertions, label, row, headers, Counter(r.status for r in results)
     )
@@ -354,44 +363,54 @@ class _MarkdownReport:
                 assertion.reason_shown = complete and bool(assertion.reason)
 
     def _assertion_section(self, status: InsoStatus) -> str:
+        if status == InsoStatus.FAIL:
+            return self._failed_assertions()
         blocks = []
-        notices = []
         for group in self.groups:
             selected = group.selected(status)
             if not selected:
                 continue
-            if status != InsoStatus.FAIL:
-                blocks.append(group.label)
+            blocks.append(group.label)
             for assertion in selected:
-                block = assertion.description
-                if status == InsoStatus.FAIL:
-                    block += (
-                        assertion.preview
-                        if assertion.preview_shown
-                        else _OMITTED_PREVIEW
-                    ) + " |\n"
-                blocks.append(block)
-                if assertion.reason_shown and status != InsoStatus.FAIL:
+                blocks.append(assertion.description)
+                if assertion.reason_shown:
                     blocks.extend(("\n", assertion.reason))
             omission = group.omissions((status,))
             if omission:
-                notice = f"\n{omission} in this request. Use JSON or JUnit for complete evidence.\n\n"
-                if status == InsoStatus.FAIL:
-                    notices.append(group.label + notice)
-                else:
-                    blocks.append(notice)
+                blocks.append(
+                    f"\n{omission} in this request. Use JSON or JUnit for complete evidence.\n\n"
+                )
         if not blocks:
             return ""
         body = "".join(blocks)
-        if status == InsoStatus.FAIL:
-            return _FAILURE_HEADER + body + "\n" + "".join(notices)
-        count = sum(
-            a.result.status == status for group in self.groups for a in group.assertions
-        )
+        count = self.counts[status]
         return _disclosure(
             f"{_STATUS_LABELS[status].title()} {_plural(count, 'assertion')} ({count})",
             body,
         )
+
+    def _failed_assertions(self) -> str:
+        rows: list[str] = []
+        notices = []
+        for group in self.groups:
+            selected = group.selected(InsoStatus.FAIL)
+            if not selected:
+                continue
+            rows.extend(
+                assertion.description
+                + (assertion.preview if assertion.preview_shown else _OMITTED_PREVIEW)
+                + " |\n"
+                for assertion in selected
+            )
+            omission = group.omissions((InsoStatus.FAIL,))
+            if omission:
+                notices.append(
+                    group.label
+                    + f"\n{omission} in this request. Use JSON or JUnit for complete evidence.\n\n"
+                )
+        if not rows:
+            return ""
+        return _FAILURE_HEADER + "".join(rows) + "\n" + "".join(notices)
 
     def _failure_output(self) -> str:
         body = "".join(
@@ -513,20 +532,24 @@ class _MarkdownReport:
                     remaining -= cost
         return remaining
 
+    @staticmethod
+    def _reason_frame(
+        group: _RequestGroup, assertion: _Assertion, *, first: bool
+    ) -> str:
+        if assertion.result.status != InsoStatus.FAIL:
+            return "\n"
+        frame = group.label + f"**{_inline_code(assertion.result.description)}**\n\n"
+        if first:
+            frame += _disclosure("Failure output", "")
+        return frame
+
     def _select_reasons(self, status: InsoStatus, remaining: int) -> int:
         first = True
         for group in self.groups:
             for assertion in group.selected(status):
                 if not assertion.reason:
                     continue
-                frame = "\n"
-                if status == InsoStatus.FAIL:
-                    frame = (
-                        group.label
-                        + f"**{_inline_code(assertion.result.description)}**\n\n"
-                    )
-                    if first:
-                        frame += _disclosure("Failure output", "")
+                frame = self._reason_frame(group, assertion, first=first)
                 block = _literal_block(
                     _display_message(assertion.result.message or "")
                     if self.report.source == "native"

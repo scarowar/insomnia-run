@@ -51,20 +51,23 @@ class RenderedReport(HTMLParser):
                 self.capture_tag = "td"
                 self.text = []
         if tag == "code":
-            self.capture = None
-            self.capture_tag = "code"
-            if (
-                "td" in self.tags
-                and self.column == 1
-                and self.table_headers
-                == ["Request", "Passed", "Failed", "Skipped", "Response"]
-            ):
-                self.capture = "request"
-            elif "strong" in self.tags and "li" in self.tags:
-                self.capture = "assertion"
-            self.text = []
+            self._start_code()
         if tag not in {"br", "hr", "img", "input", "meta", "link"}:
             self.tags.append(tag)
+
+    def _start_code(self) -> None:
+        self.capture = None
+        self.capture_tag = "code"
+        if (
+            "td" in self.tags
+            and self.column == 1
+            and self.table_headers
+            == ["Request", "Passed", "Failed", "Skipped", "Response"]
+        ):
+            self.capture = "request"
+        elif "strong" in self.tags and "li" in self.tags:
+            self.capture = "assertion"
+        self.text = []
 
     def handle_data(self, data: str) -> None:
         if self.capture:
