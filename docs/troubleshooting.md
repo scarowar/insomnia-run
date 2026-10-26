@@ -82,6 +82,12 @@ An explicit runtime bundle needs a trusted archive digest and matching source, l
 
 `offline-install` disables installer/cache network access, not collection HTTP traffic, comments, artifact uploads, or GitHub's resolution of dependency actions. Mirror/allowlist those actions through the installation's supported process. Built-in report upload supports GitHub.com/GHEC, not GHES; use a GHES-compatible uploader with `report-directory`.
 
+## Invalid Action Input
+
+Configuration errors identify incompatible command-specific inputs or the numeric input to correct. Collection-only inputs such as `request-name-pattern` cannot be used with `command: test`; remove the input or select `command: collection`.
+
+`request-timeout` and `delay-request` are non-negative integer milliseconds. `execution-timeout` is positive integer seconds, and `iteration-count` is a positive integer number of iterations. For example, use `request-timeout: "5000"` for five seconds; do not include a unit suffix in the value. Diagnostics explain the accepted form without printing the supplied value.
+
 ## Inso Configuration Not Applied
 
 Set run options through action inputs. Inso 13.3.1 imports only truthy `workingDir`, `ci`, `verbose`, and `printOptions` configuration keys before applying command defaults. This wrapper does not expose `--config` or execute `.insorc` scripts. See [configuration limits](reference/inputs.md#inso-configuration).

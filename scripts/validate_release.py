@@ -1,6 +1,7 @@
 """Run the installed-wheel release suite and retain inspectable report evidence."""
 
 import argparse
+from collections import Counter
 from importlib.metadata import version
 from html.parser import HTMLParser
 import json
@@ -16,19 +17,48 @@ from xml.etree import ElementTree  # nosec B405 # locally generated pytest XML o
 class RenderedReport(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
-        self.requests: set[str] = set()
-        self.assertions: set[str] = set()
+        self.requests: list[str] = []
+        self.assertions: list[str] = []
         self.tags: list[str] = []
         self.capture: str | None = None
+        self.capture_tag = "code"
         self.text: list[str] = []
         self.unsafe_tags: set[str] = set()
+        self.table_headers: list[str] = []
+        self.header_text: list[str] = []
+        self.column = 0
+        self.nested_disclosures = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in {"img", "script", "iframe", "h1"}:
             self.unsafe_tags.add(tag)
+        if tag == "details" and "details" in self.tags:
+            self.nested_disclosures = True
+        if tag == "table":
+            self.table_headers = []
+        if tag == "tr":
+            self.column = 0
+        if tag == "th":
+            self.header_text = []
+        if tag == "td":
+            self.column += 1
+            if self.column == 2 and self.table_headers == [
+                "Request",
+                "Assertion",
+                "Failure",
+            ]:
+                self.capture = "assertion"
+                self.capture_tag = "td"
+                self.text = []
         if tag == "code":
             self.capture = None
-            if any(parent in self.tags for parent in ("summary", "h4")):
+            self.capture_tag = "code"
+            if (
+                "td" in self.tags
+                and self.column == 1
+                and self.table_headers
+                == ["Request", "Passed", "Failed", "Skipped", "Response"]
+            ):
                 self.capture = "request"
             elif "strong" in self.tags and "li" in self.tags:
                 self.capture = "assertion"
@@ -39,11 +69,15 @@ class RenderedReport(HTMLParser):
     def handle_data(self, data: str) -> None:
         if self.capture:
             self.text.append(data)
+        if "th" in self.tags:
+            self.header_text.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag == "code" and self.capture:
+        if tag == "th":
+            self.table_headers.append("".join(self.header_text).strip())
+        if tag == self.capture_tag and self.capture:
             target = self.requests if self.capture == "request" else self.assertions
-            target.add("".join(self.text))
+            target.append("".join(self.text))
             self.capture = None
         if tag in self.tags:
             index = len(self.tags) - 1 - self.tags[::-1].index(tag)
@@ -85,6 +119,7 @@ def require_unskipped_tests(path: Path) -> int:
     classes = {case.get("classname", "") for case in tree.iter("testcase")}
     for required in (
         "test_patch_regressions",
+        "test_reporting_experience",
         "test_inso_compatibility",
         "test_native_compatibility",
         "test_managed_python",
@@ -142,7 +177,11 @@ def _acceptance_report(label: str, counts: tuple[int, ...]):
     )
     if label == "hostile":
         report.executions[0].name = "POST /<probe>&` @ghost #1"
+        report.results[0].status = InsoStatus.FAIL
         report.results[0].description = "literal <img src=x> `ticks` & @ghost #1"
+        report.results[
+            0
+        ].message = "literal | ![image](https://example.invalid) @ghost #1\n<details>full diagnostic</details>"
         report.raw_output = (
             "</details><img src=x><script>bad</script>\nsynthetic&credential+value\n"
             + "```" * 3000
@@ -155,14 +194,19 @@ def _require_rendered_identities(report, html: str) -> None:
     rendered.feed(html)
     if rendered.unsafe_tags:
         raise ValueError("Report content escaped its literal rendering.")
-    for request in report.executions:
-        if request.name not in rendered.requests:
-            raise ValueError("Rendered report lost an executed request that fits.")
-    if {result.description for result in report.results} != rendered.assertions:
+    if Counter(request.name for request in report.executions) != Counter(
+        rendered.requests
+    ):
+        raise ValueError("Rendered report lost an executed request that fits.")
+    if rendered.nested_disclosures:
+        raise ValueError("Rendered report contains nested disclosures.")
+    if Counter(result.description for result in report.results) != Counter(
+        rendered.assertions
+    ):
         raise ValueError("Rendered report assertion identities differ.")
 
 
-def audit_reports(output: Path) -> None:
+def validate_reports(output: Path) -> None:
     from insomnia_run.reporter import Reporter
 
     output.mkdir(parents=True, exist_ok=True)
@@ -240,7 +284,7 @@ def validate(root: Path, output: Path) -> None:
             check=True,
         )
     count = require_unskipped_tests(output / "tests.xml")
-    audit_reports(output)
+    validate_reports(output)
     (output / "validation.json").write_text(
         json.dumps(
             {"version": version("insomnia-run"), "tests": count, "skipped": 0}, indent=2

@@ -23,6 +23,25 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def report_table(dom, headers):
+    matches = [
+        table
+        for table in dom.findall(".//table")
+        if ["".join(cell.itertext()) for cell in table.findall("./thead/tr/th")]
+        == headers
+    ]
+    assert len(matches) == 1
+    return matches[0]
+
+
+def assert_report_totals(dom, *, requests, assertions, passed, failed, skipped):
+    table = report_table(dom, ["Requests", "Assertions", "Passed", "Failed", "Skipped"])
+    assert [
+        ["".join(cell.itertext()) for cell in row.findall("td")]
+        for row in table.findall("./tbody/tr")
+    ] == [[str(value) for value in (requests, assertions, passed, failed, skipped)]]
+
+
 @pytest.fixture(scope="module")
 def native_runtime(tmp_path_factory):
     requests = []
@@ -193,6 +212,17 @@ def test_native_skip_and_verbose_forged_tap_are_not_assertion_failures(
     report = json.loads((tmp_path / "report.json").read_text())
     assert [test["status"] for test in report["results"]] == ["SKIP", "PASS"]
     assert "FORGED" not in (tmp_path / "report.json").read_text()
+    markdown = (tmp_path / "report.md").read_text()
+    dom = ElementTree.fromstring(
+        "<div>" + MarkdownIt("commonmark").enable("table").render(markdown) + "</div>"
+    )
+    disclosures = dom.findall("./details")
+    assert ["".join(node.find("summary").itertext()) for node in disclosures] == [
+        "Skipped assertion (1)",
+        "Passed assertion (1)",
+    ]
+    assert dom.findall(".//details/details") == []
+    assert_report_totals(dom, requests=1, assertions=2, passed=1, failed=0, skipped=1)
 
 
 def test_allowlisted_headers_do_not_publish_native_bodies_or_unlisted_headers(
@@ -209,6 +239,18 @@ def test_allowlisted_headers_do_not_publish_native_bodies_or_unlisted_headers(
         published = (tmp_path / file).read_text()
         assert "private-body" not in published
         assert "not-for-publication" not in published
+    markdown = (tmp_path / "report.md").read_text()
+    dom = ElementTree.fromstring(
+        "<div>" + MarkdownIt("commonmark").enable("table").render(markdown) + "</div>"
+    )
+    headers = [
+        node
+        for node in dom.findall("./details")
+        if "".join(node.find("summary").itertext()) == "Captured response headers"
+    ]
+    assert len(headers) == 1
+    assert "x-request-id: fixture-request-id" in "".join(headers[0].itertext())
+    assert dom.findall(".//details/details") == []
 
 
 def test_real_three_hundred_requests_keep_complete_files_and_bounded_markdown(
@@ -223,10 +265,18 @@ def test_real_three_hundred_requests_keep_complete_files_and_bounded_markdown(
     assert len(report["executions"]) == len(report["results"]) == 300
     assert len((tmp_path / "report.md").read_bytes()) <= 60000
     markdown = (tmp_path / "report.md").read_text()
-    dom = ElementTree.fromstring("<div>" + MarkdownIt().render(markdown) + "</div>")
-    names = {code.text for code in dom.findall(".//summary/code")}
+    dom = ElementTree.fromstring(
+        "<div>" + MarkdownIt("commonmark").enable("table").render(markdown) + "</div>"
+    )
+    table = report_table(dom, ["Request", "Passed", "Failed", "Skipped", "Response"])
+    names = {code.text for code in table.findall(".//tbody/tr/td[1]/code")}
     assert names == {f"R{index}" for index in range(1, 301)}
-    assert "request groups omitted" not in markdown
+    assert len(table.findall("./thead/tr/th")) == 5
+    assert table in dom.findall("./details/table")
+    assert table not in dom.findall("./table")
+    assert all(len(row.findall("td")) == 5 for row in table.findall(".//tbody/tr"))
+    assert "**Details omitted:**" not in markdown
+    assert dom.findall(".//details/details") == []
     assert (
         len(ElementTree.parse(tmp_path / "junit.xml").getroot().findall("testcase"))
         == 300
@@ -252,15 +302,41 @@ def test_real_uneven_sixty_two_assertions_keep_every_request(tmp_path, native_ru
     assert len(payload["results"]) == 62
     assert sum(item["status"] == "FAIL" for item in payload["results"]) == 2
     markdown = (tmp_path / "report.md").read_text()
-    dom = ElementTree.fromstring("<div>" + MarkdownIt().render(markdown) + "</div>")
-    names = {
-        code.text for code in dom.findall(".//summary/code") + dom.findall(".//h4/code")
-    }
+    dom = ElementTree.fromstring(
+        "<div>" + MarkdownIt("commonmark").enable("table").render(markdown) + "</div>"
+    )
+    table = report_table(dom, ["Request", "Passed", "Failed", "Skipped", "Response"])
+    names = {code.text for code in table.findall(".//tbody/tr/td[1]/code")}
     assert names == {f"R{index}" for index in range(1, 6)}
-    assert len(dom.findall(".//li/strong/code")) == 62
-    assert "more results omitted" not in markdown
-    assert "27 passed" in markdown
-    assert "21 passed" in markdown
+    assert table in dom.findall("./table")
+    assert dom.findall("./h4") == []
+    assert dom.findall(".//details/details") == []
+    failures = report_table(dom, ["Request", "Assertion", "Failure"])
+    failed_names = [
+        "".join(row.findall("td")[1].itertext())
+        for row in failures.findall("./tbody/tr")
+    ]
+    passed_names = [node.text for node in dom.findall(".//li/strong/code")]
+    assert len(failed_names) == 2
+    assert len(passed_names) == 60
+    assert set(failed_names + passed_names) == {
+        f"check-{request}-{index}"
+        for request, count in enumerate((29, 10, 21, 1, 1), 1)
+        for index in range(count)
+    }
+    assert "**Details omitted:**" not in markdown
+    assert_report_totals(dom, requests=5, assertions=62, passed=60, failed=2, skipped=0)
+    assert [
+        ["".join(cell.itertext()) for cell in row.findall("td")[1:4]]
+        for row in table.findall("./tbody/tr")
+    ] == [
+        ["27", "2", "0"],
+        ["10", "0", "0"],
+        ["21", "0", "0"],
+        ["1", "0", "0"],
+        ["1", "0", "0"],
+    ]
+    assert markdown.index("### Requests") < markdown.index("### Failed assertions")
     assert (
         len(ElementTree.parse(tmp_path / "junit.xml").getroot().findall("testcase"))
         == 62

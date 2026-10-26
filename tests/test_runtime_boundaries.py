@@ -129,7 +129,8 @@ def test_successful_collection_without_assertions_has_a_neutral_empty_report(
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.stderr)["results"] == []
-    assert "Passed" not in result.stdout
+    assert "**Result: No Assertions Executed**" in result.stdout
+    assert "**Result: Passed**" not in result.stdout
     assert "No assertions executed" in result.stdout
 
 

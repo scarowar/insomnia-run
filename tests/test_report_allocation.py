@@ -7,8 +7,20 @@ from insomnia_run.reporter import Reporter
 
 
 def _rendered_results(markdown: str) -> list[str]:
-    dom = ElementTree.fromstring(f"<div>{MarkdownIt().render(markdown)}</div>")
-    return [node.text for node in dom.findall(".//li//strong/code")]
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt().enable('table').render(markdown)}</div>"
+    )
+    results = [node.text for node in dom.findall(".//li//strong/code")]
+    for table in dom.findall(".//table"):
+        if [node.text for node in table.findall("./thead/tr/th")] == [
+            "Request",
+            "Assertion",
+            "Failure",
+        ]:
+            results.extend(
+                "".join(row[1].itertext()) for row in table.findall("./tbody/tr")
+            )
+    return results
 
 
 def test_failures_across_requests_take_result_slots_before_passes():
@@ -142,8 +154,8 @@ def test_truncation_notice_counts_omitted_failures_separately():
 
     shown = _rendered_results(markdown)
     assert 0 < len(shown) < 55
-    assert f"{60 - len(shown)} more results omitted" in markdown
-    assert f"{55 - len(shown)} failures omitted" in markdown
+    assert "5 passed assertions omitted" in markdown
+    assert f"{55 - len(shown)} failed assertions omitted" in markdown
     assert len(markdown.encode("utf-8")) <= 2000
 
 

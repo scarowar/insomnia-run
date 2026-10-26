@@ -28,7 +28,7 @@ https://github.com/user-attachments/assets/695ab30b-7775-4452-a107-4ca1caf49744
 
 ## Reports and Installation
 
-- Request-grouped Markdown, normalized JSON files, and JUnit reports, with redacted failure reasons and available timings.
+- Markdown with visible failures and a consistent request overview, plus complete JSON and JUnit reports with redacted reasons and available timings.
 - Per-job/matrix PR comment replacement, bounded annotations, optional artifacts, and separate assertion/run-error outcomes.
 - Verified Inso archive caching, explicit custom archive digests, frozen source installation, and optional verified runtime bundles.
 

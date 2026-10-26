@@ -113,8 +113,26 @@ def test_sixty_two_assertions_do_not_hide_requests_that_fit(failed):
     assert all(f"POST /request-{i}" in markdown for i in range(1, 6))
     assert "check-3-20" in markdown
     assert "more results omitted" not in markdown
-    assert ("27 passed" if failed else "29 passed") in markdown
-    assert "21 passed" in markdown
+    dom = ElementTree.fromstring(
+        f"<div>{MarkdownIt().enable('table').render(markdown)}</div>"
+    )
+    overview = next(
+        table
+        for table in dom.findall(".//table")
+        if [cell.text for cell in table.findall("./thead/tr/th")]
+        == ["Request", "Passed", "Failed", "Skipped", "Response"]
+    )
+    counts = [
+        [cell.text for cell in row.findall("td")[1:4]]
+        for row in overview.findall("./tbody/tr")
+    ]
+    assert counts == [
+        ["27", "2", "0"] if failed else ["29", "0", "0"],
+        ["10", "0", "0"],
+        ["21", "0", "0"],
+        ["1", "0", "0"],
+        ["1", "0", "0"],
+    ]
     assert len(markdown.encode()) <= 60_000
 
 
@@ -135,7 +153,7 @@ def test_large_group_lists_and_unicode_respect_final_budget():
     assert len(markdown.encode()) <= 3000
     assert "request groups omitted" in markdown
     assert markdown.count("<details>") == markdown.count("</details>")
-    assert "Completed requests:** 400" in markdown
+    assert "| 400 | 0 | 0 | 0 | 0 |" in markdown
 
 
 @pytest.mark.parametrize("failed", [False, True])
@@ -304,7 +322,7 @@ def test_native_message_cleanup_preserves_canonical_evidence():
     )
     markdown = Reporter().generate_markdown(report)
     assert "error: Error:" not in markdown
-    assert "missing item\nActual: 1 | Expected: 0" in markdown
+    assert "missing item\nActual: 1\nExpected: 0" in markdown
     assert report.results[0].message == raw
     assert (
         ElementTree.fromstring(Reporter().generate_junit(report))

@@ -7,7 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Preserve request summaries and failure descriptions under Markdown budgets, remove the 50-assertion cutoff, and account for omissions within each request.
-- Render job summaries independently from bounded PR-comment Markdown; label response headers and collapse passing assertions inside failed requests.
+- Render job summaries independently from bounded PR-comment Markdown; show compact totals, per-request counts, and failed-assertion tables with separate expandable diagnostics.
 - Redact literal and decoded override values, credential-bearing dictionary entries, and secrets in dynamic keys without losing colliding entries.
 - Filter recognized cloud/package credentials and GitHub/Actions/state tokens from the Inso child while preserving proxy and certificate settings.
 - Reject incomplete passing evidence consistently, retain interrupted TAP diagnostics, and bound annotations after escaping.
@@ -15,6 +15,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Identify incompatible inputs and explain numeric input types, ranges, and units without echoing supplied values.
 - Require installed-wheel release validation with real integrations, no skipped tests, and rendered-report acceptance evidence before publication.
 - Update development-tool locks to patched filelock 4.2.1 and virtualenv 21.14.13. Pre-commit and dependency auditing require Python 3.11+; Python 3.10 runtime/test support is retained.
 

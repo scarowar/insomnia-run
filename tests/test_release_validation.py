@@ -43,6 +43,7 @@ def test_release_evidence_rejects_empty_or_missing_critical_suite(validator, tmp
 def test_release_evidence_requires_each_real_integration_family(validator, tmp_path):
     classes = [
         "test_patch_regressions",
+        "test_reporting_experience",
         "test_inso_compatibility",
         "test_native_compatibility",
         "test_managed_python",
@@ -51,18 +52,18 @@ def test_release_evidence_requires_each_real_integration_family(validator, tmp_p
     path = tmp_path / "tests.xml"
     cases = "".join(f'<testcase classname="tests.{name}"/>' for name in classes)
     path.write_text(
-        f'<testsuites><testsuite tests="5">{cases}</testsuite></testsuites>'
+        f'<testsuites><testsuite tests="6">{cases}</testsuite></testsuites>'
     )
-    assert validator.require_unskipped_tests(path) == 5
+    assert validator.require_unskipped_tests(path) == 6
 
 
-def test_rendered_report_audit_retains_machine_and_human_evidence(
+def test_rendered_report_validation_retains_machine_and_human_evidence(
     validator, tmp_path, monkeypatch
 ):
     from markdown_it import MarkdownIt
 
-    monkeypatch.setattr(validator, "render_gfm", MarkdownIt().render)
-    validator.audit_reports(tmp_path)
+    monkeypatch.setattr(validator, "render_gfm", MarkdownIt().enable("table").render)
+    validator.validate_reports(tmp_path)
     assert len(list(tmp_path.glob("*.html"))) == 4
     assert (tmp_path / "mixed.json").is_file()
     assert (tmp_path / "mixed.xml").is_file()
@@ -73,15 +74,15 @@ def test_rendered_report_audit_retains_machine_and_human_evidence(
     assert "<script" not in hostile
 
 
-def test_rendered_report_audit_rejects_missing_request_in_renderer(
+def test_rendered_report_validation_rejects_missing_request_in_renderer(
     validator, tmp_path, monkeypatch
 ):
     monkeypatch.setattr(validator, "render_gfm", lambda markdown: "empty")
     with pytest.raises(ValueError, match="lost an executed request"):
-        validator.audit_reports(tmp_path)
+        validator.validate_reports(tmp_path)
 
 
-def test_rendered_report_audit_checks_exact_request_identity(
+def test_rendered_report_validation_checks_exact_request_identity(
     validator, tmp_path, monkeypatch
 ):
     from markdown_it import MarkdownIt
@@ -91,12 +92,13 @@ def test_rendered_report_audit_checks_exact_request_identity(
         "render_gfm",
         lambda markdown: (
             MarkdownIt()
+            .enable("table")
             .render(markdown)
             .replace("<code>request-1</code>", "<code>request-10</code>")
         ),
     )
     with pytest.raises(ValueError, match="lost an executed request"):
-        validator.audit_reports(tmp_path)
+        validator.validate_reports(tmp_path)
 
 
 def test_release_preflight_rejects_editable_source(validator, tmp_path, monkeypatch):

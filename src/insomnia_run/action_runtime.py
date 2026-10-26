@@ -7,6 +7,7 @@ import shutil
 import tempfile
 
 import typer
+from pydantic import ValidationError
 
 from .models import InsoCollectionOptions, InsoRunReport, InsoTestOptions
 from .native import validate_capture_headers
@@ -86,10 +87,18 @@ def _validate_inputs(env: dict[str, str]) -> None:
         if command == "test"
         else ("TEST_NAME_PATTERN",)
     )
-    if any(env.get(variable) for variable in incompatible) or (
-        command == "collection" and env.get("KEEP_FILE", "").lower() == "true"
-    ):
-        raise ValueError("Input is not supported by the selected command.")
+    unsupported = [variable for variable in incompatible if env.get(variable)]
+    if command == "collection" and env.get("KEEP_FILE", "").lower() == "true":
+        unsupported.append("KEEP_FILE")
+    if unsupported:
+        names = ", ".join(
+            variable.lower().replace("_", "-") for variable in unsupported
+        )
+        supported = "collection" if command == "test" else "test"
+        raise ValueError(
+            f"Unsupported inputs for command {command}: {names}. "
+            f"These inputs are {supported}-only. Remove them or use command: {supported}."
+        )
 
 
 def _action_options(env: dict[str, str]) -> InsoCollectionOptions | InsoTestOptions:
@@ -328,6 +337,27 @@ def _write_job_summary(env: dict[str, str], report: InsoRunReport | None) -> Non
             summary.write(summary_markdown)
 
 
+def _configuration_diagnostics(error: ValidationError) -> str:
+    requirements = {
+        "request_timeout": "an integer in milliseconds (minimum 0)",
+        "execution_timeout": "an integer in seconds (minimum 1)",
+        "delay_request": "an integer in milliseconds (minimum 0)",
+        "iteration_count": "an integer in iterations (minimum 1)",
+    }
+    fields = {issue["loc"][0] for issue in error.errors(include_input=False)}
+    messages = []
+    for field in sorted(fields):
+        if field in requirements:
+            messages.append(
+                f"::error::{field.replace('_', '-')} must be {requirements[field]}."
+            )
+        else:
+            messages.append(
+                "::error::Invalid Inso configuration. Check command options."
+            )
+    return "\n".join(messages)
+
+
 def run_action(env: dict[str, str]) -> int:
     if env.get("GITHUB_ACTIONS", "").lower() == "true":
         from .privacy import Redactor, mask_commands
@@ -349,6 +379,9 @@ def run_action(env: dict[str, str]) -> int:
         return 2
     try:
         options = _action_options(env)
+    except ValidationError as error:
+        print(_configuration_diagnostics(error))
+        return 2
     except ValueError:
         print("::error::Invalid Inso configuration. Check command options.")
         return 2
