@@ -9,7 +9,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Preserve request summaries and failure descriptions under Markdown budgets, remove the 50-assertion cutoff, and account for omissions within each request.
 - Render job summaries independently from bounded PR-comment Markdown; show compact totals, per-request counts, and failed-assertion tables with separate expandable diagnostics.
 - Redact literal and decoded override values, credential-bearing dictionary entries, and secrets in dynamic keys without losing colliding entries.
-- Filter recognized cloud/package credentials and GitHub/Actions/state tokens from the Inso child while preserving proxy and certificate settings.
+- Give Inso an explicit runtime environment that excludes all unlisted variables, preserving supported proxy, certificate, and public GitHub context settings.
 - Reject incomplete passing evidence consistently, retain interrupted TAP diagnostics, and bound annotations after escaping.
 - Preserve full JUnit evidence while bounding summary attributes, omit unknown empty-suite timing, and validate runtime options before report allocation.
 

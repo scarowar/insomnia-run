@@ -3,7 +3,7 @@
 ## v0.2.0 to v0.2.1
 
 - Markdown no longer cuts off after 50 assertions. Totals and per-request counts use compact tables, followed by a visible table of failed assertions and their first-line reasons. Full failure output, overviews with more than 10 request occurrences, and optional assertion/header details are expandable without nested sections. Omission counts use the actual output budget; job summaries have a separate budget from comments.
-- Credential-bearing dynamic dictionary keys/values and literal override forms receive additional redaction. The child environment now filters recognized cloud/package credentials and GitHub/Actions/state variables. Reviewed GitHub metadata (workspace, repository, ref, and SHA), proxy configuration, and certificate configuration remain supported; GitHub control-file paths are removed. Review integrations that relied on inherited credentials; filtering does not sandbox collection scripts or hide credentials in files.
+- Credential-bearing dynamic dictionary keys/values and literal override forms receive additional redaction. Inso now inherits only supported runtime settings and selected public GitHub metadata. All other environment variables are excluded by default, without relying on credential-name patterns. Move custom collection values to `env-var` or a selected Insomnia environment. Proxy and certificate configuration remain supported; GitHub control-file paths and startup injection settings are excluded. See the [runtime environment policy](guides/secrets.md#runner-environment). This does not sandbox collection scripts or hide credentials in files.
 - Incomplete evidence with no failures or recorded execution error is a protocol error (exit `3`). Assertion-only bail retains exit `1` and `complete: false`; `fail-on-error: false` still permits that case.
 - Available truncated TAP failure diagnostics are retained. Markdown simplifies native error wrappers; JSON and JUnit bodies retain the original redacted reason. JUnit summary attributes are bounded and unknown empty-suite duration is omitted.
 
@@ -37,7 +37,7 @@ Raw output is off by default. Failure details now appear in redacted reports by 
 
 Header capture is off by default; `capture-response-headers` accepts literal, non-credential header names only. Raw diagnostics still need `include-raw-output: "true"`. They may reach summaries, comments, artifacts, and JSON files.
 
-Encoded secrets remain sensitive. CLI arguments can appear in process listings, and collection scripts retain access to ordinary runner environment variables and filesystem resources. Use isolated runners and minimum credentials; see [secret handling](guides/secrets.md).
+Encoded secrets remain sensitive. CLI arguments can appear in process listings, and collection scripts retain access to the supported runtime environment and filesystem resources. Use isolated runners and minimum credentials; see [secret handling](guides/secrets.md).
 
 ### Comments and Artifacts
 

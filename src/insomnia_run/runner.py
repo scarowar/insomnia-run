@@ -1,5 +1,6 @@
 import os
 import signal
+from collections.abc import Mapping
 from pathlib import Path
 import re
 import tempfile
@@ -20,9 +21,47 @@ from .models import (
 )
 from .native import parse_native_report, validate_capture_headers
 from .parser import TapParser
-from .privacy import Redactor, credential_name
+from .privacy import Redactor
 
 _MAX_CAPTURE_BYTES = 32 * 1024 * 1024
+_RUNTIME_ENVIRONMENT = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_CACHE_HOME",
+        "LANG",
+        "LANGUAGE",
+        "LC_ALL",
+        "LC_CTYPE",
+        "LC_COLLATE",
+        "LC_MESSAGES",
+        "LC_MONETARY",
+        "LC_NUMERIC",
+        "LC_TIME",
+        "TZ",
+        "CI",
+        "TERM",
+        "NO_COLOR",
+        "FORCE_COLOR",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "NODE_EXTRA_CA_CERTS",
+        "NODE_USE_SYSTEM_CA",
+    }
+)
 _PUBLIC_GITHUB_CONTEXT = {
     "GITHUB_ACTIONS",
     "GITHUB_ACTION",
@@ -54,6 +93,18 @@ _PUBLIC_GITHUB_CONTEXT = {
     "GITHUB_WORKFLOW_SHA",
     "GITHUB_WORKSPACE",
 }
+
+
+def _inso_environment(environ: Mapping[str, str]) -> dict[str, str]:
+    """Pass supported runtime settings only; unknown variables are never inherited."""
+    return {
+        **{
+            key: environ[key]
+            for key in _RUNTIME_ENVIRONMENT | _PUBLIC_GITHUB_CONTEXT
+            if key in environ
+        },
+        "INSO_TELEMETRY_DISABLED": "1",
+    }
 
 
 class _OutputLimitError(subprocess.SubprocessError):
@@ -168,28 +219,7 @@ class InsoRunner:
                 start_new_session=True,
                 shell=False,
                 umask=0o077,
-                env={
-                    **{
-                        key: value
-                        for key, value in os.environ.items()
-                        if key not in {"REDACT_VALUES", "ENV_VAR"}
-                        and not credential_name(key)
-                        and (
-                            key.upper() in _PUBLIC_GITHUB_CONTEXT
-                            or not key.upper().startswith(
-                                (
-                                    "INPUT_",
-                                    "ACTION_",
-                                    "ACTIONS_",
-                                    "STATE_",
-                                    "GITHUB_",
-                                    "INSOMNIA_RUN_",
-                                )
-                            )
-                        )
-                    },
-                    "INSO_TELEMETRY_DISABLED": "1",
-                },
+                env=_inso_environment(os.environ),
             ) as process,
         ):
             stdout, stderr = _wait_for_inso(

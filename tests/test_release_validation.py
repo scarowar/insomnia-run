@@ -44,6 +44,7 @@ def test_release_evidence_requires_each_real_integration_family(validator, tmp_p
     classes = [
         "test_patch_regressions",
         "test_reporting_experience",
+        "test_process_environment",
         "test_inso_compatibility",
         "test_native_compatibility",
         "test_managed_python",
@@ -52,9 +53,19 @@ def test_release_evidence_requires_each_real_integration_family(validator, tmp_p
     path = tmp_path / "tests.xml"
     cases = "".join(f'<testcase classname="tests.{name}"/>' for name in classes)
     path.write_text(
-        f'<testsuites><testsuite tests="6">{cases}</testsuite></testsuites>'
+        f'<testsuites><testsuite tests="{len(classes)}">{cases}</testsuite></testsuites>'
     )
-    assert validator.require_unskipped_tests(path) == 6
+    assert validator.require_unskipped_tests(path) == len(classes)
+    cases = "".join(
+        f'<testcase classname="tests.{name}"/>'
+        for name in classes
+        if name != "test_process_environment"
+    )
+    path.write_text(
+        f'<testsuites><testsuite tests="{len(classes) - 1}">{cases}</testsuite></testsuites>'
+    )
+    with pytest.raises(ValueError, match="did not execute test_process_environment"):
+        validator.require_unskipped_tests(path)
 
 
 def test_rendered_report_validation_retains_machine_and_human_evidence(

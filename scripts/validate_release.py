@@ -123,6 +123,7 @@ def require_unskipped_tests(path: Path) -> int:
     for required in (
         "test_patch_regressions",
         "test_reporting_experience",
+        "test_process_environment",
         "test_inso_compatibility",
         "test_native_compatibility",
         "test_managed_python",

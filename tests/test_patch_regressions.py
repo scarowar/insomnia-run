@@ -57,11 +57,11 @@ def test_real_child_filters_credentials_but_preserves_runtime_configuration(
         "GITHUB_STEP_SUMMARY",
         "GITHUB_STATE",
         "STATE_SAVED_TOKEN",
+        "API_BASE_URL",
     ]
     safe = {
         "HTTPS_PROXY": "http://proxy.test:8080",
         "SSL_CERT_FILE": "/tmp/ca.pem",
-        "API_BASE_URL": "https://example.test",
         "GITHUB_WORKSPACE": "/tmp/collection-workspace",
         "GITHUB_SHA": "a" * 40,
         "GITHUB_REF": "refs/heads/main",
