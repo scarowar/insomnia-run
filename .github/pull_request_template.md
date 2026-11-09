@@ -15,6 +15,8 @@ Thank you for your contribution! Please review the checklist below before submit
 
 <!-- Please describe your changes and the motivation behind them. -->
 
+<!-- If AI materially contributed to this change or its design, summarize its role and how you reviewed and verified the result. See CONTRIBUTING.md#ai-assisted-contributions. -->
+
 ## Related Issues
 
 <!-- List any related issues, e.g., "Closes #123" -->

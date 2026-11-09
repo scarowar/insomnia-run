@@ -47,6 +47,14 @@ These tests start a local HTTP fixture on port 8765. No external test API is req
 
 Follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
+## AI-assisted contributions
+
+AI-assisted contributions are welcome. No particular editor, model, or agent workflow is required.
+
+You remain responsible for every submitted change. Review and understand the code, tests, documentation, and dependency changes you submit. Run the applicable checks above and be prepared to explain the change and its verification during review.
+
+If AI materially contributed to the change or its design, disclose that assistance in the PR description. Briefly state what it helped produce and how you reviewed and verified the result. Do not include private prompts, credentials, or raw conversation logs. AI review does not replace maintainer review.
+
 ## Commit Messages
 
 Use a short, imperative subject, no longer than 72 characters, with a prefix such as `fix:`, `feat:`, `docs:`, `test:`, `ci:`, or `refactor:`. Leave a blank line before a body explaining why the change is needed. Gitlint requires a body; wrap body lines at 80 characters.
