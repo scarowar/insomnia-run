@@ -250,12 +250,12 @@ jobs:
           STEP_OUTCOME: ${{ steps.mixed-test.outcome }}
         run: |
           if [[ "$STEP_OUTCOME" != "failure" ]]; then
-            echo "Expected the action to fail when fail-on-error is true"
+            echo "Expected the action to fail when fail-on-error is true" >&2
             exit 1
           fi
           echo "Exit code: $EXIT_CODE"
           if [ "$EXIT_CODE" != "1" ]; then
-            echo "Expected exit code 1 for failing test suite"
+            echo "Expected exit code 1 for failing test suite" >&2
             exit 1
           fi
 
@@ -555,10 +555,11 @@ jobs:
               test -z "$SECOND_ID"
               test "$FIRST_STATUS" = skipped
               test "$SECOND_STATUS" = skipped
-              exit 0
+              ;;
+            *)
+              [[ "$FIRST_ID" =~ ^[1-9][0-9]*$ ]]
+              test "$FIRST_ID" = "$SECOND_ID"
+              case "$FIRST_STATUS" in created|updated|unchanged) ;; *) exit 1 ;; esac
+              case "$SECOND_STATUS" in updated|unchanged) ;; *) exit 1 ;; esac
               ;;
           esac
-          [[ "$FIRST_ID" =~ ^[1-9][0-9]*$ ]]
-          test "$FIRST_ID" = "$SECOND_ID"
-          case "$FIRST_STATUS" in created|updated|unchanged) ;; *) exit 1 ;; esac
-          case "$SECOND_STATUS" in updated|unchanged) ;; *) exit 1 ;; esac
