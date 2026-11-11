@@ -389,3 +389,46 @@ def test_ci_enforces_coverage_independently_of_automatic_analysis():
     assert "--cov-fail-under=95" in commands
     assert '--basetemp "${RUNNER_TEMP}/insomnia-run-unit-tests"' in commands
     assert "pytest -q" in commands
+
+
+def test_comment_publication_checks_trusted_and_denied_targets():
+    workflow = load_yaml(ROOT / ".github/workflows/e2e-test.yml")
+    verification = next(
+        step
+        for step in workflow["jobs"]["test-comment-upsert"]["steps"]
+        if "FIRST_ID" in step.get("env", {})
+    )
+    cases = [
+        ("dependabot[bot]", "", "", "skipped", "skipped", True),
+        ("Dependabot-Preview[Bot]", "", "", "skipped", "skipped", True),
+        ("maintainer", "123", "123", "created", "updated", True),
+        ("maintainer", "123", "123", "updated", "unchanged", True),
+        ("maintainer", "", "", "skipped", "skipped", False),
+        ("maintainer", "123", "456", "created", "updated", False),
+        ("dependabot[bot]", "123", "123", "created", "updated", False),
+        ("dependabot[bot]", "123", "", "skipped", "skipped", False),
+    ]
+    for author, first, second, first_status, second_status, accepted in cases:
+        environment = {
+            **os.environ,
+            "PR_AUTHOR": author,
+            "FIRST_ID": first,
+            "SECOND_ID": second,
+            "FIRST_STATUS": first_status,
+            "SECOND_STATUS": second_status,
+        }
+        result = subprocess.run(
+            ["bash", "-e", "-c", verification["run"]],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert (result.returncode == 0) == accepted, (
+            author,
+            first,
+            second,
+            first_status,
+            second_status,
+            result.stderr,
+        )

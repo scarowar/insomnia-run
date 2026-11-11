@@ -541,13 +541,23 @@ jobs:
           environment: Test Environment
           github-token: ${{ github.token }}
           comment-tag: e2e-upsert
-      - name: Verify owned comment reuse
+      - name: Verify PR comment publication
         env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           FIRST_ID: ${{ steps.first.outputs.comment-id }}
           SECOND_ID: ${{ steps.second.outputs.comment-id }}
           FIRST_STATUS: ${{ steps.first.outputs.comment-status }}
           SECOND_STATUS: ${{ steps.second.outputs.comment-status }}
         run: |
+          case "$(printf '%s' "$PR_AUTHOR" | tr '[:upper:]' '[:lower:]')" in
+            'dependabot[bot]'|'dependabot-preview[bot]')
+              test -z "$FIRST_ID"
+              test -z "$SECOND_ID"
+              test "$FIRST_STATUS" = skipped
+              test "$SECOND_STATUS" = skipped
+              exit 0
+              ;;
+          esac
           [[ "$FIRST_ID" =~ ^[1-9][0-9]*$ ]]
           test "$FIRST_ID" = "$SECOND_ID"
           case "$FIRST_STATUS" in created|updated|unchanged) ;; *) exit 1 ;; esac
