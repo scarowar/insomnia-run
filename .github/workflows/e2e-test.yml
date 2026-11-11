@@ -250,12 +250,12 @@ jobs:
           STEP_OUTCOME: ${{ steps.mixed-test.outcome }}
         run: |
           if [[ "$STEP_OUTCOME" != "failure" ]]; then
-            echo "Expected the action to fail when fail-on-error is true"
+            echo "Expected the action to fail when fail-on-error is true" >&2
             exit 1
           fi
           echo "Exit code: $EXIT_CODE"
           if [ "$EXIT_CODE" != "1" ]; then
-            echo "Expected exit code 1 for failing test suite"
+            echo "Expected exit code 1 for failing test suite" >&2
             exit 1
           fi
 
@@ -541,14 +541,25 @@ jobs:
           environment: Test Environment
           github-token: ${{ github.token }}
           comment-tag: e2e-upsert
-      - name: Verify owned comment reuse
+      - name: Verify PR comment publication
         env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           FIRST_ID: ${{ steps.first.outputs.comment-id }}
           SECOND_ID: ${{ steps.second.outputs.comment-id }}
           FIRST_STATUS: ${{ steps.first.outputs.comment-status }}
           SECOND_STATUS: ${{ steps.second.outputs.comment-status }}
         run: |
-          [[ "$FIRST_ID" =~ ^[1-9][0-9]*$ ]]
-          test "$FIRST_ID" = "$SECOND_ID"
-          case "$FIRST_STATUS" in created|updated|unchanged) ;; *) exit 1 ;; esac
-          case "$SECOND_STATUS" in updated|unchanged) ;; *) exit 1 ;; esac
+          case "$(printf '%s' "$PR_AUTHOR" | tr '[:upper:]' '[:lower:]')" in
+            'dependabot[bot]'|'dependabot-preview[bot]')
+              test -z "$FIRST_ID"
+              test -z "$SECOND_ID"
+              test "$FIRST_STATUS" = skipped
+              test "$SECOND_STATUS" = skipped
+              ;;
+            *)
+              [[ "$FIRST_ID" =~ ^[1-9][0-9]*$ ]]
+              test "$FIRST_ID" = "$SECOND_ID"
+              case "$FIRST_STATUS" in created|updated|unchanged) ;; *) exit 1 ;; esac
+              case "$SECOND_STATUS" in updated|unchanged) ;; *) exit 1 ;; esac
+              ;;
+          esac
